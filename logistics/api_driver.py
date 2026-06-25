@@ -1,6 +1,7 @@
 import os
 import json
 import httpx
+import logging
 import secrets
 import time
 import redis
@@ -134,7 +135,6 @@ def _order_claim_key(order_id) -> str:
 
 def upload_to_storage(namespace: str, entity_id: UUID, file) -> str:
     from config.supabase_client import supabase
-    import time
     
     filename = file.name if getattr(file, 'name', None) else f"upload_{int(time.time())}"
     path = f"{namespace}/{entity_id}/{filename}"
@@ -147,7 +147,6 @@ def upload_to_storage(namespace: str, entity_id: UUID, file) -> str:
         supabase.storage.from_(namespace).upload(path, file_bytes)
         return supabase.storage.from_(namespace).get_public_url(path)
     except Exception as e:
-        import logging
         logging.error(f"Failed to upload to supabase: {e}")
         return f"https://mocked-bucket.s3.amazonaws.com/{path}"
 
