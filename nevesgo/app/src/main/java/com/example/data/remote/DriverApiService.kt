@@ -32,6 +32,9 @@ interface DriverApiService {
     @POST("driver/orders/{order_id}/start")
     suspend fun startOrder(@Path("order_id") orderId: String): Response<DriverOrderSummary>
 
+    @POST("driver/orders/{order_id}/arrive")
+    suspend fun arriveOrder(@Path("order_id") orderId: String): Response<DriverOrderSummary>
+
     @POST("driver/orders/{order_id}/release")
     suspend fun releaseOrder(@Path("order_id") orderId: String, @Body reason: ReleaseReason): Response<DriverOrderSummary>
 

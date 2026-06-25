@@ -15,6 +15,7 @@ interface OrderRepository {
     suspend fun syncOrders()
     suspend fun acceptOrder(orderId: String)
     suspend fun startOrder(orderId: String): Result<Unit>
+    suspend fun arriveOrder(orderId: String): Result<Unit>
     suspend fun rejectOrder(orderId: String, reasonCode: String, reasonText: String? = null): Result<Unit>
     suspend fun releaseOrder(orderId: String, reason: String): Result<Unit>
     suspend fun getOrderDetails(orderId: String): Result<OrderDetailResponse>

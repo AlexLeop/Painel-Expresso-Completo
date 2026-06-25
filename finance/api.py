@@ -61,8 +61,10 @@ def request_withdrawal(request, payload: WithdrawalRequestPayload):
     with transaction.atomic():
         from finance.models import OperatorInternalWallet
         # Sempre travar OperatorInternalWallet PRIMEIRO, depois Wallet (prevenção de Deadlock)
-        operator_wallet, _ = OperatorInternalWallet.objects.select_for_update().get_or_create(operator=driver.operator)
-        wallet, _ = Wallet.objects.select_for_update().get_or_create(driver=driver, operator=driver.operator)
+        operator_wallet, _ = OperatorInternalWallet.objects.get_or_create(operator=driver.operator)
+        operator_wallet = OperatorInternalWallet.objects.select_for_update().get(pk=operator_wallet.pk)
+        wallet, _ = Wallet.objects.get_or_create(driver=driver, operator=driver.operator)
+        wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
         
         if wallet.balanceCents < payload.amountCents:
             from ninja.errors import HttpError
@@ -127,10 +129,11 @@ def list_transactions(request):
     
     # Lista transações onde a carteira de destino é a do motorista (créditos)
     # Ou a de origem é a dele (débitos/saques)
-    wallet = Wallet.objects.get(driver=driver)
+    wallet = Wallet.objects.get(driver=driver, operator=driver.operator)
     from django.db.models import Q
     transactions = WalletTransaction.objects.filter(
-        Q(destination_driver_wallet=wallet) | Q(source_driver_wallet=wallet)
+        Q(destination_driver_wallet=wallet) | Q(source_driver_wallet=wallet),
+        operator=driver.operator
     ).order_by('-createdAt')
     
     return transactions
@@ -151,14 +154,14 @@ def get_gerencial_data(request):
     # No nosso modelo, as "empresas" são os Client (marcas) e as "lojas" são Store
     # Para manter a compatibilidade com o frontend, vamos retornar:
     companies = []
-    for store in Store.objects.filter(operator=operator, active=True).select_related('client'):
-        client = store.client
+    for store in Store.objects.filter(operator=operator, operational=True).select_related('client'):
+        client_has = getattr(store, 'client', None)
         companies.append({
             "id": str(store.id),
             "machine_empresa_id": str(store.id),  # compatibilidade com frontend antigo
             "nome": store.name,
-            "cnpj": client.document if client else "",
-            "ativo": store.active
+            "cnpj": client_has.document if client_has else "",
+            "ativo": store.operational
         })
 
     # 2. Dados dos drivers

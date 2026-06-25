@@ -13,6 +13,6 @@ data class OrderEntity(
     val distanceMeters: Int,
     val fareCents: Int,
     val slaSeconds: Int,
-    val status: String, // OFFERED, ACCEPTED, IN_PROGRESS, COMPLETED
+    val status: String, // OFFERED, ACCEPTED, STARTED, ARRIVED, COMPLETED
     val syncStatus: String // SYNCED, PENDING_SYNC
 )

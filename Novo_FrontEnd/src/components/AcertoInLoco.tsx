@@ -2,18 +2,23 @@ import React, { useState } from 'react';
 import { Calculator, CheckCircle2, AlertCircle, Banknote, CreditCard, Receipt, ArrowRightLeft } from 'lucide-react';
 import { formatCurrency, cn } from '../lib/utils';
 
-const MOCK_DRIVERS = [
-  { id: '1', name: 'Pedro Paulo Martins', totalTaxas: 125.50, dinheiroRecebido: 45.00, entregas: 14 },
-  { id: '2', name: 'João Victor Silva', totalTaxas: 85.00, dinheiroRecebido: 0, entregas: 8 },
-  { id: '3', name: 'Marcos Almeida', totalTaxas: 140.00, dinheiroRecebido: 200.00, entregas: 18 },
-  { id: '4', name: 'Rafael Souza', totalTaxas: 45.00, dinheiroRecebido: 100.00, entregas: 5 },
-];
+import { useApiQuery } from '../lib/useApiQuery';
 
 export default function AcertoInLoco() {
-  const [selectedDriver, setSelectedDriver] = useState(MOCK_DRIVERS[0].id);
+  const { data: driversData, isLoading } = useApiQuery<any>('/api/operator/drivers');
+  const driversList = driversData?.items || driversData || [];
+  
+  const [selectedDriver, setSelectedDriver] = useState<string | null>(null);
   const [acertados, setAcertados] = useState<Set<string>>(new Set());
 
-  const driver = MOCK_DRIVERS.find(d => d.id === selectedDriver);
+  // Auto-select first driver if none selected
+  React.useEffect(() => {
+    if (driversList.length > 0 && !selectedDriver) {
+      setSelectedDriver(driversList[0].id);
+    }
+  }, [driversList, selectedDriver]);
+
+  const driver = driversList.find((d: any) => d.id === selectedDriver);
 
   const marcarAcerto = () => {
     if (driver) {
@@ -25,7 +30,9 @@ export default function AcertoInLoco() {
 
   if (!driver) return null;
 
-  const saldoFinal = driver.totalTaxas - driver.dinheiroRecebido;
+  const totalTaxas = driver.totalTaxas || 0;
+  const dinheiroRecebido = driver.dinheiroRecebido || 0;
+  const saldoFinal = totalTaxas - dinheiroRecebido;
   const isLojaPaga = saldoFinal >= 0;
   const isAcertado = acertados.has(driver.id);
 
@@ -37,28 +44,35 @@ export default function AcertoInLoco() {
           <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider">Motoboys em Turno</h3>
         </div>
         <div className="divide-y divide-zinc-100 flex-1 overflow-y-auto max-h-[500px]">
-          {MOCK_DRIVERS.map(d => {
-            const isSelected = selectedDriver === d.id;
-            const hasAcertado = acertados.has(d.id);
-            return (
-              <button
-                key={d.id}
-                onClick={() => setSelectedDriver(d.id)}
-                className={cn(
-                  "w-full text-left p-4 transition-all hover:bg-zinc-50 flex items-center justify-between",
-                  isSelected ? "bg-zinc-50 border-l-4 border-zinc-900" : "border-l-4 border-transparent"
-                )}
-              >
-                <div>
-                  <div className="text-sm font-bold text-zinc-900">{d.name}</div>
-                  <div className="text-xs text-zinc-500 mt-0.5">{d.entregas} entregas hoje</div>
-                </div>
-                {hasAcertado && (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                )}
-              </button>
-            );
-          })}
+          {isLoading ? (
+            <div className="p-4 text-center text-sm text-zinc-500">Carregando motoboys...</div>
+          ) : driversList.length === 0 ? (
+            <div className="p-4 text-center text-sm text-zinc-500">Nenhum motoboy ativo.</div>
+          ) : (
+            driversList.map((d: any) => {
+              const isSelected = selectedDriver === d.id;
+              const hasAcertado = acertados.has(d.id);
+              const entregas = d.entregas || 0;
+              return (
+                <button
+                  key={d.id}
+                  onClick={() => setSelectedDriver(d.id)}
+                  className={cn(
+                    "w-full text-left p-4 transition-all hover:bg-zinc-50 flex items-center justify-between",
+                    isSelected ? "bg-zinc-50 border-l-4 border-zinc-900" : "border-l-4 border-transparent"
+                  )}
+                >
+                  <div>
+                    <div className="text-sm font-bold text-zinc-900">{d.name}</div>
+                    <div className="text-xs text-zinc-500 mt-0.5">{entregas} entregas hoje</div>
+                  </div>
+                  {hasAcertado && (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                  )}
+                </button>
+              );
+            })
+          )}
         </div>
       </div>
 
@@ -80,7 +94,7 @@ export default function AcertoInLoco() {
               <Receipt className="w-5 h-5" />
               <span className="text-xs font-bold uppercase tracking-wider">Taxas Devidas ao Motoboy</span>
             </div>
-            <div className="text-3xl font-black text-zinc-900">{formatCurrency(driver.totalTaxas)}</div>
+            <div className="text-3xl font-black text-zinc-900">{formatCurrency(totalTaxas)}</div>
             <div className="text-xs text-zinc-500 mt-2">Ganhos de entregas no dia</div>
           </div>
 
@@ -89,7 +103,7 @@ export default function AcertoInLoco() {
               <Banknote className="w-5 h-5" />
               <span className="text-xs font-bold uppercase tracking-wider">Dinheiro em Mãos</span>
             </div>
-            <div className="text-3xl font-black text-rose-600">{formatCurrency(driver.dinheiroRecebido)}</div>
+            <div className="text-3xl font-black text-rose-600">{formatCurrency(dinheiroRecebido)}</div>
             <div className="text-xs text-rose-500 mt-2">Valor recebido em espécie dos clientes</div>
           </div>
         </div>

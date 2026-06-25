@@ -2,12 +2,13 @@ from celery import shared_task
 from django.utils import timezone
 from datetime import timedelta
 from django.db.models import F, Sum, Count
-from finance.models import Wallet, WalletTransaction, DailyCreditCalculation, OperatorInternalWallet, FaixaHoras
+from finance.models import Wallet, WalletTransaction, DailyCreditCalculation, OperatorInternalWallet, FaixaHoras, Contract
 from logistics.models import Order, ScheduleEntry
 from accounts.models import Operator
 from django.db import transaction
 import redis
 from config.redis_client import get_redis
+import os
 
 r = get_redis()
 
@@ -93,12 +94,11 @@ def compute_daily_credit(target_cutoff_hour=None):
                         # Padrão seguro contra race condition:
                         # 1. get_or_create SEM lock (cria se não existir, IntegrityError é handled pelo Django)
                         # 2. Depois, select_for_update para travar a row existente/criada
-                        OperatorInternalWallet.objects.get_or_create(operator=operator)
-                        Wallet.objects.get_or_create(driver=driver, operator=operator)
+                        operator_wallet, _ = OperatorInternalWallet.objects.get_or_create(operator=operator)
+                        operator_wallet = OperatorInternalWallet.objects.select_for_update().get(pk=operator_wallet.pk)
                         
-                        # Agora travar com FOR UPDATE (a row já existe com certeza)
-                        operator_wallet = OperatorInternalWallet.objects.select_for_update().get(operator=operator)
-                        wallet = Wallet.objects.select_for_update().get(driver=driver, operator=operator)
+                        wallet, _ = Wallet.objects.get_or_create(driver=driver, operator=operator)
+                        wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
                     
                         # Idempotência Robusta: Ignora FAILED, permite reprocessamento
                         if DailyCreditCalculation.objects.filter(

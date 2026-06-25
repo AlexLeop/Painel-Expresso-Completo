@@ -111,6 +111,26 @@ class OrderRepositoryImpl(
         }
     }
 
+    override suspend fun arriveOrder(orderId: String): Result<Unit> {
+        return try {
+            val response = apiService.arriveOrder(orderId)
+            if (response.isSuccessful) {
+                val order = orderDao.getOrderById(orderId)
+                if (order != null) {
+                    orderDao.update(order.copy(status = response.body()?.status ?: "ARRIVED", syncStatus = "SYNCED"))
+                }
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("Falha ao registrar chegada: ${response.code()} ${response.message()}"))
+            }
+        } catch (e: java.io.IOException) {
+            Result.failure(Exception("Sem conexão com a internet. Tente registrar chegada novamente."))
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Result.failure(e)
+        }
+    }
+
     override suspend fun rejectOrder(orderId: String, reasonCode: String, reasonText: String?): Result<Unit> {
         return try {
             val response = apiService.rejectOrder(orderId, RejectReason(reasonCode = reasonCode, reasonText = reasonText))

@@ -35,15 +35,17 @@ class SettlementEngine:
                 return
                 
             # 2. Resgatar as carteiras (Locks para concorrência)
-            operator_wallet, _ = OperatorInternalWallet.objects.select_for_update().get_or_create(operator=order.operator)
+            operator_wallet, _ = OperatorInternalWallet.objects.get_or_create(operator=order.operator)
+            operator_wallet = OperatorInternalWallet.objects.select_for_update().get(pk=operator_wallet.pk)
             
             # Valor cobrado da loja (CRIT-001: usar fareValueCents em vez de deliveryFeeCents)
             store_cost = order.fareValueCents if getattr(order, 'fareValueCents', None) else contract.rideFeePerDeliveryCents
             
             if order.driver:
-                driver_wallet, _ = Wallet.objects.select_for_update().get_or_create(
+                driver_wallet, _ = Wallet.objects.get_or_create(
                     driver=order.driver, operator=order.operator
                 )
+                driver_wallet = Wallet.objects.select_for_update().get(pk=driver_wallet.pk)
                 
                 # O motorista recebe a taxa da corrida configurada no contrato
                 driver_fee = contract.rideFeePerDeliveryCents

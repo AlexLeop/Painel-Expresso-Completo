@@ -132,8 +132,24 @@ def _order_claim_key(order_id) -> str:
     return f"order_claim:{order_id}"
 
 
-def _mock_storage_url(namespace: str, entity_id: UUID, filename: str) -> str:
-    return f"https://mocked-bucket.s3.amazonaws.com/{namespace}/{entity_id}/{filename}"
+def upload_to_storage(namespace: str, entity_id: UUID, file) -> str:
+    from config.supabase_client import supabase
+    import time
+    
+    filename = file.name if getattr(file, 'name', None) else f"upload_{int(time.time())}"
+    path = f"{namespace}/{entity_id}/{filename}"
+    
+    if supabase is None:
+        return f"https://mocked-bucket.s3.amazonaws.com/{path}"
+        
+    try:
+        file_bytes = file.read()
+        supabase.storage.from_(namespace).upload(path, file_bytes)
+        return supabase.storage.from_(namespace).get_public_url(path)
+    except Exception as e:
+        import logging
+        logging.error(f"Failed to upload to supabase: {e}")
+        return f"https://mocked-bucket.s3.amazonaws.com/{path}"
 
 
 def _point_from_lat_lng(lat: Optional[float], lng: Optional[float]):
@@ -988,6 +1004,51 @@ def start_order(request, order_id: UUID):
 
 
 
+@router.post("/orders/{order_id}/arrive", response=OrderSchema)
+@idempotent(timeout=86400, schema=OrderSchema)
+def arrive_order(request, order_id: UUID):
+    driver_uid = request.auth.get('sub')
+    
+    try:
+        driver = Driver.objects.get(supabase_uid=driver_uid)
+    except Driver.DoesNotExist:
+        from django.http import JsonResponse
+        return JsonResponse({"error": "Driver não encontrado."}, status=404)
+
+    with tenant_context(driver.operator_id):
+        order = Order.objects.filter(pk=order_id).first()
+        if not order:
+            from django.http import JsonResponse
+            return JsonResponse({"error": "Ordem inexistente."}, status=404)
+
+        if order.driver_id != driver.id:
+            from django.http import JsonResponse
+            return JsonResponse({"error": "Ordem não pertence a este motorista."}, status=403)
+
+        if order.status == Order.OrderStatus.ARRIVED:
+            pass # Idempotent
+        elif order.status != Order.OrderStatus.STARTED:
+            from django.http import JsonResponse
+            return JsonResponse({"error": f"Ordem não pode ser sinalizada como chegou a partir do status {order.status}."}, status=400)
+        else:
+            order.status = Order.OrderStatus.ARRIVED
+            order.arrivedAt = django_tz.now()
+            order.save(update_fields=['status', 'arrivedAt'])
+            
+            # Dispara webhook via Outbox
+            from integration.models import IntegrationOutbox
+            IntegrationOutbox.objects.create(
+                operator_id=order.operator_id,
+                aggregateType='ORDER',
+                aggregateId=order.id,
+                eventType='ORDER_ARRIVED',
+                payload={'id': str(order.id), 'status': 'ARRIVED'}
+            )
+            
+        return order
+
+
+
 @router.post("/stops/complete-batch", response=Dict)
 @idempotent(timeout=86400)
 def complete_stops_batch(request, items: List[StopBatchCompleteItem]):
@@ -1234,7 +1295,7 @@ def upload_document(
         driver.save(update_fields=['onboarding_status'])
         
     # Aqui iria o script Boto3 / Supabase Python para o Bucket `driver-docs`
-    file_url = _mock_storage_url("driver-docs", driver.id, file.name)
+    file_url = upload_to_storage("driver-docs", driver.id, file)
     
     expires_date = date.fromisoformat(expiresAt) if expiresAt else None
     
@@ -1302,7 +1363,7 @@ def upload_pickup_proof(
         stop=stop,
         type=proof_type.upper(),
         stage='PICKUP',
-        fileUrl=_mock_storage_url("proofs", stop.id, file.name),
+        fileUrl=upload_to_storage("proofs", stop.id, file),
         geom=_point_from_lat_lng(lat, lng),
         gpsAccuracyMeters=gps_accuracy_meters,
         deviceIdentifier=request.headers.get("x-device-id"),
@@ -1351,7 +1412,7 @@ def upload_delivery_proof(
         stop=stop,
         type=proof_type.upper(),
         stage='DELIVERY',
-        fileUrl=_mock_storage_url("proofs", stop.id, file.name),
+        fileUrl=upload_to_storage("proofs", stop.id, file),
         geom=_point_from_lat_lng(lat, lng),
         gpsAccuracyMeters=gps_accuracy_meters,
         deviceIdentifier=request.headers.get("x-device-id"),
@@ -1451,7 +1512,7 @@ def attach_incident_evidence(
         operator=driver.operator,
         incident=incident,
         type=attachment_type.upper(),
-        fileUrl=_mock_storage_url("incident-attachments", incident.id, file.name),
+        fileUrl=upload_to_storage("incident-attachments", incident.id, file),
         metadata={
             "lat": lat,
             "lng": lng,
@@ -1735,7 +1796,7 @@ def upload_driver_expense_receipt(
     receipt = DriverExpenseReceipt.objects.create(
         operator=driver.operator,
         expense=expense,
-        fileUrl=_mock_storage_url("expense-receipts", expense.id, file.name),
+        fileUrl=upload_to_storage("expense-receipts", expense.id, file),
         metadata={
             "lat": lat,
             "lng": lng,

@@ -78,7 +78,11 @@ def global_exception_handler(request, exc):
             status=400
         )
     
-    # Para outras exceções não tratadas, retorna 500 com mensagem genérica (evita vazamento de detalhes de segurança)
+    # Para outras exceções não tratadas, loga silenciosamente e retorna 500 genérico
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.error("Unhandled API Exception:", exc_info=exc)
+    
     return api.create_response(
         request,
         {"success": False, "error": "Erro interno do servidor."},

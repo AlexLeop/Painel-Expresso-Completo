@@ -16,11 +16,7 @@ export function RideChatModal({ isOpen, onClose, corrida }: RideChatModalProps) 
 
   useEffect(() => {
     if (isOpen && corrida) {
-      // Mock initial messages
-      setMessages([
-        { id: 1, text: "Olá! Já estou a caminho da coleta.", sender: 'motoboy', time: '14:20' },
-        { id: 2, text: "Perfeito, muito obrigado!", sender: 'admin', time: '14:21', status: 'read' },
-      ]);
+      setMessages([]);
     }
   }, [isOpen, corrida]);
 
@@ -47,18 +43,7 @@ export function RideChatModal({ isOpen, onClose, corrida }: RideChatModalProps) 
     setMessages([...messages, newMessage]);
     setInputText("");
 
-    // Simulate reply after 2 seconds
-    setTimeout(() => {
-      setMessages(prev => [
-        ...prev.map(m => m.id === newMessage.id ? { ...m, status: 'read' } : m),
-        {
-          id: Date.now() + 1,
-          text: "Recebido! Qualquer problema eu aviso por aqui.",
-          sender: 'motoboy',
-          time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-        }
-      ]);
-    }, 2000);
+    // Removed setTimeout mockup for motoboy response
   };
 
   return (

@@ -100,8 +100,8 @@ export function Configuracoes() {
         diaria_holiday: configsRaw.daily_rate_holiday ?? 80.00,
         taxaSupervisao: configsRaw.taxa_supervisao ?? 10.0,
         garantia_empresa: configsRaw.guaranteed_mode_enabled ?? true,
-        retencao_devolucao: true, // Mock or add to db if needed
-        bloquear_fatura: true, // Mock
+        retencao_devolucao: configsRaw.retencao_devolucao ?? true,
+        bloquear_fatura: configsRaw.bloquear_fatura ?? true,
       });
     }
   }, [configsRaw]);
