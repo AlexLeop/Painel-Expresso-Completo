@@ -1,0 +1,12 @@
+{
+    "pythonVersion": "3.10",
+    "pythonPlatform": "Windows",
+    "executionEnvironments": [
+        {
+            "root": "c:\\Users\\lxleo\\Documents\\Expresso Neves\\Painel Expresso Neves e Django DRF",
+            "extraPaths": [
+                "c:\\Users\\lxleo\\Documents\\Expresso Neves\\Painel Expresso Neves e Django DRF\\.venv\\Lib\\site-packages"
+            ]
+        }
+    ]
+}

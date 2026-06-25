@@ -1,0 +1,6 @@
+{
+  "name": "NevesGo",
+  "description": "Aplicativo para entregadores de delivery expresso in-loco com agrupamento de corridas, rotas e pagamentos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

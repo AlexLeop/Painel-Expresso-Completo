@@ -1,0 +1,1 @@
+const e=typeof window<"u"&&["localhost","127.0.0.1"].includes(window.location.hostname)||typeof process<"u"&&!1,n={info:(...o)=>{e&&console.info("[INFO]",...o)},warn:(...o)=>{e&&console.warn("[WARN]",...o)},error:(...o)=>{console.error("[ERROR]",...o)},debug:(...o)=>{e&&console.debug("[DEBUG]",...o)}};export{n as l};
