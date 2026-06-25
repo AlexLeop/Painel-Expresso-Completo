@@ -1,5 +1,6 @@
 import os
 import logging
+from typing import Optional
 from supabase import create_client, Client
 
 logger = logging.getLogger(__name__)
@@ -7,7 +8,7 @@ logger = logging.getLogger(__name__)
 url: str = os.environ.get("SUPABASE_URL", "")
 key: str = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY", "")
 
-supabase: Client = None
+supabase: Optional[Client] = None
 
 if url and key:
     try:
