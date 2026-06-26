@@ -16,6 +16,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.time.Instant
 
 class OrderRepositoryImpl(
+    private val context: android.content.Context,
     private val orderDao: OrderDao,
     private val apiService: DriverApiService
 ) : OrderRepository {
@@ -60,7 +61,7 @@ class OrderRepositoryImpl(
                                     if (e is kotlinx.coroutines.CancellationException) throw e
                                     null
                                 }
-                                order.toEntity(details)
+                                order.toEntity(details, context)
                             }
                         }.let { kotlinx.coroutines.awaitAll(*it.toTypedArray()) }
                     }
@@ -185,20 +186,35 @@ class OrderRepositoryImpl(
         }
     }
 
-    override suspend fun finishOrder(orderId: String, stopId: String, deliveryPin: String?): Result<Unit> {
+    override suspend fun finishOrder(orderId: String, stopId: String, deliveryPin: String?, deliveryProofUri: android.net.Uri?): Result<Unit> {
         return try {
             val nowIso = Instant.now().toString()
             val textPlain = "text/plain".toMediaType()
-            val emptyFile = "dummy".toRequestBody(textPlain)
-            val dummyPart = okhttp3.MultipartBody.Part.createFormData("file", "dummy.txt", emptyFile)
+            val imageJpeg = "image/jpeg".toMediaType()
+            
+            val filePart: okhttp3.MultipartBody.Part? = if (deliveryProofUri != null) {
+                val requestFile = object : okhttp3.RequestBody() {
+                    override fun contentType() = imageJpeg
+                    override fun writeTo(sink: okio.BufferedSink) {
+                        context.contentResolver.openInputStream(deliveryProofUri)?.use { inputStream ->
+                            sink.writeAll(okio.Okio.source(inputStream))
+                        }
+                    }
+                }
+                okhttp3.MultipartBody.Part.createFormData("file", "proof.jpg", requestFile)
+            } else {
+                null
+            }
+
+            val proofTypeStr = if (deliveryPin != null) "PIN" else "PHOTO"
 
             val proofResponse = apiService.sendDeliveryProof(
                 stopId = stopId,
-                proofType = "PIN".toRequestBody(textPlain),
+                proofType = okhttp3.RequestBody.create(textPlain, proofTypeStr),
                 lat = null,
                 lng = null,
-                capturedAt = nowIso.toRequestBody(textPlain),
-                file = dummyPart
+                capturedAt = okhttp3.RequestBody.create(textPlain, nowIso),
+                file = filePart
             )
             if (!proofResponse.isSuccessful) {
                 return Result.failure(Exception("Falha ao enviar prova de entrega: ${proofResponse.code()} ${proofResponse.message()}"))
@@ -239,7 +255,7 @@ class OrderRepositoryImpl(
         }
     }
 
-    override suspend fun reportIncident(orderId: String?, stopId: String?, type: String, description: String): Result<Unit> {
+    override suspend fun reportIncident(orderId: String?, stopId: String?, type: String, description: String, incidentProofUri: android.net.Uri?): Result<Unit> {
         return try {
             val response = apiService.reportIncident(
                 IncidentRequest(
@@ -250,6 +266,20 @@ class OrderRepositoryImpl(
                 )
             )
             if (response.isSuccessful) {
+                val incidentId = response.body()?.id
+                if (incidentId != null && incidentProofUri != null) {
+                    val imageJpeg = "image/jpeg".toMediaType()
+                    val requestFile = object : okhttp3.RequestBody() {
+                        override fun contentType() = imageJpeg
+                        override fun writeTo(sink: okio.BufferedSink) {
+                            context.contentResolver.openInputStream(incidentProofUri)?.use { inputStream ->
+                                sink.writeAll(okio.Okio.source(inputStream))
+                            }
+                        }
+                    }
+                    val filePart = okhttp3.MultipartBody.Part.createFormData("file", "incident.jpg", requestFile)
+                    apiService.uploadIncidentAttachment(incidentId, filePart)
+                }
                 Result.success(Unit)
             } else {
                 Result.failure(Exception("Falha ao reportar incidente: ${response.code()} ${response.message()}"))
@@ -263,10 +293,29 @@ class OrderRepositoryImpl(
     }
 }
 
-private fun DriverOrderSummary.toEntity(details: OrderDetailResponse?): OrderEntity {
+private fun getAddress(context: android.content.Context?, lat: Double, lng: Double): String? {
+    if (context == null) return "Lat $lat, Lng $lng"
+    return try {
+        val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
+        val addresses = geocoder.getFromLocation(lat, lng, 1)
+        if (!addresses.isNullOrEmpty()) {
+            val address = addresses[0]
+            val street = address.thoroughfare ?: ""
+            val number = address.subThoroughfare ?: ""
+            val city = address.locality ?: address.subAdminArea ?: ""
+            listOf(street, number, city).filter { it.isNotBlank() }.joinToString(", ").takeIf { it.isNotBlank() } ?: "Lat $lat, Lng $lng"
+        } else {
+            "Lat $lat, Lng $lng"
+        }
+    } catch (e: Exception) {
+        "Lat $lat, Lng $lng"
+    }
+}
+
+private fun DriverOrderSummary.toEntity(details: OrderDetailResponse?, context: android.content.Context? = null): OrderEntity {
     val originAddress = details?.origin?.location?.let { point ->
         if (point.lat != null && point.lng != null) {
-            "Lat ${point.lat}, Lng ${point.lng}"
+            getAddress(context, point.lat, point.lng)
         } else {
             null
         }
@@ -274,7 +323,7 @@ private fun DriverOrderSummary.toEntity(details: OrderDetailResponse?): OrderEnt
 
     val destinationAddress = details?.destination?.lastStopLocation?.let { point ->
         if (point.lat != null && point.lng != null) {
-            "Lat ${point.lat}, Lng ${point.lng}"
+            getAddress(context, point.lat, point.lng)
         } else {
             null
         }

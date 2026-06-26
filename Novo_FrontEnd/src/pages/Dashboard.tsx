@@ -15,7 +15,7 @@ import {
   Info,
   CalendarDays,
   FileSpreadsheet,
-  ChevronDown
+  ChevronDown,
 } from "lucide-react";
 import {
   AreaChart,
@@ -152,7 +152,10 @@ export function Dashboard() {
     if (range === "today") return { startISO: today, endISO: today };
     if (range === "month") {
       const now = new Date();
-      return { startISO: formatDateISO(new Date(now.getFullYear(), now.getMonth(), 1)), endISO: today };
+      return {
+        startISO: formatDateISO(new Date(now.getFullYear(), now.getMonth(), 1)),
+        endISO: today,
+      };
     }
     return { startISO: addDaysISO(today, -6), endISO: today };
   }, [range]);
@@ -168,21 +171,37 @@ export function Dashboard() {
     ? `/api/machine/rides?empresa_id=${companyId}&limite=20&status_solicitacao=D`
     : null;
 
-  const { data: entriesRaw, isLoading: loadingEntries, isValidating: validatingEntries, error: errorEntries, refresh: refreshEntries } =
-    useApiQuery<any[]>(entriesKey, { refreshInterval: 30_000 });
-  const { data: driversRaw, isLoading: loadingDrivers, refresh: refreshDrivers } =
-    useApiQuery<any[]>(driversKey, { refreshInterval: 60_000 });
-  const { data: ridesRaw, isLoading: loadingRides, isValidating: validatingRides, refresh: refreshRides } =
-    useApiQuery<any>(ridesKey, { refreshInterval: 30_000 });
+  const {
+    data: entriesRaw,
+    isLoading: loadingEntries,
+    isValidating: validatingEntries,
+    error: errorEntries,
+    refresh: refreshEntries,
+  } = useApiQuery<any[]>(entriesKey, { refreshInterval: 30_000 });
+  const {
+    data: driversRaw,
+    isLoading: loadingDrivers,
+    refresh: refreshDrivers,
+  } = useApiQuery<any[]>(driversKey, { refreshInterval: 60_000 });
+  const {
+    data: ridesRaw,
+    isLoading: loadingRides,
+    isValidating: validatingRides,
+    refresh: refreshRides,
+  } = useApiQuery<any>(ridesKey, { refreshInterval: 30_000 });
 
   const isLoading = loadingEntries || loadingDrivers || loadingRides;
   const isRefreshing = (validatingEntries || validatingRides) && !isLoading;
   const error = errorEntries ?? null;
 
   const lastUpdated = useMemo(() => {
-    if (isLoading) return '';
-    return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (isLoading) return "";
+    return new Date().toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, validatingEntries, validatingRides]);
 
   const handleRefresh = () => {
@@ -197,7 +216,8 @@ export function Dashboard() {
 
   const machineRides: any[] = useMemo(() => {
     if (!ridesRaw) return [];
-    if (ridesRaw.response && Array.isArray(ridesRaw.response)) return ridesRaw.response;
+    if (ridesRaw.response && Array.isArray(ridesRaw.response))
+      return ridesRaw.response;
     if (ridesRaw.rides && Array.isArray(ridesRaw.rides)) return ridesRaw.rides;
     if (Array.isArray(ridesRaw)) return ridesRaw;
     return [];
@@ -206,52 +226,71 @@ export function Dashboard() {
   const data = useMemo(() => {
     const dailyMap: Record<string, number> = {};
     entries.forEach((e: any) => {
-      const day = e.date ? e.date.slice(0, 10) : '';
+      const day = e.date ? e.date.slice(0, 10) : "";
       if (day) {
         const val = Number(e.amount) || 0;
-        if (e.type === 'diaria' || e.type === 'extra') {
+        if (e.type === "diaria" || e.type === "extra") {
           dailyMap[day] = (dailyMap[day] || 0) + val;
-        } else if (e.type === 'adiantamento') {
+        } else if (e.type === "adiantamento") {
           dailyMap[day] = (dailyMap[day] || 0) - val;
         }
       }
     });
     const rangeDays = buildISODateRange(startISO, endISO);
-    return rangeDays.map((key) => ({ time: key.slice(5), faturamento: dailyMap[key] || 0 }));
+    return rangeDays.map((key) => ({
+      time: key.slice(5),
+      faturamento: dailyMap[key] || 0,
+    }));
   }, [entries, startISO, endISO]);
 
   const stats = useMemo(() => {
     const faturamento = entries.reduce((acc: number, e: any) => {
-      if (e.type === 'diaria' || e.type === 'extra') return acc + (Number(e.amount) || 0);
-      if (e.type === 'adiantamento') return acc - (Number(e.amount) || 0);
+      if (e.type === "diaria" || e.type === "extra")
+        return acc + (Number(e.amount) || 0);
+      if (e.type === "adiantamento") return acc - (Number(e.amount) || 0);
       return acc;
     }, 0);
     return {
       corridasHoje: machineRides.length,
-      motoboysAtivos: drivers.filter((d: any) => d.ativo !== false && d.status !== 'inativo').length,
+      motoboysAtivos: drivers.filter(
+        (d: any) => d.ativo !== false && d.status !== "inativo",
+      ).length,
       faturamento,
-      garantidas: entries.filter((e: any) => e.type === 'diaria').length,
+      garantidas: entries.filter((e: any) => e.type === "diaria").length,
     };
   }, [entries, drivers, machineRides]);
 
   const recentRides = useMemo(() => {
     if (machineRides.length > 0) {
       return machineRides.slice(0, 8).map((r: any) => ({
-        id: `#${r.id?.toString() || '???'}`,
-        motoboy: r.motoboy?.nome || r.nome_condutor || 'Aguardando condutor...',
-        empresa: r.endereco_partida || r.empresa || 'Entrega Expressa',
-        status: r.status === 1 ? 'Em andamento' : r.status === 2 ? 'Finalizada' : 'Em trânsito',
+        id: `#${r.id?.toString() || "???"}`,
+        motoboy: r.motoboy?.nome || r.nome_condutor || "Aguardando condutor...",
+        empresa: r.endereco_partida || r.empresa || "Entrega Expressa",
+        status:
+          r.status === 1
+            ? "Em andamento"
+            : r.status === 2
+              ? "Finalizada"
+              : "Em trânsito",
         time: r.data_hora_solicitacao
-          ? new Date(r.data_hora_solicitacao).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-          : 'Agora',
+          ? new Date(r.data_hora_solicitacao).toLocaleTimeString("pt-BR", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : "Agora",
       }));
     }
     return entries.slice(0, 5).map((e: any) => ({
-      id: `#${e.id?.toString().slice(-6) || '???'}`,
-      motoboy: e.driverName || 'Sem motorista',
-      empresa: e.description || 'Lançamento',
-      status: e.type === 'diaria' ? 'Diária' : e.type === 'adiantamento' ? 'Adiantamento' : e.type || 'Lançamento',
-      time: e.date || 'recente',
+      id: `#${e.id?.toString().slice(-6) || "???"}`,
+      motoboy: e.driverName || "Sem motorista",
+      empresa: e.description || "Lançamento",
+      status:
+        e.type === "diaria"
+          ? "Diária"
+          : e.type === "adiantamento"
+            ? "Adiantamento"
+            : e.type || "Lançamento",
+      time: e.date || "recente",
     }));
   }, [machineRides, entries]);
 
@@ -272,12 +311,23 @@ export function Dashboard() {
           <SegmentedControl value={range} onChange={setRange} />
           <button
             type="button"
-            onClick={() => setLayoutMode((v) => (v === "v2" ? "classic" : "v2"))}
+            onClick={() =>
+              setLayoutMode((v) => (v === "v2" ? "classic" : "v2"))
+            }
             className="hidden sm:flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-zinc-600 bg-white hover:bg-zinc-50 px-3 py-2 rounded-xl border border-zinc-200/80 shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E55C00]"
             aria-label="Alternar layout do dashboard"
-            title={layoutMode === "v2" ? "Usando Layout novo" : "Usando Layout clássico"}
+            title={
+              layoutMode === "v2"
+                ? "Usando Layout novo"
+                : "Usando Layout clássico"
+            }
           >
-            <span className={cn("inline-flex h-2 w-2 rounded-full", layoutMode === "v2" ? "bg-[#E55C00]" : "bg-zinc-400")} />
+            <span
+              className={cn(
+                "inline-flex h-2 w-2 rounded-full",
+                layoutMode === "v2" ? "bg-[#E55C00]" : "bg-zinc-400",
+              )}
+            />
             {layoutMode === "v2" ? "Layout novo" : "Clássico"}
             <ChevronDown className="h-3.5 w-3.5 text-zinc-400" />
           </button>
@@ -288,7 +338,12 @@ export function Dashboard() {
             title="Sincronizar agora"
             aria-label="Sincronizar agora"
           >
-            <RefreshCw className={cn("w-3.5 h-3.5 text-zinc-500", isRefreshing && "animate-spin")} />
+            <RefreshCw
+              className={cn(
+                "w-3.5 h-3.5 text-zinc-500",
+                isRefreshing && "animate-spin",
+              )}
+            />
             {lastUpdated ? `Atualizado ${lastUpdated}` : "Sincronizando..."}
           </button>
         </div>
@@ -333,7 +388,13 @@ export function Dashboard() {
           icon={<Users className="w-4 h-4 text-[#E55C00]" />}
         />
         <StatCard
-          title={range === "today" ? "Movimento do Dia" : range === "last7" ? "Movimento (7 dias)" : "Movimento do Mês"}
+          title={
+            range === "today"
+              ? "Movimento do Dia"
+              : range === "last7"
+                ? "Movimento (7 dias)"
+                : "Movimento do Mês"
+          }
           value={isLoading ? "..." : formatCurrency(stats.faturamento)}
           help="Saldo calculado por lançamentos: diária + extra - adiantamento."
           change="Financeiro"
@@ -363,14 +424,20 @@ export function Dashboard() {
             aria-label="Ir para Corridas"
           >
             <div className="flex items-center justify-between">
-              <div className="text-[11px] font-extrabold uppercase tracking-widest text-zinc-500">Ação rápida</div>
+              <div className="text-[11px] font-extrabold uppercase tracking-widest text-zinc-500">
+                Ação rápida
+              </div>
               <div className="h-9 w-9 rounded-xl bg-[#0a0a0a] text-white flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
                 <MapPin className="h-4 w-4 text-[#E55C00]" />
               </div>
             </div>
             <div className="mt-5">
-              <div className="text-base font-extrabold text-zinc-900 tracking-tight">Corridas</div>
-              <div className="text-[13px] font-medium text-zinc-500 mt-1">Acompanhar entregas e mapa em tempo real</div>
+              <div className="text-base font-extrabold text-zinc-900 tracking-tight">
+                Corridas
+              </div>
+              <div className="text-[13px] font-medium text-zinc-500 mt-1">
+                Acompanhar entregas e mapa em tempo real
+              </div>
             </div>
           </a>
           <a
@@ -379,14 +446,20 @@ export function Dashboard() {
             aria-label="Ir para Relatórios"
           >
             <div className="flex items-center justify-between">
-              <div className="text-[11px] font-extrabold uppercase tracking-widest text-zinc-500">Ação rápida</div>
+              <div className="text-[11px] font-extrabold uppercase tracking-widest text-zinc-500">
+                Ação rápida
+              </div>
               <div className="h-9 w-9 rounded-xl bg-[#0a0a0a] text-white flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
                 <FileSpreadsheet className="h-4 w-4 text-[#E55C00]" />
               </div>
             </div>
             <div className="mt-5">
-              <div className="text-base font-extrabold text-zinc-900 tracking-tight">Relatórios</div>
-              <div className="text-[13px] font-medium text-zinc-500 mt-1">Fechamento, garantidos e produção por semana</div>
+              <div className="text-base font-extrabold text-zinc-900 tracking-tight">
+                Relatórios
+              </div>
+              <div className="text-[13px] font-medium text-zinc-500 mt-1">
+                Fechamento, garantidos e produção por semana
+              </div>
             </div>
           </a>
           <a
@@ -395,14 +468,20 @@ export function Dashboard() {
             aria-label="Ir para Escala"
           >
             <div className="flex items-center justify-between">
-              <div className="text-[11px] font-extrabold uppercase tracking-widest text-zinc-500">Ação rápida</div>
+              <div className="text-[11px] font-extrabold uppercase tracking-widest text-zinc-500">
+                Ação rápida
+              </div>
               <div className="h-9 w-9 rounded-xl bg-[#0a0a0a] text-white flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
                 <CalendarDays className="h-4 w-4 text-[#E55C00]" />
               </div>
             </div>
             <div className="mt-5">
-              <div className="text-base font-extrabold text-zinc-900 tracking-tight">Escala</div>
-              <div className="text-[13px] font-medium text-zinc-500 mt-1">Definir garantido/diária por dia e turnos</div>
+              <div className="text-base font-extrabold text-zinc-900 tracking-tight">
+                Escala
+              </div>
+              <div className="text-[13px] font-medium text-zinc-500 mt-1">
+                Definir garantido/diária por dia e turnos
+              </div>
             </div>
           </a>
         </motion.div>
@@ -412,108 +491,122 @@ export function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Chart */}
         <div className="lg:col-span-2 space-y-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="bg-white border border-zinc-200/80 rounded-2xl shadow-sm p-6 flex flex-col min-w-0"
-        >
-          <div className="flex items-center justify-between pb-4 border-b border-zinc-100 mb-6">
-            <div>
-              <h3 className="text-sm font-bold text-zinc-800 flex items-center gap-2 uppercase tracking-wide">
-                <Activity className="w-4 h-4 text-[#E55C00]" />
-                Evolução (Período)
-              </h3>
-              <p className="text-xs text-zinc-400 mt-1">
-                Volume por dia no período selecionado
-              </p>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="bg-white border border-zinc-200/80 rounded-2xl shadow-sm p-6 flex flex-col min-w-0"
+          >
+            <div className="flex items-center justify-between pb-4 border-b border-zinc-100 mb-6">
+              <div>
+                <h3 className="text-sm font-bold text-zinc-800 flex items-center gap-2 uppercase tracking-wide">
+                  <Activity className="w-4 h-4 text-[#E55C00]" />
+                  Evolução (Período)
+                </h3>
+                <p className="text-xs text-zinc-400 mt-1">
+                  Volume por dia no período selecionado
+                </p>
+              </div>
+              <div className="text-right">
+                <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block mb-0.5">
+                  Total do Período
+                </span>
+                <span className="text-xl font-black text-zinc-900">
+                  {new Intl.NumberFormat("pt-BR", {
+                    style: "currency",
+                    currency: "BRL",
+                  }).format(
+                    data.reduce((acc, curr) => acc + curr.faturamento, 0),
+                  )}
+                </span>
+              </div>
             </div>
-            <div className="text-right">
-              <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block mb-0.5">
-                Total do Período
-              </span>
-              <span className="text-xl font-black text-zinc-900">
-                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(data.reduce((acc, curr) => acc + curr.faturamento, 0))}
-              </span>
+            <div className="w-full min-w-0">
+              <ResponsiveContainer width="99%" height={280}>
+                <AreaChart
+                  data={data}
+                  margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                >
+                  <defs>
+                    <linearGradient
+                      id="colorCorridas"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop
+                        offset="5%"
+                        stopColor="#E55C00"
+                        stopOpacity={0.18}
+                      />
+                      <stop offset="95%" stopColor="#E55C00" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="#f4f4f5"
+                  />
+                  <XAxis
+                    dataKey="time"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: "#a1a1aa", fontSize: 11, fontWeight: 600 }}
+                    dy={15}
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: "#a1a1aa", fontSize: 11, fontWeight: 600 }}
+                    dx={-10}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      borderRadius: "12px",
+                      border: "1px solid #e4e4e7",
+                      boxShadow:
+                        "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",
+                      fontFamily: "var(--font-sans)",
+                      fontSize: "13px",
+                      padding: "12px 16px",
+                    }}
+                    labelStyle={{
+                      color: "#09090b",
+                      fontWeight: 800,
+                      marginBottom: "6px",
+                    }}
+                    itemStyle={{ color: "#4f46e5", fontWeight: 600 }}
+                    cursor={{
+                      stroke: "#e4e4e7",
+                      strokeWidth: 1,
+                      strokeDasharray: "4 4",
+                    }}
+                    formatter={(value: number) =>
+                      new Intl.NumberFormat("pt-BR", {
+                        style: "currency",
+                        currency: "BRL",
+                      }).format(value)
+                    }
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="faturamento"
+                    stroke="#E55C00"
+                    strokeWidth={3}
+                    fillOpacity={1}
+                    fill="url(#colorCorridas)"
+                    activeDot={{
+                      r: 6,
+                      fill: "#E55C00",
+                      stroke: "#FFE7D6",
+                      strokeWidth: 3,
+                    }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
-          </div>
-          <div className="w-full min-w-0">
-            <ResponsiveContainer width="99%" height={280}>
-              <AreaChart
-                data={data}
-                margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-              >
-                <defs>
-                  <linearGradient
-                    id="colorCorridas"
-                    x1="0"
-                    y1="0"
-                    x2="0"
-                    y2="1"
-                  >
-                    <stop offset="5%" stopColor="#E55C00" stopOpacity={0.18} />
-                    <stop offset="95%" stopColor="#E55C00" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  vertical={false}
-                  stroke="#f4f4f5"
-                />
-                <XAxis
-                  dataKey="time"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: "#a1a1aa", fontSize: 11, fontWeight: 600 }}
-                  dy={15}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: "#a1a1aa", fontSize: 11, fontWeight: 600 }}
-                  dx={-10}
-                />
-                <Tooltip
-                  contentStyle={{
-                    borderRadius: "12px",
-                    border: "1px solid #e4e4e7",
-                    boxShadow:
-                      "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",
-                    fontFamily: "var(--font-sans)",
-                    fontSize: "13px",
-                    padding: "12px 16px",
-                  }}
-                  labelStyle={{
-                    color: "#09090b",
-                    fontWeight: 800,
-                    marginBottom: "6px",
-                  }}
-                  itemStyle={{ color: "#4f46e5", fontWeight: 600 }}
-                  cursor={{
-                    stroke: "#e4e4e7",
-                    strokeWidth: 1,
-                    strokeDasharray: "4 4",
-                  }}
-                  formatter={(value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="faturamento"
-                  stroke="#E55C00"
-                  strokeWidth={3}
-                  fillOpacity={1}
-                  fill="url(#colorCorridas)"
-                  activeDot={{
-                    r: 6,
-                    fill: "#E55C00",
-                    stroke: "#FFE7D6",
-                    strokeWidth: 3,
-                  }}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </motion.div>
+          </motion.div>
         </div>
 
         {/* Live feed */}

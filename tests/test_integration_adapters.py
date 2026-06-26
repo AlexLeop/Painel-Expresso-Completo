@@ -27,7 +27,9 @@ def test_extract_references_from_payload_and_headers():
     headers = {"X-DeliveryDireto-ID": "header-loja"}
 
     assert extract_external_order_id(payload) == "pedido-1"
-    assert extract_merchant_reference("delivery_direto", headers, payload) == "header-loja"
+    assert (
+        extract_merchant_reference("delivery_direto", headers, payload) == "header-loja"
+    )
 
 
 def test_extract_anota_ai_references_from_payload():
@@ -142,5 +144,8 @@ def test_map_ifood_mercado_statuses():
 
 
 def test_map_anota_ai_statuses():
-    assert map_inbound_order_status("ANOTA_AI", {"status": "READY"}) == "READY_FOR_DISPATCH"
+    assert (
+        map_inbound_order_status("ANOTA_AI", {"status": "READY"})
+        == "READY_FOR_DISPATCH"
+    )
     assert map_inbound_order_status("ANOTA_AI", {"status": "DELIVERED"}) == "COMPLETED"

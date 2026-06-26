@@ -14,11 +14,14 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+
 from django.contrib import admin
 from django.urls import path
 from config.api import api
+from config.panel_api import panel_api
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('api/v1/', api.urls), # O core da nossa arquitetura transacional
+    path("admin/", admin.site.urls),
+    path("api/v1/", api.urls),  # O core da nossa arquitetura transacional
+    path("api/", panel_api.urls),  # API de compatibilidade para o React
 ]

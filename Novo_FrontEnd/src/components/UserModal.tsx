@@ -1,11 +1,17 @@
-import { logger } from '@/lib/logger';
+import { logger } from "@/lib/logger";
 import React, { useState, useEffect } from "react";
 import { X, Check, Building2, User, Mail, Phone, Shield } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "../lib/utils";
 import { authFetch } from "../lib/api";
 
-const roles = ["Gestor", "Supervisor", "Coordenador", "Operador", "Visualizador"];
+const roles = [
+  "Gestor",
+  "Supervisor",
+  "Coordenador",
+  "Operador",
+  "Visualizador",
+];
 
 export interface UserType {
   id?: string;
@@ -26,7 +32,14 @@ interface UserModalProps {
 }
 
 export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
-  const [availableCompanies, setAvailableCompanies] = useState<Array<{ id: string; name: string; machineEmpresaId?: string; active: boolean }>>([]);
+  const [availableCompanies, setAvailableCompanies] = useState<
+    Array<{
+      id: string;
+      name: string;
+      machineEmpresaId?: string;
+      active: boolean;
+    }>
+  >([]);
   const [formData, setFormData] = useState<UserType>({
     nome: "",
     email: "",
@@ -39,16 +52,16 @@ export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
 
   useEffect(() => {
     if (isOpen) {
-      authFetch('/api/db/companies')
-        .then(res => res.json())
-        .then(data => {
+      authFetch("/api/db/companies")
+        .then((res) => res.json())
+        .then((data) => {
           if (Array.isArray(data)) {
             setAvailableCompanies(data);
           } else if (data && Array.isArray(data.companies)) {
             setAvailableCompanies(data.companies);
           }
         })
-        .catch(err => logger.error('Erro ao buscar empresas no modal:', err));
+        .catch((err) => logger.error("Erro ao buscar empresas no modal:", err));
     }
   }, [isOpen]);
 
@@ -115,36 +128,47 @@ export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6">
-              <form id="user-form" onSubmit={handleSubmit} className="space-y-6">
-                
+              <form
+                id="user-form"
+                onSubmit={handleSubmit}
+                className="space-y-6"
+              >
                 {/* Basic Info */}
                 <div className="space-y-4">
                   <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider flex items-center gap-2 border-b border-zinc-100 pb-2">
                     <User className="h-4 w-4 text-emerald-500" />
                     Informações Básicas
                   </h3>
-                  
+
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-700 mb-1">Nome Completo</label>
+                    <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                      Nome Completo
+                    </label>
                     <input
                       type="text"
                       required
                       value={formData.nome}
-                      onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, nome: e.target.value })
+                      }
                       className="w-full px-3 py-2 text-sm bg-white border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all placeholder:text-zinc-400"
                       placeholder="Ex: João da Silva"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-700 mb-1">E-mail</label>
+                    <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                      E-mail
+                    </label>
                     <div className="relative">
                       <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
                       <input
                         type="email"
                         required
                         value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, email: e.target.value })
+                        }
                         className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all placeholder:text-zinc-400"
                         placeholder="joao@exemplo.com"
                       />
@@ -152,13 +176,17 @@ export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-700 mb-1">Telefone</label>
+                    <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                      Telefone
+                    </label>
                     <div className="relative">
                       <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
                       <input
                         type="tel"
                         value={formData.telefone}
-                        onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, telefone: e.target.value })
+                        }
                         className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all placeholder:text-zinc-400"
                         placeholder="(11) 99999-9999"
                       />
@@ -167,12 +195,16 @@ export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
 
                   {!user && (
                     <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1">Senha de Acesso</label>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        Senha de Acesso
+                      </label>
                       <input
                         type="password"
                         required
                         value={formData.password || ""}
-                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, password: e.target.value })
+                        }
                         className="w-full px-3 py-2 text-sm bg-white border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all placeholder:text-zinc-400"
                         placeholder="Mínimo 6 caracteres"
                         minLength={6}
@@ -187,26 +219,36 @@ export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
                     <Shield className="h-4 w-4 text-emerald-500" />
                     Acessos e Permissões
                   </h3>
-                  
+
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1">Cargo / Função</label>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        Cargo / Função
+                      </label>
                       <select
                         value={formData.cargo}
-                        onChange={(e) => setFormData({ ...formData, cargo: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, cargo: e.target.value })
+                        }
                         className="w-full px-3 py-2 text-sm bg-white border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                       >
                         {roles.map((role) => (
-                          <option key={role} value={role}>{role}</option>
+                          <option key={role} value={role}>
+                            {role}
+                          </option>
                         ))}
                       </select>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1">Status</label>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        Status
+                      </label>
                       <select
                         value={formData.status}
-                        onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, status: e.target.value })
+                        }
                         className="w-full px-3 py-2 text-sm bg-white border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                       >
                         <option value="Ativo">Ativo</option>
@@ -222,11 +264,16 @@ export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
                     <Building2 className="h-4 w-4 text-emerald-500" />
                     Empresas Vinculadas
                   </h3>
-                  <p className="text-xs text-zinc-500 -mt-2">Selecione uma ou mais empresas para as quais este usuário terá acesso.</p>
-                  
+                  <p className="text-xs text-zinc-500 -mt-2">
+                    Selecione uma ou mais empresas para as quais este usuário
+                    terá acesso.
+                  </p>
+
                   <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
                     {availableCompanies.length === 0 && (
-                      <p className="text-xs text-zinc-400 py-2">Nenhuma empresa encontrada...</p>
+                      <p className="text-xs text-zinc-400 py-2">
+                        Nenhuma empresa encontrada...
+                      </p>
                     )}
                     {availableCompanies.map((company) => {
                       const isSelected = formData.empresas.includes(company.id);
@@ -238,21 +285,28 @@ export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
                             "flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all",
                             isSelected
                               ? "border-emerald-500 bg-emerald-50/50"
-                              : "border-zinc-200 bg-white hover:border-emerald-200 hover:bg-zinc-50"
+                              : "border-zinc-200 bg-white hover:border-emerald-200 hover:bg-zinc-50",
                           )}
                         >
-                          <span className={cn(
-                            "text-sm font-medium",
-                            isSelected ? "text-emerald-900" : "text-zinc-700"
-                          )}>
-                            {company.name} {company.machineEmpresaId ? `(#${company.machineEmpresaId})` : ''}
+                          <span
+                            className={cn(
+                              "text-sm font-medium",
+                              isSelected ? "text-emerald-900" : "text-zinc-700",
+                            )}
+                          >
+                            {company.name}{" "}
+                            {company.machineEmpresaId
+                              ? `(#${company.machineEmpresaId})`
+                              : ""}
                           </span>
-                          <div className={cn(
-                            "w-5 h-5 rounded flex items-center justify-center transition-colors border",
-                            isSelected
-                              ? "bg-emerald-500 border-emerald-500 text-white"
-                              : "bg-white border-zinc-300"
-                          )}>
+                          <div
+                            className={cn(
+                              "w-5 h-5 rounded flex items-center justify-center transition-colors border",
+                              isSelected
+                                ? "bg-emerald-500 border-emerald-500 text-white"
+                                : "bg-white border-zinc-300",
+                            )}
+                          >
                             {isSelected && <Check className="h-3.5 w-3.5" />}
                           </div>
                         </div>
@@ -260,7 +314,6 @@ export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
                     })}
                   </div>
                 </div>
-
               </form>
             </div>
 
@@ -286,4 +339,3 @@ export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
     </AnimatePresence>
   );
 }
-

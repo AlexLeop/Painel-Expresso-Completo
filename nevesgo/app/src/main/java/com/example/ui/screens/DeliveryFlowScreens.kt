@@ -77,9 +77,10 @@ fun DeliveryAcceptedScreen(
                 text = "INICIAR CORRIDA",
                 onClick = {
                     if (!orderId.isNullOrBlank()) {
-                        viewModel.startDelivery(orderId) {
-                            navController.navigate("navigation_screen/$orderId")
-                        }
+                        viewModel.startDelivery(
+                            orderId = orderId,
+                            onSuccess = { navController.navigate("navigation_screen/$orderId") }
+                        )
                     }
                 },
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 24.dp)
@@ -114,7 +115,7 @@ fun DeliveryAcceptedScreen(
                 "Coleta: ${orderDetail?.origin?.storeName ?: "Loja"}",
                 orderDetail?.origin?.location?.let { point ->
                     if (point.lat != null && point.lng != null) {
-                        "Lat ${point.lat}, Lng ${point.lng}"
+                        resolveAddress(point, context, "Lat ${point.lat}, Lng ${point.lng}")
                     } else {
                         "Origem sem coordenadas no payload"
                     }
@@ -126,7 +127,7 @@ fun DeliveryAcceptedScreen(
                 "Entrega: ${orderDetail?.destination?.lastStopId ?: "Destino final"}",
                 orderDetail?.destination?.lastStopLocation?.let { point ->
                     if (point.lat != null && point.lng != null) {
-                        "Lat ${point.lat}, Lng ${point.lng}"
+                        resolveAddress(point, context, "Lat ${point.lat}, Lng ${point.lng}")
                     } else {
                         "Ultima parada sem coordenadas"
                     }
@@ -295,12 +296,40 @@ fun RouteNavigationScreen(
                     }
 
                     if (routeStartPoint != null && routeEndPoint != null) {
-                        val routeLine = Polyline().apply {
-                            outlinePaint.color = android.graphics.Color.BLUE
-                            outlinePaint.strokeWidth = 10f
-                            setPoints(listOf(routeStartPoint, routeEndPoint))
+                        // Desenhando de forma assíncrona para não travar a UI Thread
+                        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                            try {
+                                val roadManager = org.osmdroid.bonuspack.routing.OSRMRoadManager(ctx, "NevesGoApp/1.0")
+                                // OSRM default server is sometimes rate limited, but works for PoC/Go-Live
+                                val waypoints = java.util.ArrayList<org.osmdroid.util.GeoPoint>()
+                                waypoints.add(routeStartPoint)
+                                waypoints.add(routeEndPoint)
+                                
+                                val road = roadManager.getRoad(waypoints)
+                                
+                                if (road.mStatus == org.osmdroid.bonuspack.routing.Road.STATUS_OK) {
+                                    val roadOverlay = org.osmdroid.bonuspack.routing.RoadManager.buildRoadOverlay(road, android.graphics.Color.BLUE, 10f)
+                                    
+                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        mapView.overlays.add(roadOverlay)
+                                        mapView.invalidate()
+                                    }
+                                } else {
+                                    // Fallback: Linha reta se o OSRM falhar
+                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        val routeLine = Polyline().apply {
+                                            outlinePaint.color = android.graphics.Color.RED
+                                            outlinePaint.strokeWidth = 10f
+                                            setPoints(listOf(routeStartPoint, routeEndPoint))
+                                        }
+                                        mapView.overlays.add(routeLine)
+                                        mapView.invalidate()
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
                         }
-                        mapView.overlays.add(routeLine)
                     }
 
                     mapView.invalidate()
@@ -476,13 +505,13 @@ fun ConfirmDeliveryScreen(
                 Text(
                     text = selectedStop?.location?.let { point ->
                         if (point.lat != null && point.lng != null) {
-                            "Lat ${point.lat}\nLng ${point.lng}"
+                            resolveAddress(point, LocalContext.current, "Lat ${point.lat}\nLng ${point.lng}")
                         } else {
                             "Destino sem coordenadas"
                         }
                     } ?: orderDetail?.destination?.lastStopLocation?.let { point ->
                         if (point.lat != null && point.lng != null) {
-                            "Lat ${point.lat}\nLng ${point.lng}"
+                            resolveAddress(point, LocalContext.current, "Lat ${point.lat}\nLng ${point.lng}")
                         } else {
                             "Destino sem coordenadas"
                         }

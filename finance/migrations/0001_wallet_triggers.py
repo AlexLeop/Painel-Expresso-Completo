@@ -60,13 +60,10 @@ def reverse_sql_when_postgres(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
-    dependencies = [
-    ]
+    dependencies = []
 
     operations = [
         migrations.RunPython(
-            code=run_sql_when_postgres,
-            reverse_code=reverse_sql_when_postgres
+            code=run_sql_when_postgres, reverse_code=reverse_sql_when_postgres
         )
     ]

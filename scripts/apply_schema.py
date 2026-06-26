@@ -9,7 +9,8 @@ load_dotenv()
 # Migration and Schema operations should ALWAYS use the session pooler
 # which the user provided as DIRECT_URL (port 5432).
 # The default DATABASE_URL points to the transaction pooler (port 6543) which breaks DDL.
-direct_url = os.environ.get('DIRECT_URL')
+direct_url = os.environ.get("DIRECT_URL")
+
 
 def apply_schema(conn):
     project_root = Path(__file__).resolve().parent.parent
@@ -34,21 +35,24 @@ def apply_schema(conn):
     print("Todas as migrations SQL foram aplicadas com sucesso!")
     return True
 
+
 if __name__ == "__main__":
     if not direct_url:
         print("ERRO: DIRECT_URL não definido no .env!")
         sys.exit(1)
-        
-    print(f"=== Conectando ao Banco via DIRECT_URL (Session Pooler) ===")
+
+    print("=== Conectando ao Banco via DIRECT_URL (Session Pooler) ===")
     try:
         conn = psycopg.connect(direct_url, autocommit=True)
         row = conn.execute("SELECT version()").fetchone()
         if row:
             print("Conectado! PostgreSQL:", row[0][:60])
-        
+
         apply_schema(conn)
-        
-        print("\nSchema aplicado com sucesso! Agora você pode rodar as migrations do Django.")
-        
+
+        print(
+            "\nSchema aplicado com sucesso! Agora você pode rodar as migrations do Django."
+        )
+
     except Exception as e:
         print(f"ERRO: {e}")

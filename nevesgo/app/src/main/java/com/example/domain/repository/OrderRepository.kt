@@ -19,6 +19,6 @@ interface OrderRepository {
     suspend fun rejectOrder(orderId: String, reasonCode: String, reasonText: String? = null): Result<Unit>
     suspend fun releaseOrder(orderId: String, reason: String): Result<Unit>
     suspend fun getOrderDetails(orderId: String): Result<OrderDetailResponse>
-    suspend fun finishOrder(orderId: String, stopId: String, deliveryPin: String? = null): Result<Unit>
-    suspend fun reportIncident(orderId: String?, stopId: String?, type: String, description: String): Result<Unit>
+    suspend fun finishOrder(orderId: String, stopId: String, deliveryPin: String? = null, deliveryProofUri: android.net.Uri? = null): Result<Unit>
+    suspend fun reportIncident(orderId: String?, stopId: String?, type: String, description: String, incidentProofUri: android.net.Uri? = null): Result<Unit>
 }

@@ -1,5 +1,5 @@
-import axios from 'axios';
-import * as dotenv from 'dotenv';
+import axios from "axios";
+import * as dotenv from "dotenv";
 dotenv.config();
 
 const apiUrl = process.env.EVOLUTION_API_URL;
@@ -10,7 +10,7 @@ const instanceToken = process.env.EVOLUTION_INSTANCE_TOKEN;
 export const evolutionApi = axios.create({
   baseURL: apiUrl,
   headers: {
-    'apikey': apiKey,
-    'Content-Type': 'application/json',
-  }
+    apikey: apiKey,
+    "Content-Type": "application/json",
+  },
 });

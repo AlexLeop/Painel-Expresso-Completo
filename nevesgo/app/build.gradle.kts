@@ -4,6 +4,7 @@ plugins {
   alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.roborazzi)
   alias(libs.plugins.secrets)
+  alias(libs.plugins.google.services)
 }
 
 val configuredApiBaseUrl = providers.gradleProperty("NEVESGO_API_BASE_URL")
@@ -111,6 +112,8 @@ dependencies {
   implementation(libs.retrofit)
   implementation("org.osmdroid:osmdroid-android:6.1.18")
   implementation("com.github.MKergall:osmbonuspack:6.9.0")
+  implementation("androidx.security:security-crypto:1.1.0-alpha06")
+  implementation(libs.firebase.messaging.ktx)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)

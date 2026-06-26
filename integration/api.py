@@ -13,7 +13,10 @@ from .adapters import (
 
 router = Router()
 
-@router.post("/webhooks/{source}", auth=None, response={202: dict, 401: dict, 404: dict})
+
+@router.post(
+    "/webhooks/{source}", auth=None, response={202: dict, 401: dict, 404: dict}
+)
 def receive_webhook(request: HttpRequest, source: str, payload: Dict[Any, Any]):
     """
     Gateway de Ingestão Externa (Multi-PDVs).
@@ -43,7 +46,9 @@ def receive_webhook(request: HttpRequest, source: str, payload: Dict[Any, Any]):
         }
 
     integration_secret = integration.get_client_secret() or integration.get_api_key()
-    if not verify_inbound_signature(provider, raw_body, request_headers, integration_secret, request_query):
+    if not verify_inbound_signature(
+        provider, raw_body, request_headers, integration_secret, request_query
+    ):
         return 401, {"error": "Assinatura do webhook inválida."}
 
     audit = IntegrationEventAudit.objects.create(
@@ -51,8 +56,10 @@ def receive_webhook(request: HttpRequest, source: str, payload: Dict[Any, Any]):
         store=integration.store,
         provider=provider,
         direction="INBOUND",
-        eventType=f'{provider}_WEBHOOK_RECEIVED',
-        externalEventId=payload.get("id") or payload.get("eventId") or payload.get("event_id"),
+        eventType=f"{provider}_WEBHOOK_RECEIVED",
+        externalEventId=payload.get("id")
+        or payload.get("eventId")
+        or payload.get("event_id"),
         externalOrderId=external_order_id,
         merchantReference=merchant_reference,
         deliveryStatus="RECEIVED",
@@ -62,9 +69,9 @@ def receive_webhook(request: HttpRequest, source: str, payload: Dict[Any, Any]):
 
     IntegrationOutbox.objects.create(
         operator=integration.operator,
-        aggregateType='WEBHOOK_IN',
+        aggregateType="WEBHOOK_IN",
         aggregateId=integration.store_id,
-        eventType=f'{provider}_WEBHOOK_RECEIVED',
+        eventType=f"{provider}_WEBHOOK_RECEIVED",
         payload=build_outbound_event_payload(
             provider,
             f"{provider}_WEBHOOK_RECEIVED",
@@ -74,15 +81,16 @@ def receive_webhook(request: HttpRequest, source: str, payload: Dict[Any, Any]):
                 "occurred_at": payload.get("createdAt"),
                 "body": payload,
             },
-        ) | {
+        )
+        | {
             "audit_id": str(audit.id),
             "store_id": str(integration.store_id),
             "raw_payload": payload,
             "headers": request_headers,
         },
-        status=IntegrationOutbox.OutboxStatus.PENDING
+        status=IntegrationOutbox.OutboxStatus.PENDING,
     )
-    
+
     return 202, {
         "status": "accepted",
         "provider": provider,

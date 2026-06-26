@@ -1,5 +1,3 @@
-import os
-from datetime import date
 from typing import Dict, List, Optional
 from uuid import UUID
 
@@ -17,9 +15,7 @@ from .models import (
     DriverCommunicationThread,
     Order,
     OrderAssignmentAudit,
-    Stop,
     Store,
-    StoreDriver,
 )
 from .schemas import (
     ClientDispatchOrderPayload,
@@ -28,7 +24,11 @@ from .schemas import (
     OrderReassignmentPayload,
     OrderSchema,
 )
-from .api_driver import _serialize_point, broadcast_disappearing_card, clear_order_runtime_state
+from .api_driver import (
+    _serialize_point,
+    broadcast_disappearing_card,
+    clear_order_runtime_state,
+)
 
 router = Router(tags=["Client"])
 
@@ -41,11 +41,15 @@ def _client_stores(client_user):
 
 
 def _get_client_order(client_user, order_id: UUID) -> Optional[Order]:
-    return Order.objects.filter(
-        pk=order_id,
-        operator=client_user.operator,
-        store__client=client_user.client,
-    ).select_related("store", "driver").first()
+    return (
+        Order.objects.filter(
+            pk=order_id,
+            operator=client_user.operator,
+            store__client=client_user.client,
+        )
+        .select_related("store", "driver")
+        .first()
+    )
 
 
 def _clear_order_runtime_state(order: Order, previous_driver_id: Optional[UUID]):
@@ -53,9 +57,11 @@ def _clear_order_runtime_state(order: Order, previous_driver_id: Optional[UUID])
 
 
 def _serialize_thread(thread: DriverCommunicationThread) -> Dict:
-    latest_message = DriverCommunicationMessage.objects.filter(
-        thread=thread
-    ).order_by("-createdAt").first()
+    latest_message = (
+        DriverCommunicationMessage.objects.filter(thread=thread)
+        .order_by("-createdAt")
+        .first()
+    )
     return {
         "thread_id": str(thread.id),
         "order_id": str(thread.order_id) if thread.order_id else None,
@@ -71,8 +77,12 @@ def _serialize_thread(thread: DriverCommunicationThread) -> Dict:
             "sender_type": latest_message.senderType,
             "sender_name": latest_message.senderName,
             "message": latest_message.message,
-            "created_at": latest_message.createdAt.isoformat() if latest_message.createdAt else None,
-        } if latest_message else None,
+            "created_at": latest_message.createdAt.isoformat()
+            if latest_message.createdAt
+            else None,
+        }
+        if latest_message
+        else None,
     }
 
 
@@ -94,11 +104,15 @@ def get_client_dashboard(request):
             Order.OrderStatus.ARRIVED,
         ]
     )
-    live_drivers = Driver.objects.filter(
-        operator=client_user.operator,
-        order__store__in=stores,
-        online=True,
-    ).distinct().count()
+    live_drivers = (
+        Driver.objects.filter(
+            operator=client_user.operator,
+            order__store__in=stores,
+            online=True,
+        )
+        .distinct()
+        .count()
+    )
 
     return {
         "client_id": str(client_user.client_id),
@@ -110,7 +124,9 @@ def get_client_dashboard(request):
 
 
 @router.get("/orders", response=List[OrderSchema])
-def list_client_orders(request, status: Optional[str] = None, store_id: Optional[UUID] = None):
+def list_client_orders(
+    request, status: Optional[str] = None, store_id: Optional[UUID] = None
+):
     client_user = client_portal_required(request)
     stores = _client_stores(client_user)
     orders = Order.objects.filter(
@@ -130,6 +146,7 @@ def dispatch_client_order(request, payload: ClientDispatchOrderPayload):
     store = _client_stores(client_user).filter(pk=payload.store_id).first()
     if not store:
         from ninja.errors import HttpError
+
         raise HttpError(404, "Loja não encontrada para este cliente.")
 
     driver = None
@@ -140,6 +157,7 @@ def dispatch_client_order(request, payload: ClientDispatchOrderPayload):
         ).first()
         if not driver:
             from ninja.errors import HttpError
+
             raise HttpError(404, "Motorista não encontrado para este operador.")
 
     resolved_business_date = resolve_store_business_date(
@@ -162,12 +180,17 @@ def dispatch_client_order(request, payload: ClientDispatchOrderPayload):
 @router.get("/drivers/live", response=List[dict])
 def list_live_drivers(request):
     client_user = client_portal_required(request)
-    drivers = Driver.objects.filter(
-        operator=client_user.operator,
-    ).filter(
-        Q(storedriver__store__client=client_user.client) |
-        Q(order__store__client=client_user.client)
-    ).distinct().order_by("-online", "name")
+    drivers = (
+        Driver.objects.filter(
+            operator=client_user.operator,
+        )
+        .filter(
+            Q(storedriver__store__client=client_user.client)
+            | Q(order__store__client=client_user.client)
+        )
+        .distinct()
+        .order_by("-online", "name")
+    )
 
     return [
         {
@@ -176,7 +199,9 @@ def list_live_drivers(request):
             "online": driver.online,
             "active": driver.active,
             "status": getattr(driver, "operational_status", "OFFLINE"),
-            "last_ping_at": driver.lastPingAt.isoformat() if driver.lastPingAt else None,
+            "last_ping_at": driver.lastPingAt.isoformat()
+            if driver.lastPingAt
+            else None,
             "location": _serialize_point(driver.geom),
         }
         for driver in drivers
@@ -226,7 +251,9 @@ def reassign_client_order(request, order_id: UUID, payload: OrderReassignmentPay
             payload={
                 "order_id": str(order.id),
                 "store_id": str(order.store_id),
-                "previous_driver_id": str(previous_driver.id) if previous_driver else None,
+                "previous_driver_id": str(previous_driver.id)
+                if previous_driver
+                else None,
                 "new_driver_id": str(new_driver.id) if new_driver else None,
                 "reason": payload.reason,
                 "changed_by_client_id": str(client_user.id),
@@ -247,28 +274,42 @@ def reassign_client_order(request, order_id: UUID, payload: OrderReassignmentPay
 @router.get("/communications/threads", response=List[dict])
 def list_client_threads(request):
     client_user = client_portal_required(request)
-    threads = DriverCommunicationThread.objects.filter(
-        operator=client_user.operator,
-    ).filter(
-        Q(store__client=client_user.client) | Q(order__store__client=client_user.client)
-    ).select_related("order", "store", "driver").order_by("-updatedAt")[:200]
+    threads = (
+        DriverCommunicationThread.objects.filter(
+            operator=client_user.operator,
+        )
+        .filter(
+            Q(store__client=client_user.client)
+            | Q(order__store__client=client_user.client)
+        )
+        .select_related("order", "store", "driver")
+        .order_by("-updatedAt")[:200]
+    )
     return [_serialize_thread(thread) for thread in threads]
 
 
 @router.get("/communications/threads/{thread_id}/messages", response=List[dict])
 def list_client_thread_messages(request, thread_id: UUID):
     client_user = client_portal_required(request)
-    thread = DriverCommunicationThread.objects.filter(
-        pk=thread_id,
-        operator=client_user.operator,
-    ).filter(
-        Q(store__client=client_user.client) | Q(order__store__client=client_user.client)
-    ).first()
+    thread = (
+        DriverCommunicationThread.objects.filter(
+            pk=thread_id,
+            operator=client_user.operator,
+        )
+        .filter(
+            Q(store__client=client_user.client)
+            | Q(order__store__client=client_user.client)
+        )
+        .first()
+    )
     if not thread:
         from ninja.errors import HttpError
+
         raise HttpError(404, "Thread não encontrada para este cliente.")
 
-    messages = DriverCommunicationMessage.objects.filter(thread=thread).order_by("createdAt")
+    messages = DriverCommunicationMessage.objects.filter(thread=thread).order_by(
+        "createdAt"
+    )
     return [
         {
             "message_id": str(message.id),
@@ -316,15 +357,24 @@ def create_client_thread(request, payload: CommunicationThreadCreatePayload):
     }
 
 
-@router.post("/communications/threads/{thread_id}/messages", response={201: dict, 404: dict})
-def send_client_thread_message(request, thread_id: UUID, payload: CommunicationMessagePayload):
+@router.post(
+    "/communications/threads/{thread_id}/messages", response={201: dict, 404: dict}
+)
+def send_client_thread_message(
+    request, thread_id: UUID, payload: CommunicationMessagePayload
+):
     client_user = client_portal_required(request)
-    thread = DriverCommunicationThread.objects.filter(
-        pk=thread_id,
-        operator=client_user.operator,
-    ).filter(
-        Q(store__client=client_user.client) | Q(order__store__client=client_user.client)
-    ).first()
+    thread = (
+        DriverCommunicationThread.objects.filter(
+            pk=thread_id,
+            operator=client_user.operator,
+        )
+        .filter(
+            Q(store__client=client_user.client)
+            | Q(order__store__client=client_user.client)
+        )
+        .first()
+    )
     if not thread:
         return 404, {"error": "Thread não encontrada para este cliente."}
 

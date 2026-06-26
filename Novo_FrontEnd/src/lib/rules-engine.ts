@@ -2,15 +2,15 @@ export interface DailySummary {
   motoboyId: string;
   date: string;
   isWeekend: boolean;
-  
+
   // Inputs operacionais
   totalRides: number;
   ridesValue: number; // Produção real (fare_value das corridas 'F')
-  
+
   // Parâmetros do motoboy/empresa
   dailyRate: number; // Diária configurada
   rideFee: number; // Taxa por entrega (ex: R$ 1,00)
-  
+
   // Lançamentos manuais
   extras: number;
   advances: number; // Adiantamentos
@@ -34,14 +34,16 @@ export interface DailyCalculationResult {
 }
 
 export function calculateDay(summary: DailySummary): DailyCalculationResult {
-  const { totalRides, ridesValue, dailyRate, rideFee, extras, advances } = summary;
+  const { totalRides, ridesValue, dailyRate, rideFee, extras, advances } =
+    summary;
 
   const ridesFeeTotal = totalRides * rideFee;
   const production = ridesValue;
 
   // --- Modo Produção Padrão ---
   // Total = Diária + Produção + Taxa Corridas + Extras - Adiantamentos
-  const productionFinalValue = dailyRate + production + ridesFeeTotal + extras - advances;
+  const productionFinalValue =
+    dailyRate + production + ridesFeeTotal + extras - advances;
 
   // --- Modo Garantida Mínima ---
   // Total = max(Produção, Diária) + Taxa Corridas + Extras - Adiantamentos
@@ -55,14 +57,14 @@ export function calculateDay(summary: DailySummary): DailyCalculationResult {
       ridesFeeTotal,
       extras,
       advances,
-      finalValue: productionFinalValue
+      finalValue: productionFinalValue,
     },
     guaranteeMode: {
       guarantee,
       ridesFeeTotal,
       advances,
-      finalValue: guaranteeFinalValue
-    }
+      finalValue: guaranteeFinalValue,
+    },
   };
 }
 
@@ -74,11 +76,11 @@ export interface WeeklyCompanySummary {
 
 export function calculateCompanyFloor(summary: WeeklyCompanySummary): number {
   const { totalRidesFee, minimumRidesFeeFloor } = summary;
-  
+
   // Complemento de piso
   if (totalRidesFee < minimumRidesFeeFloor) {
     return minimumRidesFeeFloor - totalRidesFee;
   }
-  
+
   return 0;
 }

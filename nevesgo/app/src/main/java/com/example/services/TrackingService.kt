@@ -13,6 +13,7 @@ import android.os.Looper
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
 import com.example.MyApplication
+import com.example.domain.models.IncidentRequest
 import com.example.domain.models.LocationUpdate
 import com.google.android.gms.location.*
 import kotlinx.coroutines.CoroutineScope
@@ -101,10 +102,14 @@ class TrackingService : Service() {
         serviceScope.launch {
             try {
                 val isMock = androidx.core.location.LocationCompat.isMock(location)
-                
                 if (isMock) {
-                    // Report security violation to server
-                    // apiService.reportIncident(IncidentRequest(...))
+                    val incident = IncidentRequest(
+                        type = "GPS_SPOOFING",
+                        description = "Mock location detected via LocationCompat",
+                        lat = location.latitude,
+                        lng = location.longitude
+                    )
+                    apiService.reportIncident(incident)
                 }
 
                 val update = LocationUpdate(
@@ -114,7 +119,18 @@ class TrackingService : Service() {
                     speedKmh = (location.speed * 3.6).toInt(),
                     timestamp = location.time
                 )
-                apiService.updateLocation(update)
+                
+                // Get the base url from BuildConfig and replace port 8000 with 8001
+                val baseUrl = com.example.BuildConfig.API_BASE_URL
+                val fastLaneUrl = if (baseUrl.contains("8000")) {
+                    baseUrl.replace("8000", "8001").replace("api/v1/", "telemetry")
+                } else {
+                    baseUrl.replace("api/v1/", "telemetry")
+                }
+                
+                val deviceToken = com.example.data.local.SecureStorage.getPrefs(this@TrackingService).getString("device_token", "missing") ?: "missing"
+                
+                apiService.updateLocation(url = fastLaneUrl, deviceToken = deviceToken, location = update)
             } catch (e: Exception) {
                 // Handle offline sync logic here
             }

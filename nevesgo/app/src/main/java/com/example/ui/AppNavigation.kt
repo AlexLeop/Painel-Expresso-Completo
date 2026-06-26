@@ -103,10 +103,7 @@ fun NevesGoApp() {
         val receiver = object : android.content.BroadcastReceiver() {
             override fun onReceive(c: android.content.Context, intent: android.content.Intent) {
                 if (intent.action == "com.example.ACTION_LOGOUT") {
-                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                        val jwtTokenKey = androidx.datastore.preferences.core.stringPreferencesKey("jwt_token")
-                        context.dataStore.edit { preferences -> preferences.remove(jwtTokenKey) }
-                    }
+                    com.example.data.local.SecureStorage.clearToken(context)
                     navController.navigate(Route.Login.value) {
                         popUpTo(0)
                         launchSingleTop = true
@@ -281,7 +278,7 @@ private fun SessionBootstrapScreen(
     val context = LocalContext.current
 
     LaunchedEffect(Unit) {
-        val token = context.dataStore.data.first()[jwtTokenKey]
+        val token = com.example.data.local.SecureStorage.getToken(context)
         if (token.isNullOrBlank()) {
             navController.navigate(Route.Login.value) {
                 popUpTo(Route.Splash.value) { inclusive = true }
@@ -300,7 +297,7 @@ private fun SessionBootstrapScreen(
                 popUpTo(Route.Splash.value) { inclusive = true }
             }
         } else {
-            context.dataStore.edit { preferences -> preferences.remove(jwtTokenKey) }
+            com.example.data.local.SecureStorage.clearToken(context)
             navController.navigate(Route.Login.value) {
                 popUpTo(Route.Splash.value) { inclusive = true }
             }
@@ -323,14 +320,16 @@ private fun SessionBootstrapScreen(
 
 @Composable
 private fun DriverTokenLoginScreen(
-    navController: NavHostController,
+    navController: HostController,
     onValidateSession: suspend () -> retrofit2.Response<*>
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var token by rememberSaveable { mutableStateOf("") }
+    var phone by rememberSaveable { mutableStateOf("") }
+    var otp by rememberSaveable { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isSubmitting by remember { mutableStateOf(false) }
+    var otpSent by rememberSaveable { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -339,59 +338,151 @@ private fun DriverTokenLoginScreen(
         contentAlignment = Alignment.Center
     ) {
         Column(
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text("Acesso do Entregador", style = MaterialTheme.typography.headlineSmall)
             Text(
-                "Informe um JWT valido para bootstrap da sessao enquanto a integracao completa de login do app e finalizada.",
+                if (otpSent) "Digite o código recebido por SMS" else "Informe seu número de celular com DDD",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            OutlinedTextField(
-                value = token,
-                onValueChange = {
-                    token = it
-                    errorMessage = null
-                },
-                label = { Text("JWT do entregador") },
-                modifier = Modifier.fillMaxWidth(),
-                visualTransformation = PasswordVisualTransformation()
-            )
+            
+            if (!otpSent) {
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = {
+                        phone = it.filter { char -> char.isDigit() }
+                        errorMessage = null
+                    },
+                    label = { Text("Telefone (Ex: 11999999999)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            } else {
+                OutlinedTextField(
+                    value = otp,
+                    onValueChange = {
+                        otp = it.filter { char -> char.isDigit() }
+                        errorMessage = null
+                    },
+                    label = { Text("Código OTP") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+            }
+            
             Button(
-                enabled = token.isNotBlank() && !isSubmitting,
+                enabled = (if (!otpSent) phone.length >= 10 else otp.length >= 4) && !isSubmitting,
                 onClick = {
                     scope.launch {
                         isSubmitting = true
                         errorMessage = null
-                        context.dataStore.edit { preferences ->
-                            preferences[jwtTokenKey] = token.trim()
-                        }
 
-                        val sessionIsValid = try {
-                            onValidateSession().isSuccessful
-                        } catch (_: Exception) {
-                            false
-                        }
+                        val supabaseUrl = com.example.BuildConfig.SUPABASE_URL ?: ""
+                        val supabaseKey = com.example.BuildConfig.SUPABASE_ANON_KEY ?: ""
 
-                        if (sessionIsValid) {
-                            navController.navigate(Route.Home.value) {
-                                popUpTo(Route.Login.value) { inclusive = true }
+                        if (!otpSent) {
+                            // Request OTP
+                            try {
+                                val formattedPhone = if (phone.startsWith("55")) "+${phone}" else "+55${phone}"
+                                val success = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    val client = okhttp3.OkHttpClient()
+                                    val body = okhttp3.RequestBody.create(
+                                        okhttp3.MediaType.parse("application/json"),
+                                        """{"phone": "$formattedPhone"}"""
+                                    )
+                                    val request = okhttp3.Request.Builder()
+                                        .url("$supabaseUrl/auth/v1/otp")
+                                        .post(body)
+                                        .addHeader("apikey", supabaseKey)
+                                        .addHeader("Content-Type", "application/json")
+                                        .build()
+                                    val response = client.newCall(request).execute()
+                                    response.isSuccessful
+                                }
+                                if (success) {
+                                    otpSent = true
+                                } else {
+                                    errorMessage = "Falha ao enviar SMS. Tente novamente."
+                                }
+                            } catch (e: Exception) {
+                                errorMessage = "Erro de conexão."
                             }
                         } else {
-                            context.dataStore.edit { preferences -> preferences.remove(jwtTokenKey) }
-                            errorMessage = "Nao foi possivel validar o token informado."
+                            // Verify OTP
+                            try {
+                                val formattedPhone = if (phone.startsWith("55")) "+${phone}" else "+55${phone}"
+                                val tokens = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    val client = okhttp3.OkHttpClient()
+                                    val body = okhttp3.RequestBody.create(
+                                        okhttp3.MediaType.parse("application/json"),
+                                        """{"phone": "$formattedPhone", "token": "$otp", "type": "sms"}"""
+                                    )
+                                    val request = okhttp3.Request.Builder()
+                                        .url("$supabaseUrl/auth/v1/verify")
+                                        .post(body)
+                                        .addHeader("apikey", supabaseKey)
+                                        .addHeader("Content-Type", "application/json")
+                                        .build()
+                                    val response = client.newCall(request).execute()
+                                    if (response.isSuccessful) {
+                                        response.body()?.string()?.let { json ->
+                                            val jsonObject = org.json.JSONObject(json)
+                                            val access = jsonObject.optString("access_token")
+                                            val refresh = jsonObject.optString("refresh_token")
+                                            Pair(access, refresh)
+                                        }
+                                    } else null
+                                }
+                                
+                                if (tokens != null && tokens.first.isNotEmpty()) {
+                                    com.example.data.local.SecureStorage.saveToken(context, tokens.first)
+                                    com.example.data.local.SecureStorage.saveRefreshToken(context, tokens.second)
+
+                                    val sessionIsValid = try {
+                                        onValidateSession().isSuccessful
+                                    } catch (_: Exception) {
+                                        false
+                                    }
+
+                                    if (sessionIsValid) {
+                                        navController.navigate(Route.Home.value) {
+                                            popUpTo(Route.Login.value) { inclusive = true }
+                                        }
+                                    } else {
+                                        com.example.data.local.SecureStorage.clearToken(context)
+                                        errorMessage = "Sessão inválida ou motorista não aprovado."
+                                        otpSent = false
+                                        otp = ""
+                                    }
+                                } else {
+                                    errorMessage = "Código incorreto ou expirado."
+                                }
+                            } catch (e: Exception) {
+                                errorMessage = "Erro na validação do código."
+                            }
                         }
                         isSubmitting = false
                     }
-                }
+                },
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Text(if (isSubmitting) "Validando..." else "Entrar")
+                if (isSubmitting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                } else {
+                    Text(if (!otpSent) "Enviar SMS" else "Verificar Código")
+                }
             }
-            if (!errorMessage.isNullOrBlank()) {
+
+            if (errorMessage != null) {
                 Text(
-                    text = errorMessage.orEmpty(),
+                    text = errorMessage!!,
                     color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium
+                    style = MaterialTheme.typography.bodySmall
                 )
             }
         }

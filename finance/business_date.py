@@ -1,4 +1,4 @@
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 from typing import Optional
 
 from django.utils import timezone
@@ -9,7 +9,9 @@ def derive_business_date_from_cutoff(
     cutoff_hour: int,
     cutoff_minute: int = 0,
 ):
-    current_dt = timezone.localtime(reference_dt) if reference_dt else timezone.localtime()
+    current_dt = (
+        timezone.localtime(reference_dt) if reference_dt else timezone.localtime()
+    )
     cutoff_dt = current_dt.replace(
         hour=cutoff_hour,
         minute=cutoff_minute,
@@ -21,7 +23,9 @@ def derive_business_date_from_cutoff(
     return current_dt.date()
 
 
-def resolve_store_business_date(store, explicit_business_date=None, reference_dt: Optional[datetime] = None):
+def resolve_store_business_date(
+    store, explicit_business_date=None, reference_dt: Optional[datetime] = None
+):
     if explicit_business_date is not None:
         return explicit_business_date
 
@@ -33,5 +37,7 @@ def resolve_store_business_date(store, explicit_business_date=None, reference_dt
             cutoff_minute=getattr(contract, "cutoffMinute", 0) or 0,
         )
 
-    localized = timezone.localtime(reference_dt) if reference_dt else timezone.localtime()
+    localized = (
+        timezone.localtime(reference_dt) if reference_dt else timezone.localtime()
+    )
     return localized.date()

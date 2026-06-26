@@ -39,16 +39,23 @@ def test_resolve_webhook_url_prefers_explicit_webhook():
 
 
 def test_uses_open_delivery_polling_flag():
-    assert uses_open_delivery_polling(make_integration(authMode="POLLING_OPEN_DELIVERY"))
+    assert uses_open_delivery_polling(
+        make_integration(authMode="POLLING_OPEN_DELIVERY")
+    )
     assert not uses_open_delivery_polling(make_integration(authMode="WEBHOOK"))
 
 
 def test_uses_ifood_mercado_polling_flag():
-    assert uses_ifood_mercado_polling(make_integration(authMode="POLLING_IFOOD_MERCADO"))
+    assert uses_ifood_mercado_polling(
+        make_integration(authMode="POLLING_IFOOD_MERCADO")
+    )
     assert not uses_ifood_mercado_polling(make_integration(authMode="WEBHOOK"))
 
 
-@patch("integration.provider_clients.get_client_credentials_token", return_value="token-123")
+@patch(
+    "integration.provider_clients.get_client_credentials_token",
+    return_value="token-123",
+)
 @patch("integration.provider_clients.requests.post")
 def test_send_open_delivery_order_status_delivered(mock_post: Mock, _mock_token: Mock):
     mock_response = Mock()
@@ -62,12 +69,19 @@ def test_send_open_delivery_order_status_delivered(mock_post: Mock, _mock_token:
 
     assert response is mock_response
     called_url = mock_post.call_args[0][0]
-    assert called_url.endswith("/open-delivery-api/v1/orders/external-order-1/delivered")
+    assert called_url.endswith(
+        "/open-delivery-api/v1/orders/external-order-1/delivered"
+    )
 
 
-@patch("integration.provider_clients.get_client_credentials_token", return_value="token-123")
+@patch(
+    "integration.provider_clients.get_client_credentials_token",
+    return_value="token-123",
+)
 @patch("integration.provider_clients.requests.post")
-def test_send_99food_open_delivery_order_status_uses_partner_root(mock_post: Mock, _mock_token: Mock):
+def test_send_99food_open_delivery_order_status_uses_partner_root(
+    mock_post: Mock, _mock_token: Mock
+):
     mock_response = Mock()
     mock_response.raise_for_status.return_value = None
     mock_post.return_value = mock_response
@@ -83,14 +97,19 @@ def test_send_99food_open_delivery_order_status_uses_partner_root(mock_post: Moc
 
     assert response is mock_response
     called_url = mock_post.call_args[0][0]
-    assert called_url == "https://openapi.didi-food.com/v4/opendelivery/orders/external-order-99/pickedUp"
+    assert (
+        called_url
+        == "https://openapi.didi-food.com/v4/opendelivery/orders/external-order-99/pickedUp"
+    )
 
 
 @patch("integration.provider_clients.requests.get")
 def test_poll_ifood_mercado_events(mock_get: Mock):
     mock_response = Mock()
     mock_response.raise_for_status.return_value = None
-    mock_response.json.return_value = [{"id": 1, "codigoPedido": "PED-1", "status": "PE0", "idLoja": 123}]
+    mock_response.json.return_value = [
+        {"id": 1, "codigoPedido": "PED-1", "status": "PE0", "idLoja": 123}
+    ]
     mock_get.return_value = mock_response
 
     integration = make_integration(

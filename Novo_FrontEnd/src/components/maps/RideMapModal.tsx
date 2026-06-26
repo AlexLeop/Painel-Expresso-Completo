@@ -1,14 +1,22 @@
-import { logger } from '@/lib/logger';
+import { logger } from "@/lib/logger";
 import React, { useEffect, useState } from "react";
 import { X, Map as MapIcon } from "lucide-react";
-import { MapContainer, TileLayer, Marker, Polyline, useMap, Tooltip } from "react-leaflet";
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Polyline,
+  useMap,
+  Tooltip,
+} from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 
 // Fix for default marker icons in Leaflet with bundlers
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  iconRetinaUrl:
+    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
@@ -23,7 +31,7 @@ const pickupIcon = L.divIcon({
       </svg>
     </div>
   `,
-  className: '',
+  className: "",
   iconSize: [34, 34],
   iconAnchor: [17, 17],
 });
@@ -37,7 +45,7 @@ const dropoffIcon = L.divIcon({
       </svg>
     </div>
   `,
-  className: '',
+  className: "",
   iconSize: [34, 34],
   iconAnchor: [17, 17],
 });
@@ -51,7 +59,7 @@ const storeIcon = L.divIcon({
       <path d="M9 21v-6h6v6" />
     </svg>
   </div>`,
-  className: '',
+  className: "",
   iconSize: [32, 32],
   iconAnchor: [16, 16],
 });
@@ -63,7 +71,11 @@ interface RideMapModalProps {
 }
 
 // Custom hook to fit bounds after route is loaded
-function MapBounds({ routeCoordinates }: { routeCoordinates: [number, number][] }) {
+function MapBounds({
+  routeCoordinates,
+}: {
+  routeCoordinates: [number, number][];
+}) {
   const map = useMap();
   useEffect(() => {
     if (routeCoordinates.length > 0) {
@@ -75,7 +87,9 @@ function MapBounds({ routeCoordinates }: { routeCoordinates: [number, number][] 
 }
 
 export function RideMapModal({ isOpen, onClose, corrida }: RideMapModalProps) {
-  const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
+  const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>(
+    [],
+  );
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
 
@@ -89,24 +103,32 @@ export function RideMapModal({ isOpen, onClose, corrida }: RideMapModalProps) {
         const { origin, destination } = corrida;
         // OSRM coordinates format: lon,lat
         const response = await fetch(
-          `https://router.project-osrm.org/route/v1/driving/${origin.lng},${origin.lat};${destination.lng},${destination.lat}?overview=full&geometries=geojson`
+          `https://router.project-osrm.org/route/v1/driving/${origin.lng},${origin.lat};${destination.lng},${destination.lat}?overview=full&geometries=geojson`,
         );
         const data = await response.json();
-        
+
         if (data.code === "Ok" && data.routes.length > 0) {
           // OSRM returns GeoJSON coordinates as [lon, lat], Leaflet expects [lat, lon]
-          const coords = data.routes[0].geometry.coordinates.map((c: [number, number]) => [c[1], c[0]]);
+          const coords = data.routes[0].geometry.coordinates.map(
+            (c: [number, number]) => [c[1], c[0]],
+          );
           setRouteCoordinates(coords);
         } else {
           setRouteError("Não foi possível encontrar uma rota.");
-          setRouteCoordinates([[origin.lat, origin.lng], [destination.lat, destination.lng]]);
+          setRouteCoordinates([
+            [origin.lat, origin.lng],
+            [destination.lat, destination.lng],
+          ]);
         }
       } catch (error) {
         logger.error("Erro ao buscar rota:", error);
         setRouteError("Erro ao calcular rota.");
         // Fallback to straight line
         const { origin, destination } = corrida;
-        setRouteCoordinates([[origin.lat, origin.lng], [destination.lat, destination.lng]]);
+        setRouteCoordinates([
+          [origin.lat, origin.lng],
+          [destination.lat, destination.lng],
+        ]);
       } finally {
         setIsLoadingRoute(false);
       }
@@ -117,17 +139,23 @@ export function RideMapModal({ isOpen, onClose, corrida }: RideMapModalProps) {
 
   if (!isOpen || !corrida) return null;
 
-  const originLatLon: [number, number] = [corrida.origin.lat, corrida.origin.lng];
-  const destLatLon: [number, number] = [corrida.destination.lat, corrida.destination.lng];
+  const originLatLon: [number, number] = [
+    corrida.origin.lat,
+    corrida.origin.lng,
+  ];
+  const destLatLon: [number, number] = [
+    corrida.destination.lat,
+    corrida.destination.lng,
+  ];
   const motoboyName = (() => {
     const mb = corrida.motoboy;
-    if (!mb) return '';
-    if (typeof mb === 'string') return mb;
-    if (typeof mb === 'object' && mb !== null) {
+    if (!mb) return "";
+    if (typeof mb === "string") return mb;
+    if (typeof mb === "object" && mb !== null) {
       const maybe = mb as { nome?: unknown; name?: unknown };
-      return String(maybe.nome || maybe.name || '');
+      return String(maybe.nome || maybe.name || "");
     }
-    return '';
+    return "";
   })();
 
   return (
@@ -143,11 +171,11 @@ export function RideMapModal({ isOpen, onClose, corrida }: RideMapModalProps) {
                 Rota da Corrida #{corrida.id}
               </h2>
               <p className="text-sm text-gray-500 mt-1">
-                {motoboyName || 'Sem motoboy'} • {corrida.empresa}
+                {motoboyName || "Sem motoboy"} • {corrida.empresa}
               </p>
             </div>
           </div>
-          <button 
+          <button
             onClick={onClose}
             className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
           >
@@ -156,11 +184,11 @@ export function RideMapModal({ isOpen, onClose, corrida }: RideMapModalProps) {
         </div>
 
         <div className="flex-1 bg-gray-100 relative">
-          <MapContainer 
-            center={originLatLon} 
-            zoom={13} 
-            style={{ width: '100%', height: '100%' }}
-             zoomControl={false}
+          <MapContainer
+            center={originLatLon}
+            zoom={13}
+            style={{ width: "100%", height: "100%" }}
+            zoomControl={false}
           >
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
@@ -168,53 +196,76 @@ export function RideMapModal({ isOpen, onClose, corrida }: RideMapModalProps) {
             />
             {routeCoordinates.length > 0 && (
               <>
-                <Polyline positions={routeCoordinates} color="#4f46e5" weight={5} opacity={0.8} />
+                <Polyline
+                  positions={routeCoordinates}
+                  color="#4f46e5"
+                  weight={5}
+                  opacity={0.8}
+                />
                 <MapBounds routeCoordinates={routeCoordinates} />
               </>
             )}
             <Marker position={originLatLon} icon={storeIcon}>
-              <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>Loja (Coleta)</Tooltip>
+              <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>
+                Loja (Coleta)
+              </Tooltip>
             </Marker>
             <Marker position={destLatLon} icon={dropoffIcon}>
-              <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>Entrega</Tooltip>
+              <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>
+                Entrega
+              </Tooltip>
             </Marker>
           </MapContainer>
-          
+
           {isLoadingRoute && (
             <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white px-4 py-2 rounded-lg shadow-md text-sm font-medium text-gray-700 z-[1000]">
               Calculando rota...
             </div>
           )}
           {routeError && (
-             <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-rose-100 text-rose-700 px-4 py-2 rounded-lg shadow-md text-sm font-medium z-[1000]">
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-rose-100 text-rose-700 px-4 py-2 rounded-lg shadow-md text-sm font-medium z-[1000]">
               {routeError}
             </div>
           )}
         </div>
-        
+
         <div className="p-4 border-t border-gray-200 bg-gray-50 grid grid-cols-3 gap-4">
           <div>
-            <span className="block text-xs font-medium text-gray-500 uppercase">Distância Estimada</span>
-            <span className="text-sm font-semibold text-gray-900">{corrida.distancia}</span>
+            <span className="block text-xs font-medium text-gray-500 uppercase">
+              Distância Estimada
+            </span>
+            <span className="text-sm font-semibold text-gray-900">
+              {corrida.distancia}
+            </span>
           </div>
           <div>
-            <span className="block text-xs font-medium text-gray-500 uppercase">Status</span>
-             <span className={`inline-flex items-center text-sm font-semibold ${
-                corrida.status === 'Em andamento' ? 'text-blue-600' :
-                corrida.status === 'Coletando' ? 'text-amber-600' :
-                corrida.status === 'Concluída' ? 'text-emerald-600' :
-                'text-rose-600'
-              }`}>
-                {corrida.status}
-              </span>
+            <span className="block text-xs font-medium text-gray-500 uppercase">
+              Status
+            </span>
+            <span
+              className={`inline-flex items-center text-sm font-semibold ${
+                corrida.status === "Em andamento"
+                  ? "text-blue-600"
+                  : corrida.status === "Coletando"
+                    ? "text-amber-600"
+                    : corrida.status === "Concluída"
+                      ? "text-emerald-600"
+                      : "text-rose-600"
+              }`}
+            >
+              {corrida.status}
+            </span>
           </div>
           <div>
-            <span className="block text-xs font-medium text-gray-500 uppercase">Horário de Saída</span>
-            <span className="text-sm font-semibold text-gray-900">{corrida.horario}</span>
+            <span className="block text-xs font-medium text-gray-500 uppercase">
+              Horário de Saída
+            </span>
+            <span className="text-sm font-semibold text-gray-900">
+              {corrida.horario}
+            </span>
           </div>
         </div>
       </div>
     </div>
   );
 }
-

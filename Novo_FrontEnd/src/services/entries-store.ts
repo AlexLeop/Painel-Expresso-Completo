@@ -1,14 +1,14 @@
-import { logger } from '@/lib/logger';
+import { logger } from "@/lib/logger";
 /**
  * Entries Store — Supabase-primary pattern
  * Primary: Supabase via /api/db/entries (source of truth)
  * Cache: localStorage (for instant reads + offline fallback)
- * 
+ *
  * All writes go to Supabase first, then update local cache.
  * Reads use local cache when available, with background refresh from Supabase.
  */
 
-import { authFetch } from '../lib/api';
+import { authFetch } from "../lib/api";
 
 // ============================================================
 // Types
@@ -17,14 +17,14 @@ import { authFetch } from '../lib/api';
 export interface DailyEntry {
   driverId: string;
   driverName: string;
-  date: string;           // YYYY-MM-DD
-  turnoId?: string;       // ID do turno (ex: 't1', 't2') para garantir mínimo fatiado
-  faixaId?: string;       // ID da faixa de horas (modo 'garantida_horas')
-  amount: number;         // valor efetivo da diária
+  date: string; // YYYY-MM-DD
+  turnoId?: string; // ID do turno (ex: 't1', 't2') para garantir mínimo fatiado
+  faixaId?: string; // ID da faixa de horas (modo 'garantida_horas')
+  amount: number; // valor efetivo da diária
   diariaOverride: boolean; // true = gestor alterou manualmente
   companyId: number;
   // Credit tracking
-  creditStatus?: 'pending' | 'credited' | 'failed' | 'skipped';
+  creditStatus?: "pending" | "credited" | "failed" | "skipped";
   creditedAt?: string;
   creditError?: string;
   machineTransactionId?: string;
@@ -35,49 +35,53 @@ export interface ManualEntry {
   driverId: string;
   driverName: string;
   date: string;
-  type: 'diaria' | 'extra' | 'missao' | 'adiantamento' | 'corrida_manual';
+  type: "diaria" | "extra" | "missao" | "adiantamento" | "corrida_manual";
   amount: number;
   description: string;
   companyId: number;
   createdAt: string;
-  visibilidade?: 'loja' | 'motoboy' | 'ambos';
+  visibilidade?: "loja" | "motoboy" | "ambos";
   entregas?: number;
 }
 
 // ============================================================
 // Local Cache Keys
 // ============================================================
-const DAILY_KEY = 'machine_admin_dailies';
-const MANUAL_KEY = 'machine_admin_manual_entries';
+const DAILY_KEY = "machine_admin_dailies";
+const MANUAL_KEY = "machine_admin_manual_entries";
 
 function getDailiesCache(): DailyEntry[] {
-  if (typeof window === 'undefined') return [];
+  if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(DAILY_KEY);
     if (!raw) return [];
     const entries: DailyEntry[] = JSON.parse(raw);
-    return entries.map(e => ({
+    return entries.map((e) => ({
       ...e,
       diariaOverride: e.diariaOverride ?? false,
     }));
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 function saveDailiesCache(entries: DailyEntry[]) {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
   localStorage.setItem(DAILY_KEY, JSON.stringify(entries));
 }
 
 function getManualEntriesCache(): ManualEntry[] {
-  if (typeof window === 'undefined') return [];
+  if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(MANUAL_KEY);
     return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 function saveManualEntriesCache(entries: ManualEntry[]) {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
   localStorage.setItem(MANUAL_KEY, JSON.stringify(entries));
 }
 
@@ -88,11 +92,12 @@ function saveManualEntriesCache(entries: ManualEntry[]) {
 export async function setDailyEntry(entry: DailyEntry): Promise<boolean> {
   // 1. Update local cache immediately (optimistic)
   const all = getDailiesCache();
-  const idx = all.findIndex(e =>
-    e.driverId === entry.driverId &&
-    e.date === entry.date &&
-    e.companyId === entry.companyId &&
-    e.turnoId === entry.turnoId
+  const idx = all.findIndex(
+    (e) =>
+      e.driverId === entry.driverId &&
+      e.date === entry.date &&
+      e.companyId === entry.companyId &&
+      e.turnoId === entry.turnoId,
   );
   if (idx >= 0) {
     all[idx] = entry;
@@ -103,73 +108,97 @@ export async function setDailyEntry(entry: DailyEntry): Promise<boolean> {
 
   // 2. Persist to Supabase (awaited)
   try {
-    const res = await authFetch('/api/db/entries', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const res = await authFetch("/api/db/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         companyId: entry.companyId,
         driverId: entry.driverId,
         driverName: entry.driverName,
         date: entry.date,
         turnoId: entry.turnoId,
-        type: 'diaria',
+        type: "diaria",
         amount: entry.amount,
-        description: entry.diariaOverride ? 'Diária manual' : 'Diária',
+        description: entry.diariaOverride ? "Diária manual" : "Diária",
       }),
     });
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
-      logger.error('[EntriesStore] Daily write failed:', res.status, errData);
+      logger.error("[EntriesStore] Daily write failed:", res.status, errData);
       return false;
     }
     return true;
   } catch (err) {
-    logger.error('[EntriesStore] Daily write error:', err);
+    logger.error("[EntriesStore] Daily write error:", err);
     return false;
   }
 }
 
-export function removeDailyEntry(driverId: string, date: string, companyId: number, turnoId?: string) {
+export function removeDailyEntry(
+  driverId: string,
+  date: string,
+  companyId: number,
+  turnoId?: string,
+) {
   // 1. Remove from local cache
-  const all = getDailiesCache().filter(e =>
-    !(e.driverId === driverId && e.date === date && Number(e.companyId) === Number(companyId) && e.turnoId === turnoId)
+  const all = getDailiesCache().filter(
+    (e) =>
+      !(
+        e.driverId === driverId &&
+        e.date === date &&
+        Number(e.companyId) === Number(companyId) &&
+        e.turnoId === turnoId
+      ),
   );
   saveDailiesCache(all);
 
   // 2. Delete from Supabase
   let url = `/api/db/entries?driver_id=${driverId}&date=${date}&company_id=${companyId}`;
   if (turnoId) url += `&turno_id=${turnoId}`;
-  
+
   authFetch(url, {
-    method: 'DELETE',
-  }).catch(err => logger.warn('[EntriesStore] Daily delete failed:', err));
+    method: "DELETE",
+  }).catch((err) => logger.warn("[EntriesStore] Daily delete failed:", err));
 }
 
-export function getDailyEntriesForWeek(companyId: number | string, weekStart: string, weekEnd: string): DailyEntry[] {
+export function getDailyEntriesForWeek(
+  companyId: number | string,
+  weekStart: string,
+  weekEnd: string,
+): DailyEntry[] {
   const cid = Number(companyId);
-  return getDailiesCache().filter(e =>
-    Number(e.companyId) === cid &&
-    e.date >= weekStart &&
-    e.date <= weekEnd
+  return getDailiesCache().filter(
+    (e) =>
+      Number(e.companyId) === cid && e.date >= weekStart && e.date <= weekEnd,
   );
 }
 
-export function getDailyEntryForDriver(driverId: string, date: string, companyId: number | string, turnoId?: string): DailyEntry | null {
+export function getDailyEntryForDriver(
+  driverId: string,
+  date: string,
+  companyId: number | string,
+  turnoId?: string,
+): DailyEntry | null {
   const cid = Number(companyId);
   const did = String(driverId);
-  return getDailiesCache().find(e =>
-    String(e.driverId) === did &&
-    e.date === date &&
-    Number(e.companyId) === cid &&
-    e.turnoId === turnoId
-  ) || null;
+  return (
+    getDailiesCache().find(
+      (e) =>
+        String(e.driverId) === did &&
+        e.date === date &&
+        Number(e.companyId) === cid &&
+        e.turnoId === turnoId,
+    ) || null
+  );
 }
 
 // ============================================================
 // Manual Entries (modal — extras, missões, adiantamentos)
 // ============================================================
 
-export async function addManualEntry(entry: Omit<ManualEntry, 'id' | 'createdAt'>): Promise<ManualEntry> {
+export async function addManualEntry(
+  entry: Omit<ManualEntry, "id" | "createdAt">,
+): Promise<ManualEntry> {
   const newEntry: ManualEntry = {
     ...entry,
     id: `me_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -183,9 +212,9 @@ export async function addManualEntry(entry: Omit<ManualEntry, 'id' | 'createdAt'
 
   // 2. Persist to Supabase (awaited)
   try {
-    const res = await authFetch('/api/db/entries', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const res = await authFetch("/api/db/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         companyId: entry.companyId,
         driverId: entry.driverId,
@@ -198,10 +227,10 @@ export async function addManualEntry(entry: Omit<ManualEntry, 'id' | 'createdAt'
     });
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
-      logger.error('[EntriesStore] Manual write failed:', res.status, errData);
+      logger.error("[EntriesStore] Manual write failed:", res.status, errData);
     }
   } catch (err) {
-    logger.error('[EntriesStore] Manual write error:', err);
+    logger.error("[EntriesStore] Manual write error:", err);
   }
 
   return newEntry;
@@ -209,21 +238,24 @@ export async function addManualEntry(entry: Omit<ManualEntry, 'id' | 'createdAt'
 
 export function deleteManualEntry(id: string) {
   // 1. Remove from cache
-  const all = getManualEntriesCache().filter(e => e.id !== id);
+  const all = getManualEntriesCache().filter((e) => e.id !== id);
   saveManualEntriesCache(all);
 
   // 2. Delete from Supabase
   authFetch(`/api/db/entries?id=${id}`, {
-    method: 'DELETE',
-  }).catch(err => logger.warn('[EntriesStore] Manual delete failed:', err));
+    method: "DELETE",
+  }).catch((err) => logger.warn("[EntriesStore] Manual delete failed:", err));
 }
 
-export function getManualEntriesForWeek(companyId: number | string, weekStart: string, weekEnd: string): ManualEntry[] {
+export function getManualEntriesForWeek(
+  companyId: number | string,
+  weekStart: string,
+  weekEnd: string,
+): ManualEntry[] {
   const cid = Number(companyId);
-  return getManualEntriesCache().filter(e =>
-    Number(e.companyId) === cid &&
-    e.date >= weekStart &&
-    e.date <= weekEnd
+  return getManualEntriesCache().filter(
+    (e) =>
+      Number(e.companyId) === cid && e.date >= weekStart && e.date <= weekEnd,
   );
 }
 
@@ -242,37 +274,43 @@ export function getDriverDayAggregation(
   driverId: string,
   date: string,
   turnoId?: string,
-  viewMode?: 'loja' | 'motoboy'
+  viewMode?: "loja" | "motoboy",
 ): DriverDayEntries {
   const cid = Number(companyId);
   const did = String(driverId);
-  const dailyEntries = getDailiesCache().filter(e =>
-    Number(e.companyId) === cid &&
-    String(e.driverId) === did &&
-    e.date === date &&
-    (turnoId ? e.turnoId === turnoId : true)
+  const dailyEntries = getDailiesCache().filter(
+    (e) =>
+      Number(e.companyId) === cid &&
+      String(e.driverId) === did &&
+      e.date === date &&
+      (turnoId ? e.turnoId === turnoId : true),
   );
   const diaria = dailyEntries.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-  const manuals = getManualEntriesCache().filter(e => {
-    if (Number(e.companyId) !== cid || String(e.driverId) !== did || e.date !== date) return false;
+  const manuals = getManualEntriesCache().filter((e) => {
+    if (
+      Number(e.companyId) !== cid ||
+      String(e.driverId) !== did ||
+      e.date !== date
+    )
+      return false;
     if (viewMode) {
       let vis = e.visibilidade;
       if (!vis && e.description) {
         const visMatch = e.description.match(/\|vis:(loja|motoboy|ambos)/);
         if (visMatch) vis = visMatch[1] as any;
       }
-      vis = vis || 'ambos';
-      if (vis !== 'ambos' && vis !== viewMode) return false;
+      vis = vis || "ambos";
+      if (vis !== "ambos" && vis !== viewMode) return false;
     }
     return true;
   });
 
   const extras = manuals
-    .filter(e => e.type === 'extra' || e.type === 'missao')
+    .filter((e) => e.type === "extra" || e.type === "missao")
     .reduce((s, e) => s + Math.abs(e.amount), 0);
 
   const adiantamentos = manuals
-    .filter(e => e.type === 'adiantamento')
+    .filter((e) => e.type === "adiantamento")
     .reduce((s, e) => s + Math.abs(e.amount), 0);
 
   return {
@@ -287,29 +325,35 @@ export function getDriverWeekAggregation(
   driverId: string,
   weekStart: string,
   weekEnd: string,
-  viewMode?: 'loja' | 'motoboy'
+  viewMode?: "loja" | "motoboy",
 ): { totalDiaria: number; totalExtras: number; totalAdiantamentos: number } {
   const did = String(driverId);
-  const dailies = getDailyEntriesForWeek(companyId, weekStart, weekEnd)
-    .filter(e => String(e.driverId) === did);
-  const manuals = getManualEntriesForWeek(companyId, weekStart, weekEnd)
-    .filter(e => {
+  const dailies = getDailyEntriesForWeek(companyId, weekStart, weekEnd).filter(
+    (e) => String(e.driverId) === did,
+  );
+  const manuals = getManualEntriesForWeek(companyId, weekStart, weekEnd).filter(
+    (e) => {
       if (String(e.driverId) !== did) return false;
       if (viewMode) {
-        const vis = e.visibilidade || 'ambos';
-        if (vis !== 'ambos' && vis !== viewMode) return false;
+        const vis = e.visibilidade || "ambos";
+        if (vis !== "ambos" && vis !== viewMode) return false;
       }
       return true;
-    });
+    },
+  );
 
   return {
     totalDiaria: dailies.reduce((s, e) => s + e.amount, 0),
-    totalExtras: manuals.filter(e => e.type === 'extra' || e.type === 'missao').reduce((s, e) => s + Math.abs(e.amount), 0),
-    totalAdiantamentos: manuals.filter(e => e.type === 'adiantamento').reduce((s, e) => s + Math.abs(e.amount), 0),
+    totalExtras: manuals
+      .filter((e) => e.type === "extra" || e.type === "missao")
+      .reduce((s, e) => s + Math.abs(e.amount), 0),
+    totalAdiantamentos: manuals
+      .filter((e) => e.type === "adiantamento")
+      .reduce((s, e) => s + Math.abs(e.amount), 0),
   };
 }
 
-const CREDIT_LOG_KEY = 'nevesgo:credit_log';
+const CREDIT_LOG_KEY = "nevesgo:credit_log";
 
 export interface CreditLogEntry {
   id: string;
@@ -324,23 +368,25 @@ export interface CreditLogEntry {
     extras: number;
     adiantamentos: number;
   };
-  status: 'success' | 'failed' | 'retry';
+  status: "success" | "failed" | "retry";
   machineResponse?: string;
   error?: string;
   createdAt: string;
-  processedBy: 'cron' | 'manual';
+  processedBy: "cron" | "manual";
 }
 
 function getCreditLogCache(): CreditLogEntry[] {
-  if (typeof window === 'undefined') return [];
+  if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(CREDIT_LOG_KEY);
     return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 function saveCreditLogCache(entries: CreditLogEntry[]) {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
   localStorage.setItem(CREDIT_LOG_KEY, JSON.stringify(entries));
 }
 
@@ -348,7 +394,9 @@ export function getCreditLog(): CreditLogEntry[] {
   return getCreditLogCache();
 }
 
-export function addCreditLogEntry(entry: Omit<CreditLogEntry, 'id' | 'createdAt'>): CreditLogEntry {
+export function addCreditLogEntry(
+  entry: Omit<CreditLogEntry, "id" | "createdAt">,
+): CreditLogEntry {
   const newEntry: CreditLogEntry = {
     ...entry,
     id: `cl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -361,9 +409,9 @@ export function addCreditLogEntry(entry: Omit<CreditLogEntry, 'id' | 'createdAt'
   saveCreditLogCache(all);
 
   // 2. Persist to Supabase
-  authFetch('/api/db/entries/credit', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  authFetch("/api/db/entries/credit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       companyId: entry.companyId,
       driverId: entry.driverId,
@@ -375,96 +423,129 @@ export function addCreditLogEntry(entry: Omit<CreditLogEntry, 'id' | 'createdAt'
       error: entry.error,
       processedBy: entry.processedBy,
     }),
-  }).catch(err => logger.warn('[EntriesStore] Credit log write failed:', err));
+  }).catch((err) =>
+    logger.warn("[EntriesStore] Credit log write failed:", err),
+  );
 
   return newEntry;
 }
 
-export function getCreditLogForWeek(companyId: number, weekStart: string, weekEnd: string): CreditLogEntry[] {
-  return getCreditLogCache().filter(e =>
-    e.companyId === companyId &&
-    e.date >= weekStart &&
-    e.date <= weekEnd
+export function getCreditLogForWeek(
+  companyId: number,
+  weekStart: string,
+  weekEnd: string,
+): CreditLogEntry[] {
+  return getCreditLogCache().filter(
+    (e) =>
+      e.companyId === companyId && e.date >= weekStart && e.date <= weekEnd,
   );
 }
 
-export function getPendingCreditsForDate(companyId: number, date: string): DailyEntry[] {
-  return getDailiesCache().filter(e =>
-    e.companyId === companyId &&
-    e.date === date &&
-    (!e.creditStatus || e.creditStatus === 'pending' || e.creditStatus === 'failed')
+export function getPendingCreditsForDate(
+  companyId: number,
+  date: string,
+): DailyEntry[] {
+  return getDailiesCache().filter(
+    (e) =>
+      e.companyId === companyId &&
+      e.date === date &&
+      (!e.creditStatus ||
+        e.creditStatus === "pending" ||
+        e.creditStatus === "failed"),
   );
 }
 
-export function markDailyEntryCredited(driverId: string, date: string, companyId: number, transactionId?: string) {
+export function markDailyEntryCredited(
+  driverId: string,
+  date: string,
+  companyId: number,
+  transactionId?: string,
+) {
   const all = getDailiesCache();
-  const idx = all.findIndex(e =>
-    e.driverId === driverId && e.date === date && e.companyId === companyId
+  const idx = all.findIndex(
+    (e) =>
+      e.driverId === driverId && e.date === date && e.companyId === companyId,
   );
   if (idx >= 0) {
     all[idx] = {
       ...all[idx],
-      creditStatus: 'credited',
+      creditStatus: "credited",
       creditedAt: new Date().toISOString(),
       machineTransactionId: transactionId,
     };
     saveDailiesCache(all);
 
     // Sync to Supabase
-    authFetch('/api/db/entries', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    authFetch("/api/db/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         companyId: all[idx].companyId,
         driverId: all[idx].driverId,
         driverName: all[idx].driverName,
         date: all[idx].date,
-        type: 'diaria',
+        type: "diaria",
         amount: all[idx].amount,
-        description: all[idx].diariaOverride ? 'Diária manual' : 'Diária',
-        creditStatus: 'credited',
+        description: all[idx].diariaOverride ? "Diária manual" : "Diária",
+        creditStatus: "credited",
       }),
-    }).catch(err => logger.warn('[EntriesStore] Credit status sync failed:', err));
+    }).catch((err) =>
+      logger.warn("[EntriesStore] Credit status sync failed:", err),
+    );
   }
 }
 
-export function markDailyEntryFailed(driverId: string, date: string, companyId: number, error: string) {
+export function markDailyEntryFailed(
+  driverId: string,
+  date: string,
+  companyId: number,
+  error: string,
+) {
   const all = getDailiesCache();
-  const idx = all.findIndex(e =>
-    e.driverId === driverId && e.date === date && e.companyId === companyId
+  const idx = all.findIndex(
+    (e) =>
+      e.driverId === driverId && e.date === date && e.companyId === companyId,
   );
   if (idx >= 0) {
     all[idx] = {
       ...all[idx],
-      creditStatus: 'failed',
+      creditStatus: "failed",
       creditError: error,
     };
     saveDailiesCache(all);
 
-    authFetch('/api/db/entries', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    authFetch("/api/db/entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         companyId: all[idx].companyId,
         driverId: all[idx].driverId,
         driverName: all[idx].driverName,
         date: all[idx].date,
-        type: 'diaria',
+        type: "diaria",
         amount: all[idx].amount,
-        description: all[idx].diariaOverride ? 'Diária manual' : 'Diária',
-        creditStatus: 'failed',
+        description: all[idx].diariaOverride ? "Diária manual" : "Diária",
+        creditStatus: "failed",
       }),
-    }).catch(err => logger.warn('[EntriesStore] Failed status sync failed:', err));
+    }).catch((err) =>
+      logger.warn("[EntriesStore] Failed status sync failed:", err),
+    );
   }
 }
 
-export function getCreditStats(companyId: number, weekStart: string, weekEnd: string) {
+export function getCreditStats(
+  companyId: number,
+  weekStart: string,
+  weekEnd: string,
+) {
   const dailies = getDailyEntriesForWeek(companyId, weekStart, weekEnd);
   return {
     total: dailies.length,
-    pending: dailies.filter(e => !e.creditStatus || e.creditStatus === 'pending').length,
-    credited: dailies.filter(e => e.creditStatus === 'credited').length,
-    failed: dailies.filter(e => e.creditStatus === 'failed').length,
+    pending: dailies.filter(
+      (e) => !e.creditStatus || e.creditStatus === "pending",
+    ).length,
+    credited: dailies.filter((e) => e.creditStatus === "credited").length,
+    failed: dailies.filter((e) => e.creditStatus === "failed").length,
   };
 }
 
@@ -472,11 +553,17 @@ export function getCreditStats(companyId: number, weekStart: string, weekEnd: st
 // Supabase → Local Cache Sync (pull on mount)
 // ============================================================
 
-export async function pullEntriesFromSupabase(companyId: number | string, weekStart: string, weekEnd: string): Promise<boolean> {
+export async function pullEntriesFromSupabase(
+  companyId: number | string,
+  weekStart: string,
+  weekEnd: string,
+): Promise<boolean> {
   try {
-    const res = await authFetch(`/api/db/entries?company_id=${companyId}&start=${weekStart}&end=${weekEnd}`);
+    const res = await authFetch(
+      `/api/db/entries?company_id=${companyId}&start=${weekStart}&end=${weekEnd}`,
+    );
     if (!res.ok) {
-      logger.warn('[EntriesStore] Pull returned non-OK:', res.status);
+      logger.warn("[EntriesStore] Pull returned non-OK:", res.status);
       return false;
     }
     const entries = await res.json();
@@ -490,11 +577,21 @@ export async function pullEntriesFromSupabase(companyId: number | string, weekSt
     const localManuals = getManualEntriesCache();
 
     // Keep entries OUTSIDE this company+period range
-    const otherDailies = localDailies.filter(e =>
-      !(Number(e.companyId) === cid && e.date >= weekStart && e.date <= weekEnd)
+    const otherDailies = localDailies.filter(
+      (e) =>
+        !(
+          Number(e.companyId) === cid &&
+          e.date >= weekStart &&
+          e.date <= weekEnd
+        ),
     );
-    const otherManuals = localManuals.filter(e =>
-      !(Number(e.companyId) === cid && e.date >= weekStart && e.date <= weekEnd)
+    const otherManuals = localManuals.filter(
+      (e) =>
+        !(
+          Number(e.companyId) === cid &&
+          e.date >= weekStart &&
+          e.date <= weekEnd
+        ),
     );
 
     // Add server entries for this period
@@ -503,7 +600,7 @@ export async function pullEntriesFromSupabase(companyId: number | string, weekSt
 
     if (Array.isArray(entries)) {
       for (const entry of entries) {
-        if (entry.type === 'diaria') {
+        if (entry.type === "diaria") {
           serverDailies.push({
             driverId: entry.driverId,
             driverName: entry.driverName,
@@ -515,7 +612,7 @@ export async function pullEntriesFromSupabase(companyId: number | string, weekSt
             creditedAt: entry.creditedAt,
             creditError: entry.creditError,
             machineTransactionId: entry.machineTransactionId,
-            ...(entry.turnoId ? { turnoId: entry.turnoId } : {})
+            ...(entry.turnoId ? { turnoId: entry.turnoId } : {}),
           });
         } else {
           serverManuals.push({
@@ -528,7 +625,7 @@ export async function pullEntriesFromSupabase(companyId: number | string, weekSt
             description: entry.description,
             companyId: entry.companyId,
             createdAt: entry.createdAt,
-            visibilidade: entry.visibilidade || 'ambos',
+            visibilidade: entry.visibilidade || "ambos",
             entregas: entry.entregas || 1,
           });
         }
@@ -539,8 +636,7 @@ export async function pullEntriesFromSupabase(companyId: number | string, weekSt
     saveManualEntriesCache([...otherManuals, ...serverManuals]);
     return true;
   } catch (err) {
-    logger.warn('[EntriesStore] Pull failed:', err);
+    logger.warn("[EntriesStore] Pull failed:", err);
     return false;
   }
 }
-

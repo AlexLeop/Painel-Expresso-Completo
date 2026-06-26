@@ -6,9 +6,13 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.example.BuildConfig
 import com.example.data.remote.interceptors.AuthInterceptor
 import com.example.data.remote.interceptors.ErrorInterceptor
+import com.example.data.remote.interceptors.IdempotencyInterceptor
 import com.example.data.remote.interceptors.RetryInterceptor
+import com.example.data.remote.interceptors.TokenAuthenticator
+import com.example.data.remote.interceptors.OfflineInterceptor
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import okhttp3.Cache
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -37,9 +41,13 @@ object RetrofitClient {
 
         val okHttpClient = OkHttpClient.Builder()
             .addInterceptor(RetryInterceptor(maxRetries = 3))
+            .addInterceptor(IdempotencyInterceptor())
             .addInterceptor(AuthInterceptor(context))
             .addInterceptor(ErrorInterceptor(context))
+            .addInterceptor(OfflineInterceptor(context))
+            .authenticator(TokenAuthenticator(context))
             .addInterceptor(loggingInterceptor)
+            .cache(Cache(java.io.File(context.cacheDir, "offline_cache"), 10 * 1024 * 1024))
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)

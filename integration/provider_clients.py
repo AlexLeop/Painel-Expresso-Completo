@@ -86,7 +86,9 @@ def _bearer_api_headers(integration) -> Dict[str, str]:
     }
 
 
-def poll_open_delivery_events(integration, event_types: Optional[Iterable[str]] = None) -> List[dict]:
+def poll_open_delivery_events(
+    integration, event_types: Optional[Iterable[str]] = None
+) -> List[dict]:
     response = requests.get(
         f"{_open_delivery_api_base(integration)}/events:polling",
         headers=_open_delivery_headers(integration),
@@ -112,7 +114,9 @@ def acknowledge_open_delivery_events(integration, event_ids: Iterable[str]) -> N
     response.raise_for_status()
 
 
-def send_open_delivery_order_status(integration, order, event_type: str) -> Optional[requests.Response]:
+def send_open_delivery_order_status(
+    integration, order, event_type: str
+) -> Optional[requests.Response]:
     if not getattr(order, "external_order_id", None):
         raise ValueError("Pedido sem external_order_id para envio ao parceiro.")
 
@@ -147,7 +151,9 @@ def poll_ifood_mercado_events(integration) -> List[dict]:
 
 
 def acknowledge_ifood_mercado_events(integration, event_ids: Iterable[str]) -> None:
-    acknowledgments = [{"id": int(event_id)} for event_id in event_ids if str(event_id).strip()]
+    acknowledgments = [
+        {"id": int(event_id)} for event_id in event_ids if str(event_id).strip()
+    ]
     if not acknowledgments:
         return
     response = requests.post(

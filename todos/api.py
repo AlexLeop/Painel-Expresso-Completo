@@ -5,10 +5,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import Todo, TodoCategory
-from .schemas import (
-    TodoIn, TodoUpdate, TodoOut,
-    TodoCategoryIn, TodoCategoryOut
-)
+from .schemas import TodoIn, TodoUpdate, TodoOut, TodoCategoryIn, TodoCategoryOut
 from accounts.auth import require_role
 
 router = Router(tags=["Todos"])
@@ -20,9 +17,7 @@ def create_category(request, payload: TodoCategoryIn):
     staff = require_role(["ADMIN", "MANAGER"])(request)
     with transaction.atomic():
         category = TodoCategory.objects.create(
-            operator=staff.operator,
-            name=payload.name,
-            color=payload.color
+            operator=staff.operator, name=payload.name, color=payload.color
         )
         return category
 
@@ -48,7 +43,7 @@ def create_todo(request, payload: TodoIn):
             due_date=payload.due_date,
             created_by=staff,
             related_store_id=payload.related_store_id,
-            related_client_id=payload.related_client_id
+            related_client_id=payload.related_client_id,
         )
         return todo
 
@@ -56,9 +51,11 @@ def create_todo(request, payload: TodoIn):
 @router.get("/", response=List[TodoOut])
 def list_todos(request):
     staff = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
-    return Todo.objects.filter(
-        operator=staff.operator
-    ).select_related("category").order_by("-due_date", "-createdAt")
+    return (
+        Todo.objects.filter(operator=staff.operator)
+        .select_related("category")
+        .order_by("-due_date", "-createdAt")
+    )
 
 
 @router.put("/{todo_id}", response=TodoOut)

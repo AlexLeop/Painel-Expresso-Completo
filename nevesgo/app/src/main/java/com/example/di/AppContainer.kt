@@ -26,7 +26,7 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
     }
 
     override val orderRepository: OrderRepository by lazy {
-        OrderRepositoryImpl(database.orderDao(), driverApiService)
+        OrderRepositoryImpl(context, database.orderDao(), driverApiService)
     }
 
     override val cockpitRepository: CockpitRepository by lazy {

@@ -66,8 +66,19 @@ interface DriverApiService {
     @POST("driver/incidents")
     suspend fun reportIncident(@Body incident: IncidentRequest): Response<IncidentResponse>
 
-    @POST("driver/location")
-    suspend fun updateLocation(@Body location: LocationUpdate): Response<Unit>
+    @Multipart
+    @POST("driver/incidents/{incident_id}/attachments")
+    suspend fun uploadIncidentAttachment(
+        @Path("incident_id") incidentId: String,
+        @Part file: MultipartBody.Part
+    ): Response<Unit>
+
+    @POST
+    suspend fun updateLocation(
+        @Url url: String,
+        @Header("X-Device-Token") deviceToken: String,
+        @Body location: LocationUpdate
+    ): Response<Unit>
 
     @POST("driver/shifts/check-in")
     suspend fun checkIn(@Body payload: ShiftCheckInRequest): Response<ShiftCheckInResponse>
@@ -110,4 +121,7 @@ interface DriverApiService {
         @Path("thread_id") threadId: String,
         @Body payload: CommunicationMessageRequest
     ): Response<CommunicationMessageSendResponse>
+
+    @POST("driver/fcm-token")
+    suspend fun registerFcmToken(@Body payload: Map<String, String>): Response<Unit>
 }

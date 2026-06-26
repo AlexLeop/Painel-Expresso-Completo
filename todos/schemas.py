@@ -1,5 +1,5 @@
 from ninja import ModelSchema, Schema
-from typing import Optional, List
+from typing import Optional
 from datetime import datetime
 from uuid import UUID
 from .models import Todo, TodoCategory

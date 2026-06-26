@@ -5,12 +5,13 @@ from uuid import UUID
 
 # --- Schemas Base da Lógica de Negócio ---
 
+
 class StoreSchema(BaseModel):
     model_config = {"from_attributes": True}
     id: UUID
     name: str
     averagePrepTimeMinutes: int
-    geom: Optional[Dict[str, Any]] = None # GeoJSON representation do Point
+    geom: Optional[Dict[str, Any]] = None  # GeoJSON representation do Point
 
     @field_validator("geom", mode="before")
     @classmethod
@@ -18,6 +19,7 @@ class StoreSchema(BaseModel):
         if value is None or isinstance(value, dict):
             return value
         return None
+
 
 class DriverSchema(BaseModel):
     model_config = {"from_attributes": True}
@@ -28,6 +30,7 @@ class DriverSchema(BaseModel):
     active: bool
     lastPingAt: Optional[datetime] = None
 
+
 class StopSchema(BaseModel):
     model_config = {"from_attributes": True}
     id: UUID
@@ -35,7 +38,7 @@ class StopSchema(BaseModel):
     type: str
     requiresPin: bool
     completedAt: Optional[datetime] = None
-    geom: Optional[Dict[str, Any]] = None # GeoJSON do Point
+    geom: Optional[Dict[str, Any]] = None  # GeoJSON do Point
 
     @field_validator("geom", mode="before")
     @classmethod
@@ -43,6 +46,7 @@ class StopSchema(BaseModel):
         if value is None or isinstance(value, dict):
             return value
         return None
+
 
 class ManifestSchema(BaseModel):
     model_config = {"from_attributes": True}
@@ -54,6 +58,11 @@ class ManifestSchema(BaseModel):
     lockedAt: Optional[datetime] = None
     completedAt: Optional[datetime] = None
     driver: Optional[DriverSchema] = None
+
+
+class FcmTokenPayload(BaseModel):
+    token: str
+
 
 class OrderSchema(BaseModel):
     model_config = {"from_attributes": True}
@@ -72,7 +81,9 @@ class OrderSchema(BaseModel):
     driver: Optional[DriverSchema] = None
     manifest: Optional[UUID] = None
 
+
 # --- Schemas de Entrada da API (Inputs) ---
+
 
 class DispatchPayload(BaseModel):
     model_config = {"from_attributes": True}
@@ -83,6 +94,7 @@ class DispatchPayload(BaseModel):
     businessDate: Optional[date] = None
     distanceMeters: Optional[int] = 0
 
+
 class StopBatchCompleteItem(BaseModel):
     model_config = {"from_attributes": True}
     stop_id: UUID
@@ -91,11 +103,14 @@ class StopBatchCompleteItem(BaseModel):
     lng: Optional[float] = None
     timestamp: datetime
 
+
 class ShiftCheckInSchema(BaseModel):
     model_config = {"from_attributes": True}
     turno_id: UUID
     store_id: UUID
     date: date
+    lat: Optional[float] = None
+    lng: Optional[float] = None
 
 
 class DriverStatusPayload(BaseModel):
@@ -345,7 +360,9 @@ class CommunicationMessagePayload(BaseModel):
     message: str
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
+
 # --- Schemas da Fast Lane (Telemetria) ---
+
 
 class TelemetryPayload(BaseModel):
     model_config = {"from_attributes": True}

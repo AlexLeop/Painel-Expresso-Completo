@@ -78,9 +78,7 @@ fun ProfileScreen(navController: NavController) {
                         onClick = {
                             scope.launch {
                                 TrackingService.stop(context)
-                                context.dataStore.edit { preferences ->
-                                    preferences.remove(jwtTokenKey)
-                                }
+                                com.example.data.local.SecureStorage.clearToken(context)
                                 navController.navigate("login") {
                                     popUpTo(0)
                                 }

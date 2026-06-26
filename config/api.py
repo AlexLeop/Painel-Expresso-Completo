@@ -6,10 +6,10 @@ from ninja import NinjaAPI
 from django.http import HttpRequest
 
 SUPABASE_JWT_SECRET = os.environ.get(
-    "SUPABASE_JWT_SECRET",
-    "super-secret-jwt-token-with-at-least-32-characters-long"
+    "SUPABASE_JWT_SECRET", "super-secret-jwt-token-with-at-least-32-characters-long"
 )
 SUPABASE_JWT_AUDIENCE = os.environ.get("SUPABASE_JWT_AUDIENCE", "authenticated")
+
 
 class SupabaseJWTAuth(HttpBearer):
     """
@@ -17,20 +17,22 @@ class SupabaseJWTAuth(HttpBearer):
     Como o banco já usa RLS, esta classe atua garantindo que a API só seja acessada
     se a assinatura do token JWT for válida, populando o request com as claims.
     """
+
     def authenticate(self, request: HttpRequest, token: str) -> Optional[Any]:
         try:
             decoded = jwt.decode(
-                token, 
-                SUPABASE_JWT_SECRET, 
+                token,
+                SUPABASE_JWT_SECRET,
                 algorithms=["HS256"],
-                audience=SUPABASE_JWT_AUDIENCE
+                audience=SUPABASE_JWT_AUDIENCE,
             )
             return decoded
-            
+
         except jwt.ExpiredSignatureError:
-            return None # Ninja mapeia None para 401 Unauthorized
+            return None  # Ninja mapeia None para 401 Unauthorized
         except jwt.InvalidTokenError:
             return None
+
 
 # Importar Roters (A serem criados/recriados no Ninja)
 from logistics.api_driver import router as driver_router
@@ -48,7 +50,7 @@ api = NinjaAPI(
     title="Expresso Neves API",
     description="API de Gestão Logística e Financeira (Django Ninja)",
     version="1.0.0",
-    auth=SupabaseJWTAuth()
+    auth=SupabaseJWTAuth(),
 )
 
 api.add_router("/driver/", driver_router)
@@ -62,6 +64,7 @@ api.add_router("/admin/accounts/", accounts_admin_router)
 api.add_router("/admin/finance/", finance_admin_router)
 api.add_router("/admin/logistics/", logistics_admin_router)
 
+
 @api.exception_handler(Exception)
 def global_exception_handler(request, exc):
     """
@@ -73,21 +76,19 @@ def global_exception_handler(request, exc):
 
     if isinstance(exc, InvalidOrderStatusTransitionError):
         return api.create_response(
-            request,
-            {"success": False, "error": str(exc)},
-            status=400
+            request, {"success": False, "error": str(exc)}, status=400
         )
-    
+
     # Para outras exceções não tratadas, loga silenciosamente e retorna 500 genérico
     import logging
+
     logger = logging.getLogger(__name__)
     logger.error("Unhandled API Exception:", exc_info=exc)
-    
+
     return api.create_response(
-        request,
-        {"success": False, "error": "Erro interno do servidor."},
-        status=500
+        request, {"success": False, "error": "Erro interno do servidor."}, status=500
     )
+
 
 @api.get("/health", auth=None)
 def health_check(request):

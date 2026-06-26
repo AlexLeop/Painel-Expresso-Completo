@@ -5,7 +5,12 @@ from shared_schemas.logistics import OrderSchema
 
 
 def test_idempotency_schema_dump_does_not_raise_on_non_dict_geom():
-    store = SimpleNamespace(id="00000000-0000-0000-0000-000000000001", name="Loja", averagePrepTimeMinutes=15, geom="WKB")
+    store = SimpleNamespace(
+        id="00000000-0000-0000-0000-000000000001",
+        name="Loja",
+        averagePrepTimeMinutes=15,
+        geom="WKB",
+    )
     order = SimpleNamespace(
         id="00000000-0000-0000-0000-000000000002",
         status="OFFERED",

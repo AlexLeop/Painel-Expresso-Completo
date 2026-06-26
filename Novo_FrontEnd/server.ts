@@ -1,8 +1,8 @@
-import { logger } from './src/lib/logger';
+import { logger } from "./src/lib/logger";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import * as dotenv from 'dotenv';
+import * as dotenv from "dotenv";
 
 dotenv.config();
 
@@ -26,10 +26,10 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     // In production, serve the built static resources
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
@@ -39,4 +39,3 @@ async function startServer() {
 }
 
 startServer();
-

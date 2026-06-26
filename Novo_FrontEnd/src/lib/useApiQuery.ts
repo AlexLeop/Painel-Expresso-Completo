@@ -10,8 +10,8 @@
  * - Mutação programática de cache para atualizações otimistas.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { authFetch } from './api';
+import { useState, useEffect, useRef, useCallback } from "react";
+import { authFetch } from "./api";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -21,7 +21,7 @@ interface CacheItem<T> {
   error?: string;
 }
 
-type FetchStatus = 'idle' | 'loading' | 'revalidating' | 'error' | 'success';
+type FetchStatus = "idle" | "loading" | "revalidating" | "error" | "success";
 
 interface UseApiQueryResult<T> {
   data: T | null;
@@ -51,7 +51,7 @@ const inflightRequests = new Map<string, Promise<unknown>>();
 const listeners = new Map<string, Set<() => void>>();
 
 function notifyListeners(key: string) {
-  listeners.get(key)?.forEach(cb => cb());
+  listeners.get(key)?.forEach((cb) => cb());
 }
 
 function subscribe(key: string, cb: () => void) {
@@ -62,10 +62,16 @@ function subscribe(key: string, cb: () => void) {
 
 // ─── Mutação pública (pode ser usada fora de componentes) ────────────────────
 
-export function mutateCache<T>(key: string, updater: T | ((prev: T | null) => T)): void {
+export function mutateCache<T>(
+  key: string,
+  updater: T | ((prev: T | null) => T),
+): void {
   const existing = globalCache.get(key);
   const prev = existing ? (existing.data as T) : null;
-  const next = typeof updater === 'function' ? (updater as (p: T | null) => T)(prev) : updater;
+  const next =
+    typeof updater === "function"
+      ? (updater as (p: T | null) => T)(prev)
+      : updater;
   globalCache.set(key, { data: next, timestamp: Date.now() });
   notifyListeners(key);
 }
@@ -74,7 +80,7 @@ export function mutateCache<T>(key: string, updater: T | ((prev: T | null) => T)
 
 export function useApiQuery<T = unknown>(
   key: string | null,
-  options: UseApiQueryOptions = {}
+  options: UseApiQueryOptions = {},
 ): UseApiQueryResult<T> {
   const {
     refreshInterval = 30_000,
@@ -84,64 +90,71 @@ export function useApiQuery<T = unknown>(
   } = options;
 
   const [, forceRender] = useState(0);
-  const statusRef = useRef<FetchStatus>('idle');
+  const statusRef = useRef<FetchStatus>("idle");
   const mountedRef = useRef(true);
 
   // Obter dados do cache compartilhado
-  const cached = key ? (globalCache.get(key) as CacheItem<T> | undefined) : undefined;
+  const cached = key
+    ? (globalCache.get(key) as CacheItem<T> | undefined)
+    : undefined;
   const data = cached?.data ?? null;
   const isStale = !cached || Date.now() - cached.timestamp > staleTime;
 
   const rerender = useCallback(() => {
-    if (mountedRef.current) forceRender(n => n + 1);
+    if (mountedRef.current) forceRender((n) => n + 1);
   }, []);
 
   // Função de fetch com desduplicação
-  const doFetch = useCallback(async (silent: boolean) => {
-    if (!key || !enabled) return;
+  const doFetch = useCallback(
+    async (silent: boolean) => {
+      if (!key || !enabled) return;
 
-    const nextStatus: FetchStatus = silent ? 'revalidating' : 'loading';
-    statusRef.current = nextStatus;
-    if (!silent) rerender();
+      const nextStatus: FetchStatus = silent ? "revalidating" : "loading";
+      statusRef.current = nextStatus;
+      if (!silent) rerender();
 
-    // Desduplicação: reutiliza a Promise em andamento se já existir
-    let request = inflightRequests.get(key);
-    if (!request) {
-      request = authFetch(key)
-        .then(async res => {
-          if (!res.ok) throw new Error(`API retornou ${res.status}`);
-          return res.json();
-        })
-        .finally(() => {
-          inflightRequests.delete(key);
+      // Desduplicação: reutiliza a Promise em andamento se já existir
+      let request = inflightRequests.get(key);
+      if (!request) {
+        request = authFetch(key)
+          .then(async (res) => {
+            if (!res.ok) throw new Error(`API retornou ${res.status}`);
+            return res.json();
+          })
+          .finally(() => {
+            inflightRequests.delete(key);
+          });
+        inflightRequests.set(key, request);
+      }
+
+      try {
+        const result = await request;
+        globalCache.set(key, { data: result, timestamp: Date.now() });
+        statusRef.current = "success";
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Erro desconhecido";
+        const fallback = globalCache.get(key);
+        globalCache.set(key, {
+          data: fallback?.data ?? null,
+          timestamp: fallback?.timestamp ?? Date.now(),
+          error: msg,
         });
-      inflightRequests.set(key, request);
-    }
-
-    try {
-      const result = await request;
-      globalCache.set(key, { data: result, timestamp: Date.now() });
-      statusRef.current = 'success';
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erro desconhecido';
-      const fallback = globalCache.get(key);
-      globalCache.set(key, {
-        data: fallback?.data ?? null,
-        timestamp: fallback?.timestamp ?? Date.now(),
-        error: msg,
-      });
-      statusRef.current = 'error';
-    } finally {
-      notifyListeners(key!);
-      rerender();
-    }
-  }, [key, enabled, rerender]);
+        statusRef.current = "error";
+      } finally {
+        notifyListeners(key!);
+        rerender();
+      }
+    },
+    [key, enabled, rerender],
+  );
 
   // Subscrição a mudanças no cache global (para mutações otimistas de fora)
   useEffect(() => {
     if (!key) return;
     const unsub = subscribe(key, rerender);
-    return () => { unsub(); };
+    return () => {
+      unsub();
+    };
   }, [key, rerender]);
 
   // Disparar fetch inicial
@@ -153,8 +166,10 @@ export function useApiQuery<T = unknown>(
       doFetch(!!cached); // silent se já há dados em cache
     }
 
-    return () => { mountedRef.current = false; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      mountedRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, enabled]);
 
   // Revalidação periódica
@@ -175,45 +190,50 @@ export function useApiQuery<T = unknown>(
 
     const handleFocus = () => {
       const item = globalCache.get(key);
-      const needsRevalidation = !item || Date.now() - item.timestamp > staleTime;
+      const needsRevalidation =
+        !item || Date.now() - item.timestamp > staleTime;
       if (needsRevalidation) doFetch(true);
     };
 
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', () => {
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", () => {
       if (!document.hidden) handleFocus();
     });
 
     return () => {
-      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener("focus", handleFocus);
     };
   }, [key, enabled, staleTime, doFetch, revalidateOnFocus]);
 
   // Mutação local (atualiza cache e re-renderiza)
-  const mutate = useCallback((updater?: T | ((prev: T | null) => T)) => {
-    if (!key) return;
-    if (updater !== undefined) {
-      mutateCache(key, updater);
-    } else {
-      // Sem updater: invalida o cache e refaz a busca
-      globalCache.delete(key);
-      doFetch(false);
-    }
-  }, [key, doFetch]);
+  const mutate = useCallback(
+    (updater?: T | ((prev: T | null) => T)) => {
+      if (!key) return;
+      if (updater !== undefined) {
+        mutateCache(key, updater);
+      } else {
+        // Sem updater: invalida o cache e refaz a busca
+        globalCache.delete(key);
+        doFetch(false);
+      }
+    },
+    [key, doFetch],
+  );
 
   const refresh = useCallback(() => {
     if (!key) return;
     doFetch(false);
   }, [key, doFetch]);
 
-  const errorMsg = (cached as CacheItem<T> & { error?: string } | undefined)?.error ?? null;
+  const errorMsg =
+    (cached as (CacheItem<T> & { error?: string }) | undefined)?.error ?? null;
 
   return {
     data,
     error: errorMsg,
     status: statusRef.current,
-    isLoading: statusRef.current === 'loading',
-    isValidating: statusRef.current === 'revalidating',
+    isLoading: statusRef.current === "loading",
+    isValidating: statusRef.current === "revalidating",
     mutate,
     refresh,
   };

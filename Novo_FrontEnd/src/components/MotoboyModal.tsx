@@ -20,10 +20,18 @@ interface MotoboyModalProps {
   isOpen: boolean;
   onClose: () => void;
   motoboy: MotoboyType | null;
-  onToggleActive: (motoboyId: string, nextActive: boolean) => Promise<void> | void;
+  onToggleActive: (
+    motoboyId: string,
+    nextActive: boolean,
+  ) => Promise<void> | void;
 }
 
-export function MotoboyModal({ isOpen, onClose, motoboy, onToggleActive }: MotoboyModalProps) {
+export function MotoboyModal({
+  isOpen,
+  onClose,
+  motoboy,
+  onToggleActive,
+}: MotoboyModalProps) {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -51,9 +59,7 @@ export function MotoboyModal({ isOpen, onClose, motoboy, onToggleActive }: Motob
             className="fixed top-0 right-0 h-full w-full max-w-md bg-white shadow-2xl z-[51] flex flex-col border-l border-zinc-200"
           >
             <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/50">
-              <h2 className="text-lg font-bold text-zinc-900">
-                Motoboy
-              </h2>
+              <h2 className="text-lg font-bold text-zinc-900">Motoboy</h2>
               <button
                 onClick={onClose}
                 className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-full transition-colors"
@@ -64,7 +70,9 @@ export function MotoboyModal({ isOpen, onClose, motoboy, onToggleActive }: Motob
 
             <div className="flex-1 overflow-y-auto p-6">
               {!motoboy ? (
-                <div className="text-sm text-zinc-500">Selecione um motoboy para visualizar.</div>
+                <div className="text-sm text-zinc-500">
+                  Selecione um motoboy para visualizar.
+                </div>
               ) : (
                 <div className="space-y-6">
                   <div className="space-y-4">
@@ -74,14 +82,18 @@ export function MotoboyModal({ isOpen, onClose, motoboy, onToggleActive }: Motob
                     </h3>
 
                     <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1">Nome</label>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        Nome
+                      </label>
                       <div className="w-full px-3 py-2 text-sm bg-zinc-50 border border-zinc-200 rounded-lg text-zinc-700 font-semibold">
                         {motoboy.nome}
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1">Telefone</label>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        Telefone
+                      </label>
                       <div className="relative">
                         <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
                         <div className="w-full pl-9 pr-3 py-2 text-sm bg-zinc-50 border border-zinc-200 rounded-lg text-zinc-700 font-semibold">
@@ -91,14 +103,18 @@ export function MotoboyModal({ isOpen, onClose, motoboy, onToggleActive }: Motob
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-1">Status cadastral</label>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        Status cadastral
+                      </label>
                       <div className="w-full px-3 py-2 text-sm bg-zinc-50 border border-zinc-200 rounded-lg text-zinc-700 font-semibold">
                         {motoboy.status || "—"}
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-zinc-700 mb-2">Ativação do cadastro</label>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-2">
+                        Ativação do cadastro
+                      </label>
                       <button
                         type="button"
                         disabled={saving}
@@ -115,10 +131,12 @@ export function MotoboyModal({ isOpen, onClose, motoboy, onToggleActive }: Motob
                           "w-full px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-all border",
                           motoboy.ativo
                             ? "bg-white border-zinc-200 text-rose-700 hover:bg-rose-50"
-                            : "bg-zinc-900 border-zinc-900 text-white hover:bg-zinc-800"
+                            : "bg-zinc-900 border-zinc-900 text-white hover:bg-zinc-800",
                         )}
                       >
-                        {motoboy.ativo ? "Desativar cadastro" : "Ativar cadastro"}
+                        {motoboy.ativo
+                          ? "Desativar cadastro"
+                          : "Ativar cadastro"}
                       </button>
                     </div>
                   </div>

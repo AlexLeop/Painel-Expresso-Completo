@@ -4,6 +4,7 @@ from typing import List, Optional
 from ninja.errors import HttpError
 from logistics.models import ClientPortalUser
 
+
 def get_staff_member(request: HttpRequest) -> Optional[StaffMember]:
     """Retorna o StaffMember a partir do JWT extraído pelo middleware global."""
     if not hasattr(request, "auth") or not request.auth:
@@ -14,8 +15,10 @@ def get_staff_member(request: HttpRequest) -> Optional[StaffMember]:
     except StaffMember.DoesNotExist:
         return None
 
+
 def require_role(roles: List[str]):
     """Dependência Ninja para exigir Roles específicos."""
+
     def dependency(request: HttpRequest):
         staff = get_staff_member(request)
         if not staff:
@@ -23,7 +26,9 @@ def require_role(roles: List[str]):
         if staff.role not in roles:
             raise HttpError(403, f"Acesso negado. Requer um dos roles: {roles}")
         return staff
+
     return dependency
+
 
 def platform_admin_required(request: HttpRequest):
     """Dependência Ninja para Platform Admins globais."""
@@ -43,7 +48,9 @@ def get_client_portal_user(request: HttpRequest) -> Optional[ClientPortalUser]:
         return None
     uid = request.auth.get("sub")
     try:
-        return ClientPortalUser.objects.select_related("client", "operator").get(supabase_uid=uid)
+        return ClientPortalUser.objects.select_related("client", "operator").get(
+            supabase_uid=uid
+        )
     except ClientPortalUser.DoesNotExist:
         return None
 
@@ -51,5 +58,7 @@ def get_client_portal_user(request: HttpRequest) -> Optional[ClientPortalUser]:
 def client_portal_required(request: HttpRequest) -> ClientPortalUser:
     client_user = get_client_portal_user(request)
     if not client_user:
-        raise HttpError(401, "Não autenticado ou usuário do portal do cliente não encontrado.")
+        raise HttpError(
+            401, "Não autenticado ou usuário do portal do cliente não encontrado."
+        )
     return client_user

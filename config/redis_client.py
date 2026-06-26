@@ -1,6 +1,5 @@
 import os
 import threading
-import time
 from typing import Any, Optional
 
 import redis
@@ -78,12 +77,17 @@ class MemoryRedis:
     def zrange(self, key: str, start: int, end: int):
         with self._lock:
             z = self._zsets.get(key, {})
-            ordered = [member for member, _score in sorted(z.items(), key=lambda item: (float(item[1]), str(item[0])))]
+            ordered = [
+                member
+                for member, _score in sorted(
+                    z.items(), key=lambda item: (float(item[1]), str(item[0]))
+                )
+            ]
             if end == -1:
                 end = len(ordered) - 1
             if end < start:
                 return []
-            return ordered[start:end + 1]
+            return ordered[start : end + 1]
 
     def zrangebyscore(self, key: str, min: str, max: str):
         with self._lock:
@@ -98,7 +102,11 @@ class MemoryRedis:
             z = self._zsets.get(key, {})
             min_score = float("-inf") if min == "-inf" else float(min)
             max_score = float("inf") if max == "+inf" else float(max)
-            to_remove = [member for member, score in z.items() if min_score <= float(score) <= max_score]
+            to_remove = [
+                member
+                for member, score in z.items()
+                if min_score <= float(score) <= max_score
+            ]
             for member in to_remove:
                 del z[member]
             return len(to_remove)
@@ -139,7 +147,7 @@ class MemoryRedis:
                 end = len(lst) - 1
             if end < start:
                 return []
-            return list(lst[start:end + 1])
+            return list(lst[start : end + 1])
 
     def lpop(self, key: str, count: Optional[int] = None):
         with self._lock:
@@ -160,12 +168,17 @@ class MemoryRedis:
                 return True
             if end == -1:
                 end = len(lst) - 1
-            self._lists[key] = lst[start:end + 1]
+            self._lists[key] = lst[start : end + 1]
             return True
 
     def scan(self, cursor: int = 0, match: Optional[str] = None, count: int = 10):
         with self._lock:
-            all_keys = set(self._values.keys()) | set(self._sets.keys()) | set(self._zsets.keys()) | set(self._lists.keys())
+            all_keys = (
+                set(self._values.keys())
+                | set(self._sets.keys())
+                | set(self._zsets.keys())
+                | set(self._lists.keys())
+            )
             keys = sorted(all_keys)
             if match:
                 keys = [k for k in keys if fnmatch.fnmatch(k, match)]
@@ -222,7 +235,9 @@ def get_redis():
             return _singleton_client
 
         redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/1")
-        allow_fallback = os.environ.get("REDIS_ALLOW_MEMORY_FALLBACK", "").strip().lower() in {"1", "true", "yes", "on"}
+        allow_fallback = os.environ.get(
+            "REDIS_ALLOW_MEMORY_FALLBACK", ""
+        ).strip().lower() in {"1", "true", "yes", "on"}
         client = redis.Redis.from_url(redis_url, decode_responses=True)
         try:
             client.ping()

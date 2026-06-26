@@ -1,16 +1,19 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional
 from datetime import datetime, date
 from uuid import UUID
+
 
 class WalletResponse(BaseModel):
     model_config = {"from_attributes": True}
     balanceCents: int
     updatedAt: datetime
 
+
 class WithdrawalRequestPayload(BaseModel):
     amountCents: int = Field(..., gt=0)
     pixKey: str
+
 
 class WithdrawalResponse(BaseModel):
     model_config = {"from_attributes": True}
@@ -20,6 +23,7 @@ class WithdrawalResponse(BaseModel):
     pixKey: str
     createdAt: datetime
 
+
 class ManualEntryPayload(BaseModel):
     driver_id: UUID
     store_id: Optional[UUID] = None
@@ -27,6 +31,7 @@ class ManualEntryPayload(BaseModel):
     description: str
     visibleToStore: bool = True
     taxCategory: str
+
 
 class ManualEntryResponse(BaseModel):
     model_config = {"from_attributes": True}
@@ -36,6 +41,7 @@ class ManualEntryResponse(BaseModel):
     status: str
     taxCategory: str
     createdAt: datetime
+
 
 class InvoiceResponse(BaseModel):
     model_config = {"from_attributes": True}
@@ -47,6 +53,7 @@ class InvoiceResponse(BaseModel):
     barcode: Optional[str] = None
     pixCopyPaste: Optional[str] = None
 
+
 class TransactionResponse(BaseModel):
     model_config = {"from_attributes": True}
     id: UUID
@@ -54,4 +61,3 @@ class TransactionResponse(BaseModel):
     category: str
     taxCategory: str
     createdAt: datetime
-

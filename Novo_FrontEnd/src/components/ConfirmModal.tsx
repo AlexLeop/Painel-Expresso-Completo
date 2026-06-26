@@ -10,7 +10,13 @@ interface ConfirmModalProps {
   onCancel: () => void;
 }
 
-export function ConfirmModal({ isOpen, title, message, onConfirm, onCancel }: ConfirmModalProps) {
+export function ConfirmModal({
+  isOpen,
+  title,
+  message,
+  onConfirm,
+  onCancel,
+}: ConfirmModalProps) {
   if (!isOpen) return null;
 
   return (
@@ -39,18 +45,18 @@ export function ConfirmModal({ isOpen, title, message, onConfirm, onCancel }: Co
               <p className="text-sm text-zinc-500 mt-1">{message}</p>
             </div>
           </div>
-          
+
           <div className="p-6 flex justify-end gap-3 sm:gap-2 sm:flex-row flex-col-reverse mt-2">
-            <button 
-              type="button" 
-              onClick={onCancel} 
+            <button
+              type="button"
+              onClick={onCancel}
               className="w-full sm:w-auto px-4 py-2 border border-zinc-200 bg-white text-zinc-700 rounded-lg hover:bg-zinc-50 text-sm font-bold transition-all"
             >
               Cancelar
             </button>
-            <button 
-              type="button" 
-              onClick={onConfirm} 
+            <button
+              type="button"
+              onClick={onConfirm}
               className="w-full sm:w-auto px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-bold shadow-sm transition-all"
             >
               Excluir

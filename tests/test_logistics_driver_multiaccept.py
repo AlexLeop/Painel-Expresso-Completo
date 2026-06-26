@@ -5,9 +5,16 @@ from logistics.models import Order
 
 
 def test_driver_active_orders_limit_never_below_one():
-    assert api_driver._driver_active_orders_limit(SimpleNamespace(maxActiveOrders=0)) == 1
-    assert api_driver._driver_active_orders_limit(SimpleNamespace(maxActiveOrders=None)) == 1
-    assert api_driver._driver_active_orders_limit(SimpleNamespace(maxActiveOrders=4)) == 4
+    assert (
+        api_driver._driver_active_orders_limit(SimpleNamespace(maxActiveOrders=0)) == 1
+    )
+    assert (
+        api_driver._driver_active_orders_limit(SimpleNamespace(maxActiveOrders=None))
+        == 1
+    )
+    assert (
+        api_driver._driver_active_orders_limit(SimpleNamespace(maxActiveOrders=4)) == 4
+    )
 
 
 def test_driver_reached_capacity_uses_explicit_driver_limit(monkeypatch):
@@ -18,7 +25,11 @@ def test_driver_reached_capacity_uses_explicit_driver_limit(monkeypatch):
         def count(self):
             return self.total
 
-    monkeypatch.setattr(api_driver, "_get_active_driver_orders", lambda driver, exclude_order_id=None: FakeOrders(3))
+    monkeypatch.setattr(
+        api_driver,
+        "_get_active_driver_orders",
+        lambda driver, exclude_order_id=None: FakeOrders(3),
+    )
 
     assert api_driver._driver_reached_capacity(SimpleNamespace(maxActiveOrders=3))
     assert not api_driver._driver_reached_capacity(SimpleNamespace(maxActiveOrders=4))
@@ -49,7 +60,9 @@ def test_clear_order_runtime_state_clears_claim_tracker_and_stops(monkeypatch):
             return ["stop-1", "stop-2"]
 
     monkeypatch.setattr(api_driver, "r", FakeRedis())
-    monkeypatch.setattr(api_driver.Stop.objects, "filter", lambda **kwargs: FakeStopQuery())
+    monkeypatch.setattr(
+        api_driver.Stop.objects, "filter", lambda **kwargs: FakeStopQuery()
+    )
 
     order = SimpleNamespace(id="order-1")
     api_driver.clear_order_runtime_state(order, "driver-1")
@@ -63,7 +76,9 @@ def test_clear_order_runtime_state_clears_claim_tracker_and_stops(monkeypatch):
 
 
 def test_accept_to_offered_is_allowed_for_operational_release():
-    assert Order.OrderStatus.OFFERED in Order.VALID_TRANSITIONS[Order.OrderStatus.ACCEPTED]
+    assert (
+        Order.OrderStatus.OFFERED in Order.VALID_TRANSITIONS[Order.OrderStatus.ACCEPTED]
+    )
 
 
 def test_point_coordinates_returns_none_for_non_point_like_values():

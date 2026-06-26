@@ -1,0 +1,40 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Novo_FrontEnd/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Novo_FrontEnd/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./Novo_FrontEnd
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: Novo_FrontEnd/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint || echo "No lint script defined"
+
+      - name: Build
+        run: npm run build

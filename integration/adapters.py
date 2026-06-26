@@ -125,21 +125,25 @@ def extract_external_order_id(payload: Dict[str, Any]) -> Optional[str]:
         payload.get("externalCode"),
     ]
     order = payload.get("order") or {}
-    candidates.extend([
-        order.get("id"),
-        order.get("_id"),
-        order.get("orderId"),
-        order.get("ordersId"),
-        order.get("codigo"),
-        order.get("externalCode"),
-    ])
+    candidates.extend(
+        [
+            order.get("id"),
+            order.get("_id"),
+            order.get("orderId"),
+            order.get("ordersId"),
+            order.get("codigo"),
+            order.get("externalCode"),
+        ]
+    )
     for candidate in candidates:
         if candidate not in (None, ""):
             return str(candidate)
     return None
 
 
-def extract_merchant_reference(source: str, headers: Dict[str, Any], payload: Dict[str, Any]) -> Optional[str]:
+def extract_merchant_reference(
+    source: str, headers: Dict[str, Any], payload: Dict[str, Any]
+) -> Optional[str]:
     provider = normalize_provider(source)
     order = payload.get("order") or {}
     header_candidates = [
@@ -170,10 +174,12 @@ def extract_merchant_reference(source: str, headers: Dict[str, Any], payload: Di
     ]
 
     if provider == "99FOOD":
-        payload_candidates.extend([
-            payload.get("appShopId"),
-            order.get("appShopId"),
-        ])
+        payload_candidates.extend(
+            [
+                payload.get("appShopId"),
+                order.get("appShopId"),
+            ]
+        )
 
     for candidate in header_candidates + payload_candidates:
         if candidate not in (None, ""):
@@ -250,11 +256,14 @@ def parse_business_date(payload: Dict[str, Any]) -> Optional[datetime]:
 
 
 def provider_profile(provider: str) -> Dict[str, Any]:
-    return PROVIDER_PROFILES.get(normalize_provider(provider), {
-        "ack_mode": "WEBHOOK_ACK",
-        "status_field": "status",
-        "event_prefix": "order.",
-    })
+    return PROVIDER_PROFILES.get(
+        normalize_provider(provider),
+        {
+            "ack_mode": "WEBHOOK_ACK",
+            "status_field": "status",
+            "event_prefix": "order.",
+        },
+    )
 
 
 def normalize_external_status(raw_status: Optional[str]) -> Optional[str]:
@@ -295,7 +304,9 @@ def map_inbound_order_status(provider: str, payload: Dict[str, Any]) -> Optional
     return INBOUND_ORDER_STATUS_MAP.get(external_status)
 
 
-def should_apply_inbound_status(current_status: str, desired_status: Optional[str]) -> bool:
+def should_apply_inbound_status(
+    current_status: str, desired_status: Optional[str]
+) -> bool:
     if not desired_status or desired_status == current_status:
         return False
     current_rank = ORDER_STATUS_PRECEDENCE.get(current_status, 0)
@@ -339,7 +350,11 @@ def _event_name(provider: str, event_type: str) -> str:
     normalized_provider = normalize_provider(provider)
     prefix = provider_profile(normalized_provider)["event_prefix"]
     normalized_event = str(event_type).strip().lower().replace("_", ".")
-    return f"{prefix}{normalized_event}" if not normalized_event.startswith(prefix) else normalized_event
+    return (
+        f"{prefix}{normalized_event}"
+        if not normalized_event.startswith(prefix)
+        else normalized_event
+    )
 
 
 def build_outbound_event_payload(
@@ -354,13 +369,14 @@ def build_outbound_event_payload(
 ) -> Dict[str, Any]:
     normalized_provider = normalize_provider(provider)
     profile = provider_profile(normalized_provider)
-    order_status = (
-        payload.get("status")
-        or getattr(order, "status", None)
-    )
+    order_status = payload.get("status") or getattr(order, "status", None)
     outbound_status = OUTBOUND_STATUS_MAP.get(order_status, order_status)
-    merchant_id = payload.get("merchant_id") or (integration.merchantId if integration else None)
-    order_id = payload.get("external_order_id") or payload.get("order_id") or payload.get("id")
+    merchant_id = payload.get("merchant_id") or (
+        integration.merchantId if integration else None
+    )
+    order_id = (
+        payload.get("external_order_id") or payload.get("order_id") or payload.get("id")
+    )
     if order and getattr(order, "external_order_id", None):
         order_id = order.external_order_id
 
@@ -376,7 +392,12 @@ def build_outbound_event_payload(
         "orderId": order_id,
         "merchantId": merchant_id,
         "orderStatus": outbound_status,
-        "occurredAt": payload.get("occurred_at") or (getattr(order, "completedAt", None).isoformat() if order and getattr(order, "completedAt", None) else None),
+        "occurredAt": payload.get("occurred_at")
+        or (
+            getattr(order, "completedAt", None).isoformat()
+            if order and getattr(order, "completedAt", None)
+            else None
+        ),
         "payload": payload,
     }
     if order:
@@ -384,7 +405,9 @@ def build_outbound_event_payload(
             "localId": str(order.id),
             "externalId": order.external_order_id,
             "status": order.status,
-            "businessDate": order.businessDate.isoformat() if order.businessDate else None,
+            "businessDate": order.businessDate.isoformat()
+            if order.businessDate
+            else None,
             "requestedAt": order.requestedAt.isoformat() if order.requestedAt else None,
             "acceptedAt": order.acceptedAt.isoformat() if order.acceptedAt else None,
             "startedAt": order.startedAt.isoformat() if order.startedAt else None,

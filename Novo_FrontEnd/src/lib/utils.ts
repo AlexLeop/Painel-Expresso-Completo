@@ -6,14 +6,14 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatCurrency(value: number) {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL'
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
   }).format(value);
 }
 
 export function toLocalDateISO(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 export function getEasterDate(year: number): Date {
@@ -47,7 +47,7 @@ export function getBrazilianHolidaysMap(year: number): Map<string, string> {
   holidays.set(`${year}-12-25`, "Natal");
 
   const easter = getEasterDate(year);
-  
+
   const goodFriday = new Date(easter);
   goodFriday.setDate(easter.getDate() - 2);
   holidays.set(toLocalDateISO(goodFriday), "Sexta-feira Santa");
@@ -80,7 +80,9 @@ export function isBrazilianHoliday(dateInput: string | Date): boolean {
   return holidays.has(dateStr);
 }
 
-export function getBrazilianHolidayName(dateInput: string | Date): string | null {
+export function getBrazilianHolidayName(
+  dateInput: string | Date,
+): string | null {
   let dateStr = "";
   let year = new Date().getFullYear();
 
@@ -96,4 +98,3 @@ export function getBrazilianHolidayName(dateInput: string | Date): string | null
   const holidays = getBrazilianHolidaysMap(year);
   return holidays.get(dateStr) || null;
 }
-
