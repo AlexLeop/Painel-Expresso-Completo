@@ -232,7 +232,7 @@ def get_gerencial_data(request):
     # Semana atual: calcula startDate desta semana (segunda-feira)
     today_weekday = today.weekday()
     week_start = today - timedelta(days=today_weekday)
-    week_end = week_start + timedelta(days=6)
+    week_start + timedelta(days=6)
 
     semana_atual = (
         WeeklyStoreInvoice.objects.filter(

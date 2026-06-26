@@ -25,7 +25,7 @@ def block_deactivated_driver(sender, instance, **kwargs):
     """
     if instance.id:
         try:
-            old_active = kwargs.get("update_fields")
+            kwargs.get("update_fields")
             # Para detectar a transição active=True → active=False,
             # precisamos verificar contra o valor anterior.
             # Em post_save, o instance já tem o novo valor.

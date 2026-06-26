@@ -345,7 +345,6 @@ class TestOutboxTransactionScope:
         # O requests.post deve estar FORA do bloco with tenant_context
         lines = source.split("\n")
         in_tenant_context = False
-        http_inside_tenant = False
 
         for line in lines:
             stripped = line.strip()
@@ -358,7 +357,7 @@ class TestOutboxTransactionScope:
                 and not stripped.startswith("#")
                 and "requests.post" in stripped
             ):
-                http_inside_tenant = True
+                pass
             # Detect exiting tenant_context (next line at same/lower indentation)
 
         # Mais simples: contar quantos tenant_context existem (devem ser múltiplos curtos)

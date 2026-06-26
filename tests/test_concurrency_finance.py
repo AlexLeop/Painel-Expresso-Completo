@@ -30,7 +30,7 @@ async def test_race_condition_settlement():
         operator=operator, client=client, name="Store", active=True
     )
 
-    contract = await Contract.objects.acreate(
+    await Contract.objects.acreate(
         operator=operator,
         store=store,
         compensationMode=Contract.CompensationMode.PRODUCAO,
@@ -62,7 +62,7 @@ async def test_race_condition_settlement():
         except Exception:
             return False
 
-    results = await asyncio.gather(*(attempt_settle() for _ in range(5)))
+    await asyncio.gather(*(attempt_settle() for _ in range(5)))
 
     wallet = await Wallet.objects.aget(driver=driver, operator=operator)
     assert wallet.balanceCents == 500, f"Expected 500, got {wallet.balanceCents}"

@@ -1,0 +1,8 @@
+[lint]
+ignore = [
+    "E402", # module-import-not-at-top-of-file
+    "F403", # undefined-local-with-import-star
+    "F405", # undefined-local-with-import-star-usage
+    "E722", # bare-except
+    "F401", # unused-import
+]

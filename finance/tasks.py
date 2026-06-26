@@ -26,7 +26,7 @@ def compute_daily_credit(target_cutoff_hour=None):
     Roda dinamicamente calculando a competência (business_date) baseada
     no cutoffHour do contrato da loja, eliminando o Bug da Meia-Noite.
     """
-    now = timezone.localtime()
+    timezone.localtime()
 
     operators = Operator.objects.values_list("id", flat=True)
     total_processed = 0

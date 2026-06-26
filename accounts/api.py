@@ -35,7 +35,7 @@ r = get_redis()
 
 @router.post("/admin/operators", response=OperatorResponse)
 def create_operator(request, payload: OperatorCreatePayload):
-    admin = platform_admin_required(request)
+    platform_admin_required(request)
     with transaction.atomic():
         operator = Operator.objects.create(
             id=uuid4(), name=payload.name, status=Operator.OperatorStatus.TRIAL
@@ -113,7 +113,7 @@ async def verify_biometrics(request, payload: DriverBiometricPayload):
     
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.post(
+            await client.post(
                 provider_url,
                 json={
                     "driver_id": str(driver.id),
