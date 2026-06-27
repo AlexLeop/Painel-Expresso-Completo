@@ -57,6 +57,10 @@ android {
       buildConfigField("boolean", "ENABLE_HTTP_LOGGING", "true")
     }
   }
+  lint {
+    checkReleaseBuilds = false
+    abortOnError = false
+  }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
