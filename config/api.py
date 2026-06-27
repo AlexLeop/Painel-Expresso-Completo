@@ -27,10 +27,23 @@ class SupabaseJWTAuth(HttpBearer):
                 audience=SUPABASE_JWT_AUDIENCE,
             )
             return decoded
-
         except jwt.ExpiredSignatureError:
             return None  # Ninja mapeia None para 401 Unauthorized
         except jwt.InvalidTokenError:
+            # Fallback: tentar validar usando a API do Supabase diretamente
+            # Isso é útil caso SUPABASE_JWT_SECRET não esteja configurado corretamente
+            try:
+                from config.supabase_client import supabase
+                if not supabase:
+                    return None
+                user_res = supabase.auth.get_user(token)
+                if user_res and user_res.user:
+                    # Retorna um dicionário compatível com o 'decoded' original
+                    return {"sub": user_res.user.id, "email": user_res.user.email}
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"Erro no fallback do Supabase Auth: {e}")
+                pass
             return None
 
 
