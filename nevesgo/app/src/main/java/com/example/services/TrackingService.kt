@@ -55,9 +55,10 @@ class TrackingService : Service() {
         )
 
         val notification = NotificationCompat.Builder(this, "TRACKING_CHANNEL")
-            .setContentTitle("NevesGo")
-            .setContentText("Rastreamento de jornada ativo (Online)")
+            .setContentTitle("Expresso Neves Online")
+            .setContentText("Você está disponível para receber rotas e coletas.")
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setColor(android.graphics.Color.parseColor("#E53935")) // Expresso Red
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(pendingIntent)
             .build()

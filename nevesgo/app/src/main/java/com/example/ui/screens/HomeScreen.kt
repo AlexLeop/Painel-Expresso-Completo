@@ -388,7 +388,11 @@ fun HomeScreen(navController: NavController, viewModel: DeliveryViewModel = view
             }
         }
 
-        if (showNewDeliveryAlert && newestDelivery != null) {
+        AnimatedVisibility(
+            visible = showNewDeliveryAlert && newestDelivery != null,
+            enter = androidx.compose.animation.slideInVertically(initialOffsetY = { it }) + androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it }) + androidx.compose.animation.fadeOut()
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()

@@ -270,7 +270,7 @@ fun RouteNavigationScreen(
                     MapView(ctx).apply {
                         mapViewObserver = this
                         setMultiTouchControls(true)
-                        controller.setZoom(15.0)
+                        controller.setZoom(17.0)
                     }
                 },
                 update = { mapView ->
@@ -368,7 +368,7 @@ fun RouteNavigationScreen(
             
             Card(
                 shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp), 
-                elevation = CardDefaults.cardElevation(24.dp), 
+                elevation = CardDefaults.cardElevation(defaultElevation = 24.dp), 
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
@@ -388,34 +388,17 @@ fun RouteNavigationScreen(
                                      }
                                  } ?: (orderDetail?.origin?.storeName ?: "Entrega em andamento"),
                                  fontWeight = FontWeight.Black,
-                                 fontSize = 20.sp,
+                                 fontSize = 18.sp,
                                  color = MaterialTheme.colorScheme.onSurface
-                             )
-                             Text(
-                                 routeSummary,
-                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                              )
                          }
                     }
+                    
                     Spacer(modifier = Modifier.height(24.dp))
-                    if (!hasOpenShift) {
-                        Text(
-                            text = "Abra uma sessao de turno antes de iniciar o rastreamento desta corrida.",
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                    } else if (currentShift != null) {
-                        Text(
-                            text = "Jornada aberta em ${currentShift.storeName ?: "loja"} • ${currentShift.turnoName ?: "turno"}",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
+                    
                     if (routeEndPoint != null) {
-                        Row(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = Arrangement.Center) {
-                            OutlinedButton(onClick = {
+                        OutlinedButton(
+                            onClick = {
                                 val lat = routeEndPoint.latitude
                                 val lng = routeEndPoint.longitude
                                 val uri = android.net.Uri.parse("geo:$lat,$lng?q=$lat,$lng")
@@ -425,18 +408,21 @@ fun RouteNavigationScreen(
                                 } catch (e: Exception) {
                                     android.widget.Toast.makeText(context, "Nenhum aplicativo de mapas encontrado", android.widget.Toast.LENGTH_SHORT).show()
                                 }
-                            }) {
-                                Icon(Icons.Filled.Map, contentDescription = null)
-                                Spacer(Modifier.width(8.dp))
-                                Text("Abrir em Mapa Externo (Waze/Google Maps)")
-                            }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Filled.Map, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Navegar (Waze/Google Maps)")
                         }
+                        Spacer(modifier = Modifier.height(16.dp))
                     }
                     com.example.ui.components.DriverSwipeButton(
                         text = if (hasOpenShift) "CHEGUEI A PROXIMA PARADA" else "IR PARA TURNOS",
                         onSwipeComplete = {
                             if (hasOpenShift) {
-                                navController.navigate("confirmar_entrega/${orderId ?: ""}")
+                                navController.navigate("confirm_delivery/${orderId ?: ""}")
                             } else {
                                 navController.navigate("escalas")
                             }

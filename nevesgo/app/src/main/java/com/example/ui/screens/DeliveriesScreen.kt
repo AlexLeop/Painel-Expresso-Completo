@@ -127,9 +127,9 @@ fun DeliveriesScreen(navController: NavController, viewModel: DeliveryViewModel 
                 } else {
                     items(currentList) { delivery ->
                         when (delivery.status) {
-                            "OFFERED" -> PendingDeliveryCard(navController, delivery, viewModel)
-                            "ACCEPTED", "STARTED", "ARRIVED", "CANCELED_IN_TRANSIT", "RETURNING_TO_STORE" -> InProgressDeliveryCard(navController, delivery)
-                            "COMPLETED" -> CompletedDeliveryCard(delivery)
+                            "OFFERED" -> PendingDeliveryCard(navController, delivery, viewModel, Modifier.animateItem())
+                            "ACCEPTED", "STARTED", "ARRIVED", "CANCELED_IN_TRANSIT", "RETURNING_TO_STORE" -> InProgressDeliveryCard(navController, delivery, Modifier.animateItem())
+                            "COMPLETED" -> CompletedDeliveryCard(delivery, Modifier.animateItem())
                         }
                     }
                 }
@@ -139,8 +139,8 @@ fun DeliveriesScreen(navController: NavController, viewModel: DeliveryViewModel 
 }
 
 @Composable
-fun PendingDeliveryCard(navController: NavController, delivery: OrderEntity, viewModel: DeliveryViewModel) {
-    com.example.ui.components.DriverInfoCard {
+fun PendingDeliveryCard(navController: NavController, delivery: OrderEntity, viewModel: DeliveryViewModel, modifier: Modifier = Modifier) {
+    com.example.ui.components.DriverInfoCard(modifier = modifier) {
         Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
             Text(delivery.id, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             Text("${String.format("%.1f", delivery.distanceMeters / 1000.0)} km", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -169,9 +169,9 @@ fun PendingDeliveryCard(navController: NavController, delivery: OrderEntity, vie
 }
 
 @Composable
-fun InProgressDeliveryCard(navController: NavController, delivery: OrderEntity) {
+fun InProgressDeliveryCard(navController: NavController, delivery: OrderEntity, modifier: Modifier = Modifier) {
     com.example.ui.components.DriverInfoCard(
-        modifier = Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(24.dp))
+        modifier = modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(24.dp))
     ) {
         Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             com.example.ui.components.DriverStatusBadge(delivery.status.replace('_', ' '), com.example.ui.components.BadgeStatus.INFO)
@@ -194,10 +194,10 @@ fun InProgressDeliveryCard(navController: NavController, delivery: OrderEntity) 
 }
 
 @Composable
-fun CompletedDeliveryCard(delivery: OrderEntity) {
+fun CompletedDeliveryCard(delivery: OrderEntity, modifier: Modifier = Modifier) {
     Card(
         shape = RoundedCornerShape(24.dp),
-        modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(24.dp)),
+        modifier = modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(24.dp)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
     ) {
