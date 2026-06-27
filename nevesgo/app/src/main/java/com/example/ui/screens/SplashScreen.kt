@@ -1,10 +1,6 @@
 package com.example.ui.screens
 
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -25,7 +21,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -47,16 +45,16 @@ fun SplashScreen(
         label = "alpha"
     )
 
-    // Pulse animation
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 0.95f,
-        targetValue = 1.08f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 900),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulseScale"
+    val scaleAnim by animateFloatAsState(
+        targetValue = if (startAnimation) 1f else 0.9f,
+        animationSpec = tween(durationMillis = 800),
+        label = "scale"
+    )
+
+    val offsetY by animateFloatAsState(
+        targetValue = if (startAnimation) 0f else 50f,
+        animationSpec = tween(durationMillis = 800),
+        label = "offsetY"
     )
 
     LaunchedEffect(key1 = true) {
@@ -77,35 +75,41 @@ fun SplashScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black),
+            .background(Color.White), // Clean Flat Light background
         contentAlignment = Alignment.Center
     ) {
         Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.alpha(alphaAnim.value)
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Image(
                 painter = painterResource(id = R.drawable.ic_logo),
                 contentDescription = "Logo Expresso Neves",
                 modifier = Modifier
                     .size(120.dp)
-                    .scale(pulseScale)
+                    .scale(scaleAnim)
             )
             Spacer(modifier = Modifier.height(24.dp))
-            Text(
-                text = "EXPRESSO NEVES",
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFFE53935), // Expresso Red
-                letterSpacing = 3.sp
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Entregas com excelência",
-                fontSize = 14.sp,
-                color = Color(0xFFAAAAAA),
-                letterSpacing = 1.sp
-            )
+            Column(
+                modifier = Modifier
+                    .alpha(alphaAnim.value)
+                    .offset(y = offsetY.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "EXPRESSO NEVES",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFFE53935), // Expresso Red
+                    letterSpacing = 2.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Entregas com excelência",
+                    fontSize = 14.sp,
+                    color = Color(0xFF757575), // Clean Gray
+                    letterSpacing = 1.sp
+                )
+            }
         }
     }
 }

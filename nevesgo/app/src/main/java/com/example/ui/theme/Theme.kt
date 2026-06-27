@@ -48,11 +48,13 @@ private val LightColorScheme =
 
 @Composable
 fun NevesGoTheme(
-  darkTheme: Boolean = isSystemInDarkTheme(),
+  darkTheme: Boolean = false, // Enforce light theme for Clean Flat design
   dynamicColor: Boolean = false,
   content: @Composable () -> Unit,
 ) {
-  val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+  // We use LightColorScheme unconditionally because our brand identity
+  // relies on a crisp white background with high contrast dark text.
+  val colorScheme = LightColorScheme
 
   MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)
 }

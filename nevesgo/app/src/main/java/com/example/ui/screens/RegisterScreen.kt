@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -20,7 +23,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
@@ -40,6 +45,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -51,13 +57,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.BuildConfig
+import com.example.ui.theme.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -81,7 +91,7 @@ private fun SectionTitle(text: String) {
         text = text,
         fontSize = 18.sp,
         fontWeight = FontWeight.Bold,
-        color = Red,
+        color = Color(0xFF1A1A1A),
         modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
     )
 }
@@ -92,7 +102,7 @@ private fun FieldLabel(text: String) {
         text = text,
         fontSize = 13.sp,
         fontWeight = FontWeight.Medium,
-        color = Color(0xFF555555),
+        color = Color(0xFF757575),
         modifier = Modifier.padding(bottom = 4.dp)
     )
 }
@@ -102,8 +112,17 @@ private fun StyledField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    keyboardOptions: androidx.compose.foundation.text.KeyboardOptions = androidx.compose.foundation.text.KeyboardOptions.Default
 ) {
+    val localFieldColors = OutlinedTextFieldDefaults.colors(
+        unfocusedBorderColor = Color(0xFFE0E0E0),
+        focusedBorderColor = ExpressoRed,
+        unfocusedContainerColor = Color(0xFFF9F9F9),
+        focusedContainerColor = Color.White,
+        focusedTextColor = Color(0xFF1A1A1A),
+        unfocusedTextColor = Color(0xFF1A1A1A)
+    )
     Column(modifier = modifier) {
         FieldLabel(label)
         OutlinedTextField(
@@ -111,8 +130,9 @@ private fun StyledField(
             onValueChange = onValueChange,
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            shape = RoundedCornerShape(12.dp),
-            colors = fieldColors
+            shape = RoundedCornerShape(16.dp),
+            colors = localFieldColors,
+            keyboardOptions = keyboardOptions
         )
     }
 }
@@ -126,6 +146,14 @@ private fun DropdownField(
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val localFieldColors = OutlinedTextFieldDefaults.colors(
+        unfocusedBorderColor = Color(0xFFE0E0E0),
+        focusedBorderColor = ExpressoRed,
+        unfocusedContainerColor = Color(0xFFF9F9F9),
+        focusedContainerColor = Color.White,
+        focusedTextColor = Color(0xFF1A1A1A),
+        unfocusedTextColor = Color(0xFF1A1A1A)
+    )
     Column(modifier = modifier) {
         FieldLabel(label)
         Box {
@@ -137,9 +165,12 @@ private fun DropdownField(
                     .clickable { expanded = true },
                 readOnly = true,
                 singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                colors = fieldColors,
-                placeholder = { Text("Selecione", color = Color(0xFFBBBBBB)) }
+                shape = RoundedCornerShape(16.dp),
+                colors = localFieldColors,
+                trailingIcon = {
+                    Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = Color(0xFF757575))
+                },
+                placeholder = { Text("Selecione", color = Color(0xFF999999)) }
             )
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 options.forEach { option ->
@@ -154,20 +185,41 @@ private fun DropdownField(
 }
 
 @Composable
-private fun DocumentUploadField(label: String) {
+private fun DocumentUploadField(label: String, selectedUri: android.net.Uri?, onUriSelected: (android.net.Uri?) -> Unit) {
+    val pickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        onUriSelected(uri)
+    }
+
     Column(modifier = Modifier.fillMaxWidth()) {
         FieldLabel(label)
         OutlinedButton(
-            onClick = { /* TODO: implement camera/gallery picker */ },
+            onClick = {
+                pickerLauncher.launch(
+                    androidx.activity.result.PickVisualMediaRequest(
+                        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
+                    )
+                )
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
             shape = RoundedCornerShape(12.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE0E0E0))
+            border = androidx.compose.foundation.BorderStroke(1.dp, if (selectedUri != null) Color(0xFF4CAF50) else Color(0xFFE0E0E0)),
+            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                containerColor = if (selectedUri != null) Color(0xFF4CAF50).copy(alpha = 0.1f) else Color.Transparent
+            )
         ) {
-            Icon(Icons.Default.CameraAlt, contentDescription = null, tint = Red, modifier = Modifier.size(20.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Enviar foto", color = Color(0xFF666666))
+            if (selectedUri != null) {
+                Icon(Icons.Default.Check, contentDescription = null, tint = Color(0xFF4CAF50), modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Foto Selecionada", color = Color(0xFF4CAF50), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            } else {
+                Icon(Icons.Default.CameraAlt, contentDescription = null, tint = Red, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Enviar foto", color = Color(0xFF666666))
+            }
         }
     }
 }
@@ -180,6 +232,15 @@ fun RegisterScreen(
     val scope = rememberCoroutineScope()
     var currentStep by rememberSaveable { mutableIntStateOf(0) }
     val totalSteps = 6
+
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        unfocusedBorderColor = Color(0xFFE0E0E0),
+        focusedBorderColor = ExpressoRed,
+        unfocusedContainerColor = Color(0xFFF9F9F9),
+        focusedContainerColor = Color.White,
+        focusedTextColor = Color(0xFF1A1A1A),
+        unfocusedTextColor = Color(0xFF1A1A1A)
+    )
 
     // Step 0: Dados Pessoais
     var nome by rememberSaveable { mutableStateOf("") }
@@ -216,6 +277,10 @@ fun RegisterScreen(
     var corVeiculo by rememberSaveable { mutableStateOf("") }
 
     // Step 3: Documentos (upload placeholders)
+    var cnhUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var crlvUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var autonomiaUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var residenciaUri by remember { mutableStateOf<android.net.Uri?>(null) }
     // Step 4: Pagamento
     var tipoChavePix by rememberSaveable { mutableStateOf("") }
     var chavePix by rememberSaveable { mutableStateOf("") }
@@ -224,6 +289,7 @@ fun RegisterScreen(
     var numeroBanco by rememberSaveable { mutableStateOf("") }
     var numeroAgencia by rememberSaveable { mutableStateOf("") }
     var numeroConta by rememberSaveable { mutableStateOf("") }
+    var tipoConta by rememberSaveable { mutableStateOf("") }
 
     // Step 5: Resumo
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -235,33 +301,40 @@ fun RegisterScreen(
     )
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text("Criar Conta", fontWeight = FontWeight.Bold) },
+                title = { Text("Criar Conta", fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A)) },
                 navigationIcon = {
                     IconButton(onClick = {
                         if (currentStep > 0) currentStep-- else onNavigateBack()
                     }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar", tint = Color(0xFF1A1A1A))
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
             )
         }
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(Color.White)
                 .padding(paddingValues)
-                .background(Color(0xFFFAF8F6))
+                .imePadding()
         ) {
             // Progress bar
+            val animatedProgress by animateFloatAsState(
+                targetValue = (currentStep + 1).toFloat() / totalSteps,
+                animationSpec = tween(durationMillis = 300)
+            )
             LinearProgressIndicator(
-                progress = { (currentStep + 1).toFloat() / totalSteps },
+                progress = { animatedProgress },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(4.dp),
-                color = Red,
-                trackColor = Color(0xFFE0E0E0)
+                color = ExpressoRed,
+                trackColor = Color(0xFF333333)
             )
 
             // Step indicator
@@ -275,13 +348,13 @@ fun RegisterScreen(
                 Text(
                     "Etapa ${currentStep + 1} de $totalSteps",
                     fontSize = 12.sp,
-                    color = Color(0xFF999999)
+                    color = Color(0xFF757575)
                 )
                 Text(
                     stepTitles[currentStep],
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Red
+                    color = ExpressoRed
                 )
             }
 
@@ -300,11 +373,36 @@ fun RegisterScreen(
                             sexo, { sexo = it }, "Sexo",
                             listOf("Masculino", "Feminino", "Outro", "Prefiro não responder")
                         )
-                        StyledField(dataNascimento, { dataNascimento = it }, "Data de Nascimento (DD/MM/AAAA)")
-                        StyledField(email, { email = it }, "E-mail")
-                        StyledField(telefone, { telefone = it }, "Telefone (ex.: 21 99999-9999)")
-                        StyledField(cpf, { cpf = it }, "CPF")
-                        StyledField(cnpjMei, { cnpjMei = it }, "CNPJ (MEI)")
+                        StyledField(
+                            dataNascimento, 
+                            { if (it.length <= 8) dataNascimento = it.filter { char -> char.isDigit() } }, 
+                            "Data de Nascimento (Somente Números)",
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
+                        )
+                        StyledField(
+                            email, 
+                            { email = it }, 
+                            "E-mail",
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Email)
+                        )
+                        StyledField(
+                            telefone, 
+                            { if (it.length <= 11) telefone = it.filter { char -> char.isDigit() } }, 
+                            "Telefone (DDD + Número)",
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
+                        )
+                        StyledField(
+                            cpf, 
+                            { if (it.length <= 11) cpf = it.filter { char -> char.isDigit() } }, 
+                            "CPF (Somente Números)",
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
+                        )
+                        StyledField(
+                            cnpjMei, 
+                            { if (it.length <= 14) cnpjMei = it.filter { char -> char.isDigit() } }, 
+                            "CNPJ (Opcional - Somente Números)",
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
+                        )
 
                         Spacer(modifier = Modifier.height(8.dp))
                         SectionTitle("Senha de Acesso")
@@ -315,7 +413,7 @@ fun RegisterScreen(
                                 onValueChange = { senha = it },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(16.dp),
                                 colors = fieldColors,
                                 visualTransformation = if (senhaVisible) VisualTransformation.None else PasswordVisualTransformation(),
                                 trailingIcon = {
@@ -368,7 +466,7 @@ fun RegisterScreen(
                                 onValueChange = { confirmarSenha = it },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(16.dp),
                                 colors = fieldColors,
                                 visualTransformation = PasswordVisualTransformation()
                             )
@@ -382,10 +480,15 @@ fun RegisterScreen(
 
                     1 -> {
                         SectionTitle("Endereço")
-                        StyledField(cep, { cep = it }, "CEP")
+                        StyledField(
+                            cep, 
+                            { if (it.length <= 8) cep = it.filter { char -> char.isDigit() } }, 
+                            "CEP (Somente Números)",
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
+                        )
                         StyledField(logradouro, { logradouro = it }, "Logradouro")
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            StyledField(numero, { numero = it }, "Número", Modifier.weight(1f))
+                            StyledField(numero, { numero = it }, "Número", Modifier.weight(1f), keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
                             StyledField(complemento, { complemento = it }, "Complemento", Modifier.weight(1f))
                         }
                         StyledField(bairro, { bairro = it }, "Bairro")
@@ -430,17 +533,14 @@ fun RegisterScreen(
 
                     3 -> {
                         SectionTitle("Documentos do Entregador")
-                        Text(
-                            "Envie fotos legíveis dos documentos abaixo",
-                            fontSize = 13.sp,
-                            color = Color(0xFF888888),
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-                        DocumentUploadField("CNH")
-                        DocumentUploadField("CRLV")
-                        DocumentUploadField("Autonomia (Frente)")
-                        DocumentUploadField("Autonomia (Verso)")
-                        DocumentUploadField("Comprovante de Residência")
+                        Text("Passo 4: Documentos do Entregador", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF1A1A1A), modifier = Modifier.padding(bottom = 16.dp))
+                        DocumentUploadField("CNH", cnhUri) { cnhUri = it }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        DocumentUploadField("CRLV", crlvUri) { crlvUri = it }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        DocumentUploadField("Autonomia (Frente e Verso)", autonomiaUri) { autonomiaUri = it }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        DocumentUploadField("Comprovante de Residência", residenciaUri) { residenciaUri = it }
                     }
 
                     4 -> {
@@ -453,11 +553,20 @@ fun RegisterScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
                         SectionTitle("Conta Corrente (Opcional)")
-                        StyledField(cpfTitular, { cpfTitular = it }, "CPF do Titular")
+                        StyledField(
+                            cpfTitular, 
+                            { if (it.length <= 11) cpfTitular = it.filter { char -> char.isDigit() } }, 
+                            "CPF do Titular (Somente Números)",
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
+                        )
                         StyledField(nomeTitular, { nomeTitular = it }, "Nome do Titular")
-                        StyledField(numeroBanco, { numeroBanco = it }, "Número do Banco")
-                        StyledField(numeroAgencia, { numeroAgencia = it }, "Número da Agência")
-                        StyledField(numeroConta, { numeroConta = it }, "Número da Conta")
+                        StyledField(numeroBanco, { numeroBanco = it }, "Número do Banco", keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+                        StyledField(numeroAgencia, { numeroAgencia = it }, "Número da Agência", keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+                        StyledField(numeroConta, { numeroConta = it }, "Número da Conta", keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+                        DropdownField(
+                            tipoConta, { tipoConta = it }, "Tipo de Conta",
+                            listOf("Corrente", "Poupança")
+                        )
                     }
 
                     5 -> {
@@ -526,18 +635,29 @@ fun RegisterScreen(
                     OutlinedButton(
                         onClick = { currentStep-- },
                         modifier = Modifier.weight(1f).height(48.dp),
-                        shape = RoundedCornerShape(24.dp)
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Voltar")
+                        Text("Voltar", color = Color(0xFF1A1A1A))
                     }
                 }
 
                 Button(
                     onClick = {
-                        if (currentStep < totalSteps - 1) {
-                            currentStep++
-                        } else {
-                            // Submit
+                        // Validation logic before advancing step
+                        var canAdvance = true
+                        errorMessage = null
+                        
+                        when (currentStep) {
+                            0 -> if (nome.isBlank() || cpf.length < 11 || telefone.length < 10) { errorMessage = "Preencha corretamente: Nome, CPF e Telefone"; canAdvance = false }
+                            1 -> if (cep.length < 8 || logradouro.isBlank() || numero.isBlank()) { errorMessage = "Preencha corretamente o Endereço"; canAdvance = false }
+                            2 -> if (tipoVeiculo.isBlank() || placa.isBlank()) { errorMessage = "Preencha o Tipo de Veículo e Placa"; canAdvance = false }
+                        }
+
+                        if (canAdvance) {
+                            if (currentStep < totalSteps - 1) {
+                                currentStep++
+                            } else {
+                                // Submit
                             scope.launch {
                                 isSubmitting = true
                                 errorMessage = null
@@ -576,18 +696,21 @@ fun RegisterScreen(
                                                 "cor_veiculo": "$corVeiculo",
                                                 "pix_tipo_chave": "$tipoChavePix",
                                                 "pix_chave": "$chavePix",
-                                                "role": "driver"
-                                            }
-                                        }""".trimIndent().toRequestBody("application/json".toMediaTypeOrNull())
+                                                "conta_tipo": "$tipoConta"
+                                        }
+                                    }""".trimIndent().toRequestBody("application/json".toMediaTypeOrNull())
                                         val request = Request.Builder()
                                             .url("$supabaseUrl/auth/v1/signup")
                                             .post(body)
                                             .addHeader("Content-Type", "application/json")
                                             .build()
-                                        client.newCall(request).execute().isSuccessful
+                                        val response = client.newCall(request).execute()
+                                        response.isSuccessful
                                     }
                                     if (success) {
-                                        successMessage = "Cadastro enviado! Aguarde aprovação do operador."
+                                        successMessage = "Cadastro realizado! Aguarde a aprovação."
+                                        delay(2000)
+                                        onNavigateBack()
                                     } else {
                                         errorMessage = "Não foi possível criar a conta. Verifique os dados."
                                     }
@@ -598,12 +721,14 @@ fun RegisterScreen(
                                 }
                             }
                         }
+                        }
                     },
                     modifier = Modifier
                         .weight(if (currentStep > 0) 1f else 2f)
-                        .height(48.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Red),
+                        .height(56.dp)
+                        .shadow(elevation = 2.dp, shape = RoundedCornerShape(12.dp), ambientColor = ExpressoRed, spotColor = ExpressoRed),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ExpressoRed),
                     enabled = !isSubmitting && (currentStep < 5 || (senha.isNotBlank() && senha == confirmarSenha))
                 ) {
                     if (isSubmitting) {

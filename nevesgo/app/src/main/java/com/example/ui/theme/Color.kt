@@ -11,6 +11,10 @@ val ExpressoDarkGray = Color(0xFF1A1A1A)   // Dark surface
 val ExpressoGray = Color(0xFF2D2D2D)       // Card surface
 val ExpressoLightGray = Color(0xFFF5F5F5)  // Light background
 
+// Modern Premium UI (2026 UX Patterns - Clean Flat Design)
+val CleanSurfaceDark = Color(0xFF1E1E1E) // Clean solid surface
+val CleanBorderDark = Color(0xFF333333)  // Clean solid outline
+
 // Light Theme
 val PrimaryLight = ExpressoRed
 val OnPrimaryLight = Color(0xFFFFFFFF)
