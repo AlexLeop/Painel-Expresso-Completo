@@ -266,7 +266,7 @@ class OrderRepositoryImpl(
                 )
             )
             if (response.isSuccessful) {
-                val incidentId = response.body()?.id
+                val incidentId = response.body()?.incidentId
                 if (incidentId != null && incidentProofUri != null) {
                     val imageJpeg = "image/jpeg".toMediaType()
                     val requestFile = object : okhttp3.RequestBody() {
