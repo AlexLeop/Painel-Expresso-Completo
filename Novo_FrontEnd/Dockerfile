@@ -4,11 +4,11 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 # Install all dependencies (including dev)
-COPY package*.json ./
+COPY Novo_FrontEnd/package*.json ./
 RUN npm install
 
 # Copy source and build
-COPY . .
+COPY Novo_FrontEnd/ ./
 RUN npm run build
 
 # Production stage
@@ -17,7 +17,7 @@ FROM node:22-alpine
 WORKDIR /app
 
 # Copy package files and install only production dependencies
-COPY package*.json ./
+COPY Novo_FrontEnd/package*.json ./
 RUN npm install --omit=dev
 
 # Copy build artifacts from builder
