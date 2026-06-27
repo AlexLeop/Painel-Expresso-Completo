@@ -1,32 +1,48 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -35,8 +51,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -46,163 +65,555 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
+private val Red = Color(0xFFE53935)
+
+private val fieldColors
+    @Composable get() = OutlinedTextFieldDefaults.colors(
+        unfocusedBorderColor = Color(0xFFE0E0E0),
+        focusedBorderColor = Red,
+        unfocusedContainerColor = Color(0xFFF5F5F5),
+        focusedContainerColor = Color(0xFFFFF8F8)
+    )
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text = text,
+        fontSize = 18.sp,
+        fontWeight = FontWeight.Bold,
+        color = Red,
+        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+    )
+}
+
+@Composable
+private fun FieldLabel(text: String) {
+    Text(
+        text = text,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Medium,
+        color = Color(0xFF555555),
+        modifier = Modifier.padding(bottom = 4.dp)
+    )
+}
+
+@Composable
+private fun StyledField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        FieldLabel(label)
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp),
+            colors = fieldColors
+        )
+    }
+}
+
+@Composable
+private fun DropdownField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    options: List<String>,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(modifier = modifier) {
+        FieldLabel(label)
+        Box {
+            OutlinedTextField(
+                value = value,
+                onValueChange = {},
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = true },
+                readOnly = true,
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = fieldColors,
+                placeholder = { Text("Selecione", color = Color(0xFFBBBBBB)) }
+            )
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                options.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option) },
+                        onClick = { onValueChange(option); expanded = false }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DocumentUploadField(label: String) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        FieldLabel(label)
+        OutlinedButton(
+            onClick = { /* TODO: implement camera/gallery picker */ },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            shape = RoundedCornerShape(12.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE0E0E0))
+        ) {
+            Icon(Icons.Default.CameraAlt, contentDescription = null, tint = Red, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Enviar foto", color = Color(0xFF666666))
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RegisterScreen(
     onNavigateBack: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    var name by rememberSaveable { mutableStateOf("") }
-    var phone by rememberSaveable { mutableStateOf("") }
+    var currentStep by rememberSaveable { mutableIntStateOf(0) }
+    val totalSteps = 6
+
+    // Step 0: Dados Pessoais
+    var nome by rememberSaveable { mutableStateOf("") }
+    var sexo by rememberSaveable { mutableStateOf("") }
+    var dataNascimento by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
-    var password by rememberSaveable { mutableStateOf("") }
+    var telefone by rememberSaveable { mutableStateOf("") }
+    var cpf by rememberSaveable { mutableStateOf("") }
+    var cnpjMei by rememberSaveable { mutableStateOf("") }
+    var senha by rememberSaveable { mutableStateOf("") }
+    var confirmarSenha by rememberSaveable { mutableStateOf("") }
+    var senhaVisible by rememberSaveable { mutableStateOf(false) }
+
+    // Step 1: Endereço
+    var cep by rememberSaveable { mutableStateOf("") }
+    var logradouro by rememberSaveable { mutableStateOf("") }
+    var numero by rememberSaveable { mutableStateOf("") }
+    var complemento by rememberSaveable { mutableStateOf("") }
+    var bairro by rememberSaveable { mutableStateOf("") }
+    var cidade by rememberSaveable { mutableStateOf("") }
+    var uf by rememberSaveable { mutableStateOf("") }
+    var pontoReferencia by rememberSaveable { mutableStateOf("") }
+
+    // Step 2: Veículo e CNH
+    var tipoVeiculo by rememberSaveable { mutableStateOf("") }
+    var numeroCnh by rememberSaveable { mutableStateOf("") }
+    var validadeCnh by rememberSaveable { mutableStateOf("") }
+    var placa by rememberSaveable { mutableStateOf("") }
+    var modelo by rememberSaveable { mutableStateOf("") }
+    var anoFabricacao by rememberSaveable { mutableStateOf("") }
+    var anoExercicio by rememberSaveable { mutableStateOf("") }
+    var ufEmplacamento by rememberSaveable { mutableStateOf("") }
+    var renavam by rememberSaveable { mutableStateOf("") }
+    var corVeiculo by rememberSaveable { mutableStateOf("") }
+
+    // Step 3: Documentos (upload placeholders)
+    // Step 4: Pagamento
+    var tipoChavePix by rememberSaveable { mutableStateOf("") }
+    var chavePix by rememberSaveable { mutableStateOf("") }
+    var cpfTitular by rememberSaveable { mutableStateOf("") }
+    var nomeTitular by rememberSaveable { mutableStateOf("") }
+    var numeroBanco by rememberSaveable { mutableStateOf("") }
+    var numeroAgencia by rememberSaveable { mutableStateOf("") }
+    var numeroConta by rememberSaveable { mutableStateOf("") }
+
+    // Step 5: Resumo
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var successMessage by remember { mutableStateOf<String?>(null) }
     var isSubmitting by remember { mutableStateOf(false) }
 
+    val stepTitles = listOf(
+        "Dados Pessoais", "Endereço", "Veículo", "Documentos", "Pagamento", "Resumo"
+    )
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Cadastro de Motoboy") },
+                title = { Text("Criar Conta", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = {
+                        if (currentStep > 0) currentStep-- else onNavigateBack()
+                    }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar")
                     }
                 }
             )
         }
     ) { paddingValues ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(paddingValues),
-            contentAlignment = Alignment.TopCenter
+                .padding(paddingValues)
+                .background(Color(0xFFFAF8F6))
         ) {
-            Column(
+            // Progress bar
+            LinearProgressIndicator(
+                progress = { (currentStep + 1).toFloat() / totalSteps },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(24.dp)
-                    .verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .height(4.dp),
+                color = Red,
+                trackColor = Color(0xFFE0E0E0)
+            )
+
+            // Step indicator
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Junte-se à Expresso Neves",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.primary
+                    "Etapa ${currentStep + 1} de $totalSteps",
+                    fontSize = 12.sp,
+                    color = Color(0xFF999999)
                 )
-                
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it; errorMessage = null },
-                    label = { Text("Nome Completo") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                Text(
+                    stepTitles[currentStep],
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Red
                 )
+            }
 
-                OutlinedTextField(
-                    value = phone,
-                    onValueChange = { phone = it; errorMessage = null },
-                    label = { Text("Telefone (WhatsApp)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                when (currentStep) {
+                    0 -> {
+                        SectionTitle("Dados Pessoais")
+                        StyledField(nome, { nome = it }, "Nome Completo")
+                        DropdownField(
+                            sexo, { sexo = it }, "Sexo",
+                            listOf("Masculino", "Feminino", "Outro", "Prefiro não responder")
+                        )
+                        StyledField(dataNascimento, { dataNascimento = it }, "Data de Nascimento (DD/MM/AAAA)")
+                        StyledField(email, { email = it }, "E-mail")
+                        StyledField(telefone, { telefone = it }, "Telefone (ex.: 21 99999-9999)")
+                        StyledField(cpf, { cpf = it }, "CPF")
+                        StyledField(cnpjMei, { cnpjMei = it }, "CNPJ (MEI)")
 
-                OutlinedTextField(
-                    value = email,
-                    onValueChange = { email = it; errorMessage = null },
-                    label = { Text("E-mail") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        SectionTitle("Senha de Acesso")
+                        Column {
+                            FieldLabel("Senha")
+                            OutlinedTextField(
+                                value = senha,
+                                onValueChange = { senha = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                colors = fieldColors,
+                                visualTransformation = if (senhaVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    IconButton(onClick = { senhaVisible = !senhaVisible }) {
+                                        Icon(
+                                            if (senhaVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                            contentDescription = null,
+                                            tint = Color(0xFF999999)
+                                        )
+                                    }
+                                }
+                            )
+                        }
 
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it; errorMessage = null },
-                    label = { Text("Senha") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
+                        // Password strength indicator
+                        if (senha.isNotEmpty()) {
+                            val strength = when {
+                                senha.length < 6 -> 0
+                                senha.length < 8 -> 1
+                                senha.any { it.isDigit() } && senha.any { it.isLetter() } -> 3
+                                else -> 2
+                            }
+                            val strengthColors = listOf(Red, Color(0xFFFF9800), Color(0xFF4CAF50), Color(0xFF2E7D32))
+                            val strengthLabels = listOf("Fraca", "Média", "Boa", "Forte")
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                repeat(4) { i ->
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(4.dp)
+                                            .background(
+                                                if (i <= strength) strengthColors[strength] else Color(0xFFE0E0E0),
+                                                RoundedCornerShape(2.dp)
+                                            )
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(strengthLabels[strength], fontSize = 12.sp, color = strengthColors[strength])
+                            }
+                        }
 
-                errorMessage?.let {
-                    Text(
-                        text = it,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                        Column {
+                            FieldLabel("Confirmar Senha")
+                            OutlinedTextField(
+                                value = confirmarSenha,
+                                onValueChange = { confirmarSenha = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                colors = fieldColors,
+                                visualTransformation = PasswordVisualTransformation()
+                            )
+                        }
+                        if (confirmarSenha.isNotEmpty() && senha != confirmarSenha) {
+                            Text("⚠ Senhas não conferem", color = Red, fontSize = 12.sp)
+                        } else if (confirmarSenha.isNotEmpty() && senha == confirmarSenha) {
+                            Text("✓ Senhas coincidem", color = Color(0xFF4CAF50), fontSize = 12.sp)
+                        }
+                    }
+
+                    1 -> {
+                        SectionTitle("Endereço")
+                        StyledField(cep, { cep = it }, "CEP")
+                        StyledField(logradouro, { logradouro = it }, "Logradouro")
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            StyledField(numero, { numero = it }, "Número", Modifier.weight(1f))
+                            StyledField(complemento, { complemento = it }, "Complemento", Modifier.weight(1f))
+                        }
+                        StyledField(bairro, { bairro = it }, "Bairro")
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            StyledField(cidade, { cidade = it }, "Cidade", Modifier.weight(2f))
+                            DropdownField(
+                                uf, { uf = it }, "UF",
+                                listOf("AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"),
+                                Modifier.weight(1f)
+                            )
+                        }
+                        StyledField(pontoReferencia, { pontoReferencia = it }, "Ponto de Referência")
+                    }
+
+                    2 -> {
+                        SectionTitle("Veículo e CNH")
+                        DropdownField(
+                            tipoVeiculo, { tipoVeiculo = it }, "Tipo de Veículo",
+                            listOf("Moto", "Bike", "Carro", "Caminhão")
+                        )
+                        StyledField(numeroCnh, { numeroCnh = it }, "Número da CNH")
+                        StyledField(validadeCnh, { validadeCnh = it }, "Validade da CNH (DD/MM/AAAA)")
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        SectionTitle("Dados do Veículo")
+                        StyledField(placa, { placa = it }, "Placa")
+                        StyledField(modelo, { modelo = it }, "Modelo")
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            StyledField(anoFabricacao, { anoFabricacao = it }, "Ano Fabricação", Modifier.weight(1f))
+                            StyledField(anoExercicio, { anoExercicio = it }, "Ano Exercício", Modifier.weight(1f))
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            DropdownField(
+                                ufEmplacamento, { ufEmplacamento = it }, "UF Emplacamento",
+                                listOf("AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"),
+                                Modifier.weight(1f)
+                            )
+                            StyledField(corVeiculo, { corVeiculo = it }, "Cor", Modifier.weight(1f))
+                        }
+                        StyledField(renavam, { renavam = it }, "Código RENAVAM")
+                    }
+
+                    3 -> {
+                        SectionTitle("Documentos do Entregador")
+                        Text(
+                            "Envie fotos legíveis dos documentos abaixo",
+                            fontSize = 13.sp,
+                            color = Color(0xFF888888),
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        DocumentUploadField("CNH")
+                        DocumentUploadField("CRLV")
+                        DocumentUploadField("Autonomia (Frente)")
+                        DocumentUploadField("Autonomia (Verso)")
+                        DocumentUploadField("Comprovante de Residência")
+                    }
+
+                    4 -> {
+                        SectionTitle("PIX")
+                        DropdownField(
+                            tipoChavePix, { tipoChavePix = it }, "Tipo de Chave",
+                            listOf("CPF", "CNPJ", "E-mail", "Telefone", "Aleatória")
+                        )
+                        StyledField(chavePix, { chavePix = it }, "Chave PIX")
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        SectionTitle("Conta Corrente (Opcional)")
+                        StyledField(cpfTitular, { cpfTitular = it }, "CPF do Titular")
+                        StyledField(nomeTitular, { nomeTitular = it }, "Nome do Titular")
+                        StyledField(numeroBanco, { numeroBanco = it }, "Número do Banco")
+                        StyledField(numeroAgencia, { numeroAgencia = it }, "Número da Agência")
+                        StyledField(numeroConta, { numeroConta = it }, "Número da Conta")
+                    }
+
+                    5 -> {
+                        SectionTitle("Resumo do Cadastro")
+
+                        @Composable
+                        fun SummaryItem(label: String, value: String) {
+                            if (value.isNotBlank()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(label, fontSize = 13.sp, color = Color(0xFF888888))
+                                    Text(value, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color(0xFF333333))
+                                }
+                            }
+                        }
+
+                        Text("Dados Pessoais", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF333333))
+                        SummaryItem("Nome", nome)
+                        SummaryItem("Sexo", sexo)
+                        SummaryItem("Data Nasc.", dataNascimento)
+                        SummaryItem("E-mail", email)
+                        SummaryItem("Telefone", telefone)
+                        SummaryItem("CPF", cpf)
+                        SummaryItem("CNPJ (MEI)", cnpjMei)
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Endereço", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF333333))
+                        SummaryItem("Endereço", "$logradouro, $numero - $bairro")
+                        SummaryItem("Cidade/UF", "$cidade/$uf")
+                        SummaryItem("CEP", cep)
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Veículo", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF333333))
+                        SummaryItem("Tipo", tipoVeiculo)
+                        SummaryItem("Placa", placa)
+                        SummaryItem("Modelo", modelo)
+                        SummaryItem("CNH", numeroCnh)
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Pagamento", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF333333))
+                        SummaryItem("PIX ($tipoChavePix)", chavePix)
+
+                        errorMessage?.let {
+                            Text("⚠ $it", color = Red, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+                        }
+                        successMessage?.let {
+                            Text("✓ $it", color = Color(0xFF4CAF50), fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
+                        }
+                    }
                 }
 
-                successMessage?.let {
-                    Text(
-                        text = it,
-                        color = Color(0xFF4CAF50), // Green
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            // Bottom navigation buttons
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White)
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (currentStep > 0) {
+                    OutlinedButton(
+                        onClick = { currentStep-- },
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        shape = RoundedCornerShape(24.dp)
+                    ) {
+                        Text("Voltar")
+                    }
                 }
-                
-                Spacer(modifier = Modifier.height(8.dp))
 
                 Button(
-                    enabled = name.isNotBlank() && email.isNotBlank() && password.isNotBlank() && !isSubmitting,
                     onClick = {
-                        scope.launch {
-                            isSubmitting = true
-                            errorMessage = null
-                            successMessage = null
-
-                            val supabaseUrl = BuildConfig.API_BASE_URL
-                            val supabaseKey = "" // Must be configured if required
-                            try {
-                                val success = withContext(Dispatchers.IO) {
-                                    val client = OkHttpClient()
-                                    // Custom user meta data for Supabase SignUp
-                                    val body = """{
-                                        "email": "$email", 
-                                        "password": "$password",
-                                        "data": {
-                                            "name": "$name",
-                                            "phone": "$phone",
-                                            "role": "driver"
-                                        }
-                                    }""".trimIndent().toRequestBody("application/json".toMediaTypeOrNull())
-                                    
-                                    val request = Request.Builder()
-                                        .url("$supabaseUrl/auth/v1/signup")
-                                        .post(body)
-                                        .addHeader("apikey", supabaseKey)
-                                        .addHeader("Content-Type", "application/json")
-                                        .build()
-                                        
-                                    val response = client.newCall(request).execute()
-                                    response.isSuccessful
+                        if (currentStep < totalSteps - 1) {
+                            currentStep++
+                        } else {
+                            // Submit
+                            scope.launch {
+                                isSubmitting = true
+                                errorMessage = null
+                                successMessage = null
+                                val supabaseUrl = BuildConfig.API_BASE_URL
+                                try {
+                                    val success = withContext(Dispatchers.IO) {
+                                        val client = OkHttpClient()
+                                        val body = """{
+                                            "email": "$email",
+                                            "password": "$senha",
+                                            "data": {
+                                                "name": "$nome",
+                                                "phone": "$telefone",
+                                                "cpf": "$cpf",
+                                                "cnpj_mei": "$cnpjMei",
+                                                "sexo": "$sexo",
+                                                "data_nascimento": "$dataNascimento",
+                                                "cep": "$cep",
+                                                "logradouro": "$logradouro",
+                                                "numero": "$numero",
+                                                "complemento": "$complemento",
+                                                "bairro": "$bairro",
+                                                "cidade": "$cidade",
+                                                "uf": "$uf",
+                                                "ponto_referencia": "$pontoReferencia",
+                                                "tipo_veiculo": "$tipoVeiculo",
+                                                "cnh_numero": "$numeroCnh",
+                                                "cnh_validade": "$validadeCnh",
+                                                "placa": "$placa",
+                                                "modelo_veiculo": "$modelo",
+                                                "ano_fabricacao": "$anoFabricacao",
+                                                "ano_exercicio": "$anoExercicio",
+                                                "uf_emplacamento": "$ufEmplacamento",
+                                                "renavam": "$renavam",
+                                                "cor_veiculo": "$corVeiculo",
+                                                "pix_tipo_chave": "$tipoChavePix",
+                                                "pix_chave": "$chavePix",
+                                                "role": "driver"
+                                            }
+                                        }""".trimIndent().toRequestBody("application/json".toMediaTypeOrNull())
+                                        val request = Request.Builder()
+                                            .url("$supabaseUrl/auth/v1/signup")
+                                            .post(body)
+                                            .addHeader("Content-Type", "application/json")
+                                            .build()
+                                        client.newCall(request).execute().isSuccessful
+                                    }
+                                    if (success) {
+                                        successMessage = "Cadastro enviado! Aguarde aprovação do operador."
+                                    } else {
+                                        errorMessage = "Não foi possível criar a conta. Verifique os dados."
+                                    }
+                                } catch (e: Exception) {
+                                    errorMessage = "Erro de conexão com o servidor."
+                                } finally {
+                                    isSubmitting = false
                                 }
-                                
-                                if (success) {
-                                    successMessage = "Cadastro realizado! Você receberá um e-mail de confirmação."
-                                } else {
-                                    errorMessage = "Não foi possível realizar o cadastro."
-                                }
-                            } catch (e: Exception) {
-                                errorMessage = "Erro de conexão com o servidor."
-                            } finally {
-                                isSubmitting = false
                             }
                         }
                     },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    )
+                    modifier = Modifier
+                        .weight(if (currentStep > 0) 1f else 2f)
+                        .height(48.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Red),
+                    enabled = !isSubmitting && (currentStep < 5 || (senha.isNotBlank() && senha == confirmarSenha))
                 ) {
                     if (isSubmitting) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
+                    } else {
+                        Text(
+                            if (currentStep < totalSteps - 1) "Continuar" else "Cadastrar",
+                            fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
-                    } else {
-                        Text("Criar Conta")
                     }
                 }
             }
