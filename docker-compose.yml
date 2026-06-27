@@ -1,18 +1,6 @@
 version: '3.8'
 
 services:
-  db:
-    image: postgis/postgis:15-3.3
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: expresso_neves
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./docker/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
-      - ./docs/schema.sql:/docker-entrypoint-initdb.d/02-schema.sql:ro
 
   redis:
     image: redis:7-alpine
@@ -34,15 +22,10 @@ services:
       - static_volume:/app/static
     environment:
       - DJANGO_DEBUG=False
-      - SUPABASE_DB_HOST=db
-      - SUPABASE_DB_PORT=5432
-      - SUPABASE_DB_USER=postgres
-      - SUPABASE_DB_PASSWORD=${POSTGRES_PASSWORD}
-      - SUPABASE_DB_NAME=expresso_neves
+      - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379/1
       - CELERY_BROKER_URL=redis://redis:6379/1
     depends_on:
-      - db
       - redis
 
   fastapi:
@@ -64,11 +47,7 @@ services:
     volumes:
       - .:/app
     environment:
-      - SUPABASE_DB_HOST=db
-      - SUPABASE_DB_PORT=5432
-      - SUPABASE_DB_USER=postgres
-      - SUPABASE_DB_PASSWORD=${POSTGRES_PASSWORD}
-      - SUPABASE_DB_NAME=expresso_neves
+      - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379/1
       - CELERY_BROKER_URL=redis://redis:6379/1
     depends_on:
@@ -83,11 +62,7 @@ services:
     volumes:
       - .:/app
     environment:
-      - SUPABASE_DB_HOST=db
-      - SUPABASE_DB_PORT=5432
-      - SUPABASE_DB_USER=postgres
-      - SUPABASE_DB_PASSWORD=${POSTGRES_PASSWORD}
-      - SUPABASE_DB_NAME=expresso_neves
+      - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379/1
       - CELERY_BROKER_URL=redis://redis:6379/1
     depends_on:
@@ -119,6 +94,5 @@ services:
       - django
 
 volumes:
-  postgres_data:
   redis_data:
   static_volume:
