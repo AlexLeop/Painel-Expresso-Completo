@@ -9,7 +9,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:123456789012:android:0000000000000000000000",
         "android_client_info": {
-          "package_name": "com.aistudio.nevesgo.nxmptq"
+          "package_name": "br.com.expressoneves.entregador"
         }
       },
       "oauth_client": [],
