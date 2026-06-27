@@ -41,8 +41,12 @@ export async function authFetch(url: string, options: RequestInit = {}) {
     headers.set("Content-Type", "application/json");
   }
 
-  // When deployed together, frontend and backend are on the same domain — use relative URLs
-  const BASE_URL = import.meta.env.VITE_API_URL || "";
+  // Sanitize VITE_API_URL to strip trailing slash or `/api/v1` suffix
+  // so that authFetch("/api/...") works correctly and doesn't duplicate paths
+  let rawBaseUrl = import.meta.env.VITE_API_URL || "";
+  rawBaseUrl = rawBaseUrl.replace(/\/api\/v1\/?$/, ""); // strip /api/v1 or /api/v1/
+  rawBaseUrl = rawBaseUrl.replace(/\/$/, ""); // strip any trailing slash
+  const BASE_URL = rawBaseUrl;
 
   let response: Response;
   try {
