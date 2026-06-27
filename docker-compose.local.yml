@@ -1,6 +1,11 @@
+version: '3.8'
+
 services:
+
   redis:
     image: redis:7-alpine
+    ports:
+      - "6379:6379"
     volumes:
       - redis_data:/data
 
@@ -11,15 +16,15 @@ services:
     command: >
       bash -c "python manage.py migrate &&
                python manage.py warmup_denylist &&
-               python manage.py collectstatic --noinput &&
                gunicorn --bind 0.0.0.0:8000 --workers 3 config.wsgi:application"
     volumes:
+      - .:/app
       - static_volume:/app/static
     environment:
       - DJANGO_DEBUG=False
-      - DATABASE_URL=${DATABASE_URL:-postgres://usuario:senha@seu_host:5432/nome_do_banco}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/1}
-      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/1}
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379/1
+      - CELERY_BROKER_URL=redis://redis:6379/1
     depends_on:
       - redis
 
@@ -27,8 +32,10 @@ services:
     build:
       context: .
       dockerfile: fast_lane/Dockerfile
+    volumes:
+      - .:/app
     environment:
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/1}
+      - REDIS_URL=redis://redis:6379/1
     depends_on:
       - redis
 
@@ -37,10 +44,12 @@ services:
       context: .
       dockerfile: Dockerfile
     command: celery -A config worker -l info --concurrency=2
+    volumes:
+      - .:/app
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgres://usuario:senha@seu_host:5432/nome_do_banco}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/1}
-      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/1}
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379/1
+      - CELERY_BROKER_URL=redis://redis:6379/1
     depends_on:
       - django
       - redis
@@ -50,18 +59,20 @@ services:
       context: .
       dockerfile: Dockerfile
     command: celery -A config beat -l info
+    volumes:
+      - .:/app
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgres://usuario:senha@seu_host:5432/nome_do_banco}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/1}
-      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/1}
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379/1
+      - CELERY_BROKER_URL=redis://redis:6379/1
     depends_on:
       - django
       - redis
 
   nginx:
     image: nginx:alpine
-    expose:
-      - "80"
+    ports:
+      - "80:80"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - static_volume:/app/static
@@ -74,10 +85,11 @@ services:
     build:
       context: ./Novo_FrontEnd
       dockerfile: Dockerfile
+    volumes:
+      - ./Novo_FrontEnd:/app
+      - /app/node_modules
     environment:
       - NODE_ENV=production
-    expose:
-      - "5173"
     depends_on:
       - django
 
