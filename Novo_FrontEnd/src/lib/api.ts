@@ -1,38 +1,36 @@
-export async function authFetch(url: string, options: RequestInit = {}) {
-  const sessionString = localStorage.getItem("nevesgo:session");
+import { supabase } from "./supabase";
 
-  if (!sessionString) {
+export async function authFetch(url: string, options: RequestInit = {}) {
+  const { data: sessionData, error } = await supabase.auth.getSession();
+  const token = sessionData?.session?.access_token;
+
+  if (!token) {
     if (window.location.pathname !== "/login") {
       window.location.href = "/login";
     }
     throw new Error("Usuário não está autenticado");
   }
 
-  let session: Record<string, any>;
-  try {
-    session = JSON.parse(sessionString);
-  } catch {
-    // Session data corrupted — clear and redirect to login
-    localStorage.removeItem("nevesgo:session");
-    if (window.location.pathname !== "/login") {
-      window.location.href = "/login";
-    }
-    throw new Error("Sessão corrompida. Redirecionando para login.");
-  }
   const headers = new Headers(options.headers || {});
+  headers.set("Authorization", `Bearer ${token}`);
 
-  if (session.basicAuth) {
-    headers.set("Authorization", `Basic ${session.basicAuth}`);
-  }
-
-  if (session.user?.company_id) {
-    headers.set("X-Tenant-Id", String(session.user.company_id));
-  }
-  if (session.user?.role) {
-    headers.set("X-User-Role", session.user.role);
-  }
-  if (session.user?.email) {
-    headers.set("X-User-Email", session.user.email);
+  // Injetar X-Tenant-Id buscando do localStorage, caso a API precise
+  const storedSessionStr = localStorage.getItem("nevesgo:session");
+  if (storedSessionStr) {
+    try {
+      const storedSession = JSON.parse(storedSessionStr);
+      if (storedSession?.user?.company_id) {
+        headers.set("X-Tenant-Id", String(storedSession.user.company_id));
+      }
+      if (storedSession?.user?.role) {
+        headers.set("X-User-Role", storedSession.user.role);
+      }
+      if (storedSession?.user?.email) {
+        headers.set("X-User-Email", storedSession.user.email);
+      }
+    } catch (e) {
+      // Ignora erro de parse
+    }
   }
 
   if (

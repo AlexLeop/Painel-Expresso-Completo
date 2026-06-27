@@ -305,31 +305,26 @@ export function Login() {
       setLoginLoading(true);
       setLoginError("");
       try {
-        const response = await fetch(`${BASE_URL}/api/auth/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ email: loginEmail, password: loginPassword }),
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: loginEmail,
+          password: loginPassword,
         });
 
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(
-            data?.error || "Credenciais inválidas ou erro no servidor",
-          );
+        if (error || !data.session) {
+          throw new Error(error?.message || "Credenciais inválidas ou erro no servidor");
         }
 
-        if (data.success && data.user) {
-          login(data);
-          const role = data.user?.role || "";
-          if (role === "supervisor" || role === "coordinator") {
-            navigate("/escala");
-          } else {
-            navigate("/");
-          }
-        } else {
-          throw new Error("Formato de resposta inválido");
-        }
+        // O AuthContext.tsx agora intercepta a sessão automaticamente
+        // e vai redirecionar a página dependendo do profile retornado do Django.
+        // Para uma UX rápida, se quisermos apenas não travar aqui:
+        // navigate("/"); será gerenciado externamente pelo App/ProtectedRoutes, 
+        // ou podemos dar force navigate aqui depois de um pequeno delay aguardando AuthContext
+        
+        // Simulação rápida para redirecionar
+        setTimeout(() => {
+          navigate("/");
+        }, 500);
+
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Falha ao fazer login";
         setLoginError(msg);
@@ -337,7 +332,7 @@ export function Login() {
         setLoginLoading(false);
       }
     },
-    [BASE_URL, login, loginEmail, loginPassword, navigate],
+    [loginEmail, loginPassword, navigate],
   );
 
   const lookupCEP = useCallback(async (cep: string) => {

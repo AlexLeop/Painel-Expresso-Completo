@@ -1,9 +1,49 @@
 from ninja import NinjaAPI
 from typing import Optional
 from logistics.models import Driver, Order
-from accounts.models import Operator
+from accounts.models import Operator, StaffMember, PlatformAdmin
+from config.api import SupabaseJWTAuth
 
 panel_api = NinjaAPI(urls_namespace="panel_api")
+auth_bearer = SupabaseJWTAuth()
+
+@panel_api.get("/auth/me", auth=auth_bearer)
+def auth_me(request):
+    """
+    Retorna o perfil do usuário autenticado no Supabase.
+    Procura em StaffMember e PlatformAdmin.
+    """
+    uid = request.auth.get("sub")
+    
+    try:
+        admin = PlatformAdmin.objects.get(supabase_uid=uid)
+        return {
+            "authenticated": True,
+            "user": {
+                "id": str(admin.id),
+                "email": admin.email,
+                "name": admin.name,
+                "role": "admin",
+                "company_id": "global",
+            }
+        }
+    except PlatformAdmin.DoesNotExist:
+        pass
+
+    try:
+        staff = StaffMember.objects.get(supabase_uid=uid, active=True)
+        return {
+            "authenticated": True,
+            "user": {
+                "id": str(staff.id),
+                "email": staff.email,
+                "name": staff.name,
+                "role": staff.role.lower(),
+                "company_id": str(staff.operator_id),
+            }
+        }
+    except StaffMember.DoesNotExist:
+        return panel_api.create_response(request, {"authenticated": False, "error": "Usuário não encontrado no banco de dados."}, status=401)
 
 
 @panel_api.get("/db/configs")

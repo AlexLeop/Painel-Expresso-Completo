@@ -42,48 +42,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [globalSearch, setGlobalSearch] = useState("");
 
   useEffect(() => {
-    const controller = new AbortController();
-    const validateSession = async () => {
+    let mounted = true;
+
+    const loadProfile = async (supabaseSession: any) => {
       try {
-        const res = await fetch("/api/auth/me", { signal: controller.signal });
+        const { authFetch } = await import("../lib/api");
+        const res = await authFetch("/api/auth/me");
         if (res.ok) {
           const data = await res.json();
-          if (data.authenticated) {
+          if (data.authenticated && mounted) {
             const newSession = {
               success: true,
               user: data.user,
-              basicAuth: data.basicAuth,
             };
             localStorage.setItem("nevesgo:session", JSON.stringify(newSession));
             setSession(newSession);
-          } else {
-            throw new Error("Not authenticated");
           }
-        } else {
-          throw new Error("Not authenticated");
         }
-      } catch (err: any) {
-        if (err.name === "AbortError") return; // Ignore aborted requests
-        const storedSession = localStorage.getItem("nevesgo:session");
-        if (storedSession) {
-          try {
-            setSession(JSON.parse(storedSession));
-          } catch {
-            localStorage.removeItem("nevesgo:session");
-          }
-        } else {
+      } catch (err) {
+        if (mounted) {
           localStorage.removeItem("nevesgo:session");
+          setSession(null);
         }
       } finally {
-        if (!controller.signal.aborted) {
-          setIsLoading(false);
-        }
+        if (mounted) setIsLoading(false);
       }
     };
 
-    validateSession();
+    import("../lib/supabase").then(({ supabase }) => {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) {
+          loadProfile(session);
+        } else {
+          if (mounted) {
+            localStorage.removeItem("nevesgo:session");
+            setSession(null);
+            setIsLoading(false);
+          }
+        }
+      });
+
+      supabase.auth.onAuthStateChange((_event, session) => {
+        if (session) {
+          loadProfile(session);
+        } else {
+          if (mounted) {
+            localStorage.removeItem("nevesgo:session");
+            setSession(null);
+            setIsLoading(false);
+          }
+        }
+      });
+    });
+
     return () => {
-      controller.abort();
+      mounted = false;
     };
   }, []);
 
@@ -92,7 +105,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSession(newSession);
   };
 
-  const logout = () => {
+  const logout = async () => {
+    const { supabase } = await import("../lib/supabase");
+    await supabase.auth.signOut();
     localStorage.removeItem("nevesgo:session");
     setSession(null);
   };
