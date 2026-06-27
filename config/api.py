@@ -92,5 +92,15 @@ def global_exception_handler(request, exc):
 
 @api.get("/health", auth=None)
 def health_check(request):
-    """Endpoint aberto para liveness probe."""
-    return {"status": "ok", "service": "slow_lane_django_ninja"}
+    """Endpoint aberto para liveness probe com check no banco de dados."""
+    from django.db import connection
+    try:
+        connection.ensure_connection()
+        return {"status": "ok", "service": "slow_lane_django_ninja"}
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Health check falhou: {e}")
+        return api.create_response(
+            request, {"status": "error", "service": "slow_lane_django_ninja"}, status=503
+        )
