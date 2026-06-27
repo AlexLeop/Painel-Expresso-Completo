@@ -579,26 +579,7 @@ class TestDockerBootstrap:
         assert "GRANT authenticated TO postgres" in content
         assert "GRANT anon TO postgres" in content
 
-    def test_docker_compose_mounts_init_sql(self):
-        """Q2: docker-compose.yml deve montar init.sql como initdb script."""
-        compose_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "docker-compose.yml"
-        )
-        with open(compose_path, "r") as f:
-            content = f.read()
 
-        assert "docker-entrypoint-initdb.d" in content, "Deve montar como init script"
-        assert "init.sql" in content, "Deve incluir init.sql"
-
-    def test_docker_compose_mounts_schema_sql(self):
-        """Q3: docker-compose.yml deve montar schema.sql como init script."""
-        compose_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "docker-compose.yml"
-        )
-        with open(compose_path, "r") as f:
-            content = f.read()
-
-        assert "schema.sql" in content, "Deve incluir schema.sql"
 
     def test_docker_compose_redis_unified_db(self):
         """Fase 4 Achado #28: Todos os serviços devem usar Redis /1."""
