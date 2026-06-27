@@ -30,11 +30,11 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build and assemble debug
-        run: gradle assembleDebug
+      - name: Build and assemble release
+        run: gradle assembleRelease
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ExpressoNeves-Debug-APK
-          path: nevesgo/app/build/outputs/apk/debug/app-debug.apk
+          name: ExpressoNeves-Release-APK
+          path: nevesgo/app/build/outputs/apk/release/app-release-unsigned.apk
