@@ -1,0 +1,134 @@
+{
+  "services": [
+    {
+      "type": "redis",
+      "data": {
+        "projectName": "expresso",
+        "serviceName": "redis",
+        "password": ""
+      }
+    },
+    {
+      "type": "app",
+      "data": {
+        "projectName": "expresso",
+        "serviceName": "django",
+        "source": {
+          "type": "github",
+          "owner": "AlexLeop",
+          "repo": "Painel-Expresso-Completo",
+          "ref": "main"
+        },
+        "build": {
+          "type": "dockerfile",
+          "file": "Dockerfile",
+          "context": "."
+        },
+        "deploy": {
+          "command": "bash -c \"python manage.py migrate && python manage.py warmup_denylist && python manage.py collectstatic --noinput && gunicorn --bind 0.0.0.0:8000 --workers 3 config.wsgi:application\""
+        },
+        "env": "DATABASE_URL=postgresql://postgres:senha@pooler.supabase.com:6543/postgres?pgbouncer=true\nDIRECT_URL=postgresql://postgres:senha@pooler.supabase.com:5432/postgres\nDJANGO_SECRET_KEY=sua-chave-secreta-aqui\nDJANGO_DEBUG=False\nDJANGO_ALLOWED_HOSTS=*\nREDIS_URL=redis://redis:6379/1\nCELERY_BROKER_URL=redis://redis:6379/1\nGEMINI_API_KEY=sua-chave-gemini\nEVOLUTION_API_URL=https://evo.seu-dominio.com\nEVOLUTION_API_KEY=sua-global-api-key\nEVOLUTION_INSTANCE_NAME=sua-instancia\nEVOLUTION_INSTANCE_TOKEN=seu-token-de-instancia\nNEVESGO_API_BASE_URL=https://api.seu-dominio.com/api/v1/",
+        "domains": [
+          {
+            "host": "api.expressoneves.com",
+            "port": 8000
+          }
+        ]
+      }
+    },
+    {
+      "type": "app",
+      "data": {
+        "projectName": "expresso",
+        "serviceName": "frontend",
+        "source": {
+          "type": "github",
+          "owner": "AlexLeop",
+          "repo": "Painel-Expresso-Completo",
+          "ref": "main"
+        },
+        "build": {
+          "type": "dockerfile",
+          "file": "Dockerfile",
+          "context": "./Novo_FrontEnd"
+        },
+        "env": "VITE_API_URL=https://api.expressoneves.com\nVITE_SUPABASE_URL=https://xxxx.supabase.co\nVITE_SUPABASE_ANON_KEY=eyJh...\nPORT=5173\nNODE_ENV=production",
+        "domains": [
+          {
+            "host": "app.expressoneves.com",
+            "port": 5173
+          }
+        ]
+      }
+    },
+    {
+      "type": "app",
+      "data": {
+        "projectName": "expresso",
+        "serviceName": "fastapi",
+        "source": {
+          "type": "github",
+          "owner": "AlexLeop",
+          "repo": "Painel-Expresso-Completo",
+          "ref": "main"
+        },
+        "build": {
+          "type": "dockerfile",
+          "file": "fast_lane/Dockerfile",
+          "context": "."
+        },
+        "env": "DATABASE_URL=postgresql://postgres:senha@pooler.supabase.com:6543/postgres?pgbouncer=true\nDIRECT_URL=postgresql://postgres:senha@pooler.supabase.com:5432/postgres\nREDIS_URL=redis://redis:6379/1\nGEMINI_API_KEY=sua-chave-gemini",
+        "domains": [
+          {
+            "host": "fastapi.expressoneves.com",
+            "port": 8001
+          }
+        ]
+      }
+    },
+    {
+      "type": "app",
+      "data": {
+        "projectName": "expresso",
+        "serviceName": "celery-worker",
+        "source": {
+          "type": "github",
+          "owner": "AlexLeop",
+          "repo": "Painel-Expresso-Completo",
+          "ref": "main"
+        },
+        "build": {
+          "type": "dockerfile",
+          "file": "Dockerfile",
+          "context": "."
+        },
+        "deploy": {
+          "command": "celery -A config worker -l info --concurrency=2"
+        },
+        "env": "DATABASE_URL=postgresql://postgres:senha@pooler.supabase.com:6543/postgres?pgbouncer=true\nDIRECT_URL=postgresql://postgres:senha@pooler.supabase.com:5432/postgres\nREDIS_URL=redis://redis:6379/1\nCELERY_BROKER_URL=redis://redis:6379/1\nGEMINI_API_KEY=sua-chave-gemini\nEVOLUTION_API_URL=https://evo.seu-dominio.com\nEVOLUTION_API_KEY=sua-global-api-key\nEVOLUTION_INSTANCE_NAME=sua-instancia\nEVOLUTION_INSTANCE_TOKEN=seu-token-de-instancia\nNEVESGO_API_BASE_URL=https://api.seu-dominio.com/api/v1/"
+      }
+    },
+    {
+      "type": "app",
+      "data": {
+        "projectName": "expresso",
+        "serviceName": "celery-beat",
+        "source": {
+          "type": "github",
+          "owner": "AlexLeop",
+          "repo": "Painel-Expresso-Completo",
+          "ref": "main"
+        },
+        "build": {
+          "type": "dockerfile",
+          "file": "Dockerfile",
+          "context": "."
+        },
+        "deploy": {
+          "command": "celery -A config beat -l info"
+        },
+        "env": "DATABASE_URL=postgresql://postgres:senha@pooler.supabase.com:6543/postgres?pgbouncer=true\nDIRECT_URL=postgresql://postgres:senha@pooler.supabase.com:5432/postgres\nREDIS_URL=redis://redis:6379/1\nCELERY_BROKER_URL=redis://redis:6379/1"
+      }
+    }
+  ]
+}
