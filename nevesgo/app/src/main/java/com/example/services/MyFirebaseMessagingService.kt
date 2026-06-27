@@ -18,7 +18,16 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         // Handle data payload
         if (remoteMessage.data.isNotEmpty()) {
             Log.d(TAG, "Message data payload: ${remoteMessage.data}")
-            // Custom logic for data messages (e.g. update local DB, show custom notification)
+            val application = applicationContext as? com.example.MyApplication
+            application?.let {
+                kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        it.container.orderRepository.syncOrders()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to sync orders on push", e)
+                    }
+                }
+            }
         }
 
         // Handle notification payload

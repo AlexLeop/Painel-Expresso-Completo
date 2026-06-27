@@ -130,9 +130,41 @@ class TrackingService : Service() {
                 
                 val deviceToken = com.example.data.local.SecureStorage.getPrefs(this@TrackingService).getString("device_token", "missing") ?: "missing"
                 
+                // First, try to send cached offline points if any
+                val db = com.example.data.local.AppDatabase.getDatabase(this@TrackingService)
+                val offlinePoints = db.telemetryDao().getAll()
+                if (offlinePoints.isNotEmpty()) {
+                    for (point in offlinePoints) {
+                        try {
+                            val cachedUpdate = LocationUpdate(
+                                lat = point.lat,
+                                lng = point.lng,
+                                heading = point.heading,
+                                speedKmh = point.speedKmh,
+                                timestamp = point.timestamp
+                            )
+                            apiService.updateLocation(url = fastLaneUrl, deviceToken = deviceToken, location = cachedUpdate)
+                        } catch (e: Exception) {
+                            // Ignora erros individuais no sync em lote
+                        }
+                    }
+                    db.telemetryDao().clearAll()
+                }
+
+                // Send the current one
                 apiService.updateLocation(url = fastLaneUrl, deviceToken = deviceToken, location = update)
             } catch (e: Exception) {
-                // Handle offline sync logic here
+                // Offline fallback: save to local DB
+                val db = com.example.data.local.AppDatabase.getDatabase(this@TrackingService)
+                db.telemetryDao().insert(
+                    com.example.data.local.TelemetryEntity(
+                        lat = location.latitude,
+                        lng = location.longitude,
+                        heading = location.bearing.toInt(),
+                        speedKmh = (location.speed * 3.6).toInt(),
+                        timestamp = location.time
+                    )
+                )
             }
         }
     }

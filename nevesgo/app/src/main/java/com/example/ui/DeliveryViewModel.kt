@@ -56,12 +56,9 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
             initialValue = emptyList()
         )
         
-        // Sync orders with polling
+        // Sync inicial de ordens (FCM cuidará do sync futuro)
         viewModelScope.launch {
-            while (kotlinx.coroutines.isActive) {
-                repository.syncOrders()
-                kotlinx.coroutines.delay(10000)
-            }
+            repository.syncOrders()
         }
     }
 
