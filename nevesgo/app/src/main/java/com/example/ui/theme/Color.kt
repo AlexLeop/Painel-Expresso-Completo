@@ -3,7 +3,7 @@ package com.example.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // Premium Dark Mode Priority (Uber/iFood style)
-val PrimaryLight = Color(0xFF000000)
+val PrimaryLight = Color(0xFF4F46E5)
 val OnPrimaryLight = Color(0xFFFFFFFF)
 val PrimaryContainerLight = Color(0xFFE5E7EB)
 val OnPrimaryContainerLight = Color(0xFF111827)
@@ -19,7 +19,7 @@ val DangerLight = Color(0xFFEF4444)
 val OutlineLight = Color(0xFFD1D5DB)
 
 // Dark Theme (Priority)
-val PrimaryDark = Color(0xFFFFFFFF)
+val PrimaryDark = Color(0xFF4F46E5)
 val OnPrimaryDark = Color(0xFF000000)
 val PrimaryContainerDark = Color(0xFF374151)
 val OnPrimaryContainerDark = Color(0xFFF9FAFB)

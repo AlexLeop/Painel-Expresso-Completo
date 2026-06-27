@@ -17,7 +17,7 @@ android {
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
-    applicationId = "com.aistudio.nevesgo.nxmptq"
+    applicationId = "br.com.expressoneves.entregador"
     minSdk = 24
     targetSdk = 36
     versionCode = 1
@@ -45,8 +45,9 @@ android {
 
   buildTypes {
     release {
-      isCrunchPngs = false
-      isMinifyEnabled = false
+      isCrunchPngs = true
+      isMinifyEnabled = true
+      isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
       buildConfigField("boolean", "ENABLE_HTTP_LOGGING", "false")
