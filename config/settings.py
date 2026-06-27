@@ -104,7 +104,11 @@ if db_url:
         }
     }
 else:
-    # Fallback
+    if not DEBUG:
+        from django.core.exceptions import ImproperlyConfigured
+        raise ImproperlyConfigured("DATABASE_URL environment variable is missing in production!")
+
+    # Fallback para ambiente de desenvolvimento local (ex: Supabase CLI)
     DATABASES = {
         "default": {
             "ENGINE": os.environ.get(
