@@ -145,6 +145,7 @@ USE_TZ = True
 
 # Static files
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 if sys.platform == "win32":
     # Desabilita o GIS no Windows nativo para evitar crash por falta de GDAL
