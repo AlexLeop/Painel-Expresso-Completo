@@ -33,4 +33,12 @@ object SecureStorage {
     fun clearToken(context: Context) {
         getPrefs(context).edit().remove("jwt_token").apply()
     }
+
+    fun saveRefreshToken(context: Context, token: String) {
+        getPrefs(context).edit().putString("refresh_token", token).apply()
+    }
+
+    fun getRefreshToken(context: Context): String? {
+        return getPrefs(context).getString("refresh_token", null)
+    }
 }

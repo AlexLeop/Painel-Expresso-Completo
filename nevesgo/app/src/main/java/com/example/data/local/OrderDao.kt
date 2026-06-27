@@ -32,4 +32,7 @@ interface OrderDao {
     
     @Query("DELETE FROM orders")
     suspend fun clearAll()
+
+    @androidx.room.Delete
+    suspend fun delete(order: OrderEntity)
 }

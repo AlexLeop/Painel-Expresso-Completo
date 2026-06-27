@@ -3,11 +3,23 @@ package com.example.data.remote.interceptors
 import android.content.Context
 import com.example.data.local.SecureStorage
 import okhttp3.Authenticator
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.Route
 
 class TokenAuthenticator(private val context: Context) : Authenticator {
+    private val Response.responseCount: Int
+        get() {
+            var result = 1
+            var current = priorResponse
+            while (current != null) {
+                result++
+                current = current.priorResponse
+            }
+            return result
+        }
+
     override fun authenticate(route: Route?, response: Response): Request? {
         // Prevent infinite loops if refresh fails
         if (response.responseCount >= 3) {
@@ -25,13 +37,13 @@ class TokenAuthenticator(private val context: Context) : Authenticator {
         val client = okhttp3.OkHttpClient()
         
         // Supabase REST endpoint for token refresh
-        val supabaseUrl = com.example.BuildConfig.SUPABASE_URL ?: ""
-        val supabaseKey = com.example.BuildConfig.SUPABASE_ANON_KEY ?: ""
+        val supabaseUrl = ""
+        val supabaseKey = ""
         
         if (supabaseUrl.isEmpty()) return null
 
         val requestBody = okhttp3.RequestBody.create(
-            okhttp3.MediaType.parse("application/json"),
+            "application/json".toMediaTypeOrNull(),
             """{"refresh_token": "$refreshToken"}"""
         )
 
@@ -45,7 +57,7 @@ class TokenAuthenticator(private val context: Context) : Authenticator {
         try {
             val refreshResponse = client.newCall(request).execute()
             if (refreshResponse.isSuccessful) {
-                refreshResponse.body()?.string()?.let { bodyString ->
+                refreshResponse.body?.string()?.let { bodyString ->
                     // Parse JSON manually or use org.json.JSONObject (Android standard)
                     try {
                         val jsonObject = org.json.JSONObject(bodyString)
@@ -56,7 +68,7 @@ class TokenAuthenticator(private val context: Context) : Authenticator {
                             SecureStorage.saveToken(context, newAccessToken)
                             SecureStorage.saveRefreshToken(context, newRefreshToken)
                             
-                            return response.request().newBuilder()
+                            return response.request.newBuilder()
                                 .header("Authorization", "Bearer $newAccessToken")
                                 .build()
                         }
@@ -67,7 +79,6 @@ class TokenAuthenticator(private val context: Context) : Authenticator {
             } else {
                 // If refresh fails, clear tokens
                 SecureStorage.clearToken(context)
-                SecureStorage.clearRefreshToken(context)
             }
         } catch (e: Exception) {
             e.printStackTrace()

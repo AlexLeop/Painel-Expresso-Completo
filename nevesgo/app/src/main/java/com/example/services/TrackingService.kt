@@ -19,8 +19,8 @@ import com.google.android.gms.location.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-
 class TrackingService : Service() {
     private var trackedOrderId: String? = null
 
@@ -172,7 +172,7 @@ class TrackingService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         fusedLocationClient.removeLocationUpdates(locationCallback)
-        kotlinx.coroutines.cancel(serviceScope)
+        serviceScope.cancel()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

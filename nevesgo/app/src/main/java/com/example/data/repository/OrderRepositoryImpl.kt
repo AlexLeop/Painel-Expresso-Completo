@@ -13,7 +13,9 @@ import com.example.domain.repository.OrderRepository
 import kotlinx.coroutines.flow.Flow
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.source
 import java.time.Instant
+import kotlinx.coroutines.async
 
 class OrderRepositoryImpl(
     private val context: android.content.Context,
@@ -54,7 +56,7 @@ class OrderRepositoryImpl(
                 response.body()?.let { orders ->
                     val entities = kotlinx.coroutines.coroutineScope {
                         orders.map { order ->
-                            kotlinx.coroutines.async {
+                            async {
                                 val details = try {
                                     apiService.getOrderDetails(order.id).takeIf { it.isSuccessful }?.body()
                                 } catch (e: Exception) {
@@ -197,7 +199,7 @@ class OrderRepositoryImpl(
                     override fun contentType() = imageJpeg
                     override fun writeTo(sink: okio.BufferedSink) {
                         context.contentResolver.openInputStream(deliveryProofUri)?.use { inputStream ->
-                            sink.writeAll(okio.Okio.source(inputStream))
+                            sink.writeAll(inputStream.source())
                         }
                     }
                 }
@@ -273,7 +275,7 @@ class OrderRepositoryImpl(
                         override fun contentType() = imageJpeg
                         override fun writeTo(sink: okio.BufferedSink) {
                             context.contentResolver.openInputStream(incidentProofUri)?.use { inputStream ->
-                                sink.writeAll(okio.Okio.source(inputStream))
+                                sink.writeAll(inputStream.source())
                             }
                         }
                     }

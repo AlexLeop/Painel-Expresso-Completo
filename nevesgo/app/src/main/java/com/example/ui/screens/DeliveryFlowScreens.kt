@@ -26,6 +26,11 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavController
 import com.example.ui.theme.SuccessGreen
 import android.annotation.SuppressLint
+import android.location.Geocoder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.osmdroid.views.MapView
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.overlay.Marker
@@ -52,6 +57,7 @@ fun DeliveryAcceptedScreen(
     val orderDetails by viewModel.orderDetails.collectAsStateWithLifecycle()
     val operationError by viewModel.operationError.collectAsStateWithLifecycle()
     val orderDetail = orderId?.let { orderDetails[it] }
+    val context = LocalContext.current
 
     LaunchedEffect(orderId) {
         if (!orderId.isNullOrBlank()) {
@@ -299,7 +305,7 @@ fun RouteNavigationScreen(
                         // Desenhando de forma assíncrona para não travar a UI Thread
                         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
                             try {
-                                val roadManager = org.osmdroid.bonuspack.routing.OSRMRoadManager(ctx, "NevesGoApp/1.0")
+                                val roadManager = org.osmdroid.bonuspack.routing.OSRMRoadManager(context, "NevesGoApp/1.0")
                                 // OSRM default server is sometimes rate limited, but works for PoC/Go-Live
                                 val waypoints = java.util.ArrayList<org.osmdroid.util.GeoPoint>()
                                 waypoints.add(routeStartPoint)
@@ -847,4 +853,19 @@ private fun SimplePoint?.toGeoPointOrNull(): GeoPoint? {
     val lat = point.lat ?: return null
     val lng = point.lng ?: return null
     return GeoPoint(lat, lng)
+}
+
+fun resolveAddress(point: com.example.domain.models.SimplePoint, context: android.content.Context, fallback: String): String {
+    return try {
+        val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
+        val addresses = geocoder.getFromLocation(point.lat!!, point.lng!!, 1)
+        if (!addresses.isNullOrEmpty()) {
+            val address = addresses[0]
+            address.getAddressLine(0) ?: fallback
+        } else {
+            fallback
+        }
+    } catch (e: Exception) {
+        fallback
+    }
 }

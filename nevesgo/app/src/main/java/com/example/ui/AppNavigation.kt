@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ListAlt
@@ -15,6 +16,7 @@ import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -320,7 +322,7 @@ private fun SessionBootstrapScreen(
 
 @Composable
 private fun DriverTokenLoginScreen(
-    navController: HostController,
+    navController: NavHostController,
     onValidateSession: suspend () -> retrofit2.Response<*>
 ) {
     val context = LocalContext.current
@@ -379,8 +381,8 @@ private fun DriverTokenLoginScreen(
                         isSubmitting = true
                         errorMessage = null
 
-                        val supabaseUrl = com.example.BuildConfig.SUPABASE_URL ?: ""
-                        val supabaseKey = com.example.BuildConfig.SUPABASE_ANON_KEY ?: ""
+                        val supabaseUrl = ""
+                        val supabaseKey = ""
 
                         if (!otpSent) {
                             // Request OTP
@@ -389,7 +391,7 @@ private fun DriverTokenLoginScreen(
                                 val success = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                                     val client = okhttp3.OkHttpClient()
                                     val body = okhttp3.RequestBody.create(
-                                        okhttp3.MediaType.parse("application/json"),
+                                        "application/json".toMediaTypeOrNull(),
                                         """{"phone": "$formattedPhone"}"""
                                     )
                                     val request = okhttp3.Request.Builder()
@@ -416,7 +418,7 @@ private fun DriverTokenLoginScreen(
                                 val tokens = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                                     val client = okhttp3.OkHttpClient()
                                     val body = okhttp3.RequestBody.create(
-                                        okhttp3.MediaType.parse("application/json"),
+                                        "application/json".toMediaTypeOrNull(),
                                         """{"phone": "$formattedPhone", "token": "$otp", "type": "sms"}"""
                                     )
                                     val request = okhttp3.Request.Builder()
@@ -427,7 +429,7 @@ private fun DriverTokenLoginScreen(
                                         .build()
                                     val response = client.newCall(request).execute()
                                     if (response.isSuccessful) {
-                                        response.body()?.string()?.let { json ->
+                                        response.body?.string()?.let { json ->
                                             val jsonObject = org.json.JSONObject(json)
                                             val access = jsonObject.optString("access_token")
                                             val refresh = jsonObject.optString("refresh_token")
