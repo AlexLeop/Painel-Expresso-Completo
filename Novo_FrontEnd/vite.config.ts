@@ -25,12 +25,12 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), tailwindcss()],
-    // Base path matches the output directory within Next.js public/
-    base: "/_spa/",
-    // Build output goes into the Next.js public directory
+    // Default base path for standalone deployment
+    base: "/",
+    // Default build output (dist)
     build: {
-      outDir: "../public/_spa",
-      emptyOutDir: true,
+      outDir: "dist",
+      emptyOutDir: false, // Don't empty outDir completely because esbuild might run concurrently or after and we want both
       // Generate manifest for cache busting
       manifest: true,
     },
