@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 2,
+  "name": "Expresso Neves Stack",
+  "variables": [
+    {
+      "name": "PROJECT_NAME",
+      "description": "Nome do Projeto (Onde os serviços serão agrupados)",
+      "defaultValue": "expresso"
+    },
+    {
+      "name": "APP_DOMAIN",
+      "description": "Domínio do Frontend (ex: painel.seudominio.com)"
+    },
+    {
+      "name": "API_DOMAIN",
+      "description": "Domínio da API Django (ex: api.seudominio.com)"
+    },
+    {
+      "name": "GITHUB_OWNER",
+      "description": "Dono do repositório no GitHub",
+      "defaultValue": "AlexLeop"
+    },
+    {
+      "name": "GITHUB_REPO",
+      "description": "Nome do repositório no GitHub",
+      "defaultValue": "Painel-Expresso-Completo"
+    }
+  ],
+  "services": [
+    {
+      "type": "redis",
+      "data": {
+        "projectName": "${PROJECT_NAME}",
+        "serviceName": "redis",
+        "password": ""
+      }
+    },
+    {
+      "type": "app",
+      "data": {
+        "projectName": "${PROJECT_NAME}",
+        "serviceName": "django",
+        "source": {
+          "type": "github",
+          "owner": "${GITHUB_OWNER}",
+          "repo": "${GITHUB_REPO}",
+          "ref": "main"
+        },
+        "build": {
+          "type": "dockerfile",
+          "dockerfile": "Dockerfile",
+          "context": "."
+        },
+        "deploy": {
+          "command": "bash -c \"python manage.py migrate && python manage.py warmup_denylist && python manage.py collectstatic --noinput && gunicorn --bind 0.0.0.0:8000 --workers 3 config.wsgi:application\""
+        },
+        "env": "DATABASE_URL=postgresql://postgres:senha@pooler.supabase.com:6543/postgres?pgbouncer=true\nDIRECT_URL=postgresql://postgres:senha@pooler.supabase.com:5432/postgres\nDJANGO_SECRET_KEY=sua-chave-secreta-aqui\nDJANGO_DEBUG=False\nDJANGO_ALLOWED_HOSTS=*\nREDIS_URL=redis://redis:6379/1\nCELERY_BROKER_URL=redis://redis:6379/1\nGEMINI_API_KEY=sua-chave-gemini\nEVOLUTION_API_URL=https://evo.seu-dominio.com\nEVOLUTION_API_KEY=sua-global-api-key\nEVOLUTION_INSTANCE_NAME=sua-instancia\nEVOLUTION_INSTANCE_TOKEN=seu-token-de-instancia\nNEVESGO_API_BASE_URL=https://api.seu-dominio.com/api/v1/",
+        "domains": [
+          {
+            "host": "${API_DOMAIN}",
+            "port": 8000
+          }
+        ]
+      }
+    },
+    {
+      "type": "app",
+      "data": {
+        "projectName": "${PROJECT_NAME}",
+        "serviceName": "frontend",
+        "source": {
+          "type": "github",
+          "owner": "${GITHUB_OWNER}",
+          "repo": "${GITHUB_REPO}",
+          "ref": "main"
+        },
+        "build": {
+          "type": "dockerfile",
+          "dockerfile": "Dockerfile",
+          "context": "./Novo_FrontEnd"
+        },
+        "env": "VITE_API_URL=https://${API_DOMAIN}\nVITE_SUPABASE_URL=https://xxxx.supabase.co\nVITE_SUPABASE_ANON_KEY=eyJh...\nPORT=5173\nNODE_ENV=production",
+        "domains": [
+          {
+            "host": "${APP_DOMAIN}",
+            "port": 5173
+          }
+        ]
+      }
+    },
+    {
+      "type": "app",
+      "data": {
+        "projectName": "${PROJECT_NAME}",
+        "serviceName": "fastapi",
+        "source": {
+          "type": "github",
+          "owner": "${GITHUB_OWNER}",
+          "repo": "${GITHUB_REPO}",
+          "ref": "main"
+        },
+        "build": {
+          "type": "dockerfile",
+          "dockerfile": "fast_lane/Dockerfile",
+          "context": "."
+        },
+        "env": "DATABASE_URL=postgresql://postgres:senha@pooler.supabase.com:6543/postgres?pgbouncer=true\nDIRECT_URL=postgresql://postgres:senha@pooler.supabase.com:5432/postgres\nREDIS_URL=redis://redis:6379/1\nGEMINI_API_KEY=sua-chave-gemini"
+      }
+    },
+    {
+      "type": "app",
+      "data": {
+        "projectName": "${PROJECT_NAME}",
+        "serviceName": "celery-worker",
+        "source": {
+          "type": "github",
+          "owner": "${GITHUB_OWNER}",
+          "repo": "${GITHUB_REPO}",
+          "ref": "main"
+        },
+        "build": {
+          "type": "dockerfile",
+          "dockerfile": "Dockerfile",
+          "context": "."
+        },
+        "deploy": {
+          "command": "celery -A config worker -l info --concurrency=2"
+        },
+        "env": "DATABASE_URL=postgresql://postgres:senha@pooler.supabase.com:6543/postgres?pgbouncer=true\nDIRECT_URL=postgresql://postgres:senha@pooler.supabase.com:5432/postgres\nREDIS_URL=redis://redis:6379/1\nCELERY_BROKER_URL=redis://redis:6379/1\nGEMINI_API_KEY=sua-chave-gemini\nEVOLUTION_API_URL=https://evo.seu-dominio.com\nEVOLUTION_API_KEY=sua-global-api-key\nEVOLUTION_INSTANCE_NAME=sua-instancia\nEVOLUTION_INSTANCE_TOKEN=seu-token-de-instancia\nNEVESGO_API_BASE_URL=https://api.seu-dominio.com/api/v1/"
+      }
+    },
+    {
+      "type": "app",
+      "data": {
+        "projectName": "${PROJECT_NAME}",
+        "serviceName": "celery-beat",
+        "source": {
+          "type": "github",
+          "owner": "${GITHUB_OWNER}",
+          "repo": "${GITHUB_REPO}",
+          "ref": "main"
+        },
+        "build": {
+          "type": "dockerfile",
+          "dockerfile": "Dockerfile",
+          "context": "."
+        },
+        "deploy": {
+          "command": "celery -A config beat -l info"
+        },
+        "env": "DATABASE_URL=postgresql://postgres:senha@pooler.supabase.com:6543/postgres?pgbouncer=true\nDIRECT_URL=postgresql://postgres:senha@pooler.supabase.com:5432/postgres\nREDIS_URL=redis://redis:6379/1\nCELERY_BROKER_URL=redis://redis:6379/1"
+      }
+    }
+  ]
+}
