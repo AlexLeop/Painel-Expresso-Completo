@@ -70,6 +70,19 @@ def verify_device_token(x_device_token: str = Header(...)):
 async def ingest_telemetry(
     payload: TelemetryPayload, driver_info: dict = Depends(verify_device_token)
 ):
+    """
+    Time: O(log N) para GEORADIUS (onde N = número de stops na key) | Space: O(1)
+    
+    Ingere coordenadas de telemetria e dispara gatilhos de Auto-Arrive via Geofence.
+    Utiliza Pipeline do Redis para garantir RTT mínimo na gravação do Fast-Path e Slow-Path.
+    
+    Args:
+        payload (TelemetryPayload): Posição atual, timestamp, velocidade e orientação.
+        driver_info (dict): Dependência extraída do token contendo driver_id e operator_id.
+        
+    Returns:
+        dict: Confirmação de ingestão.
+    """
     driver_id = driver_info["driver_id"]
     operator_id = driver_info["operator_id"]
 
@@ -103,7 +116,7 @@ async def ingest_telemetry(
         # 3. Geofence Auto-Arrive trigger
         # Busca stops cadastrados num raio de 150m da posição atual
         nearby_stops = redis_client.georadius(
-            f"driver:location:{operator_id}", payload.lng, payload.lat, 150, unit="m"
+            f"geofence:stops:{operator_id}", payload.lng, payload.lat, 150, unit="m"
         )
         if isinstance(nearby_stops, list):
             for member_obj in nearby_stops:

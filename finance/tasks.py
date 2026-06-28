@@ -35,6 +35,9 @@ def compute_daily_credit(target_cutoff_hour=None):
 
         with tenant_context(operator_id):
             from logistics.models import Store
+            from collections import defaultdict
+            from django.db.models import Exists, OuterRef, Q
+            from finance.models import ManualEntry
 
             stores = Store.objects.select_related("contract").all()
 
@@ -50,20 +53,13 @@ def compute_daily_credit(target_cutoff_hour=None):
                 ):
                     continue
 
-                # Cálculo determinístico: Quando foi a ÚLTIMA vez que o relógio marcou a hora do cutoff?
-                # Se agora são 02:05 e o cutoff é 02:00, o último cutoff foi hoje às 02:00. O dia fiscal fechado é "ontem".
-                # Se agora são 23:05 e o cutoff é 23:00, o último cutoff foi hoje às 23:00. O dia fiscal fechado é "hoje".
-                # Para evitar falhas por atrasos de filas, recuamos 1 hora do cutoff nominal para "travar" o dia correto.
+                # Cálculo determinístico
                 current_time = timezone.localtime()
-                # Limite máximo de data fiscal a ser processada hoje (Cutoff)
                 business_date_limit = (
                     current_time - timedelta(hours=contract.cutoffHour, minutes=30)
                 ).date()
 
-                from django.db.models import Exists, OuterRef
-
-                # Catch-up Automático: Puxa QUALQUER turno do passado que o Celery
-                # tenha deixado de processar (Downtime/Crashes) até o limite fiscal atual.
+                # Catch-up Automático
                 schedules = (
                     ScheduleEntry.objects.filter(
                         store=store, date__lte=business_date_limit
@@ -87,8 +83,50 @@ def compute_daily_credit(target_cutoff_hour=None):
 
                 if not schedules.exists():
                     continue
+                
+                # --- OTIMIZAÇÃO: BATCH FETCHING PARA EVITAR N+1 QUERIES ---
+                schedule_list = list(schedules)
+                driver_ids = {s.driver_id for s in schedule_list}
+                dates = {s.date for s in schedule_list}
+                
+                # 1. Fetch Orders
+                orders_qs = Order.objects.filter(
+                    operator_id=operator_id,
+                    store=store,
+                    driver_id__in=driver_ids,
+                    businessDate__in=dates,
+                    status__in=[
+                        Order.OrderStatus.COMPLETED,
+                        Order.OrderStatus.RETURNED,
+                        Order.OrderStatus.CANCELED_IN_TRANSIT,
+                    ],
+                )
+                orders_by_driver_date = defaultdict(list)
+                for order in orders_qs:
+                    orders_by_driver_date[(order.driver_id, order.businessDate)].append(order)
+                
+                # 2. Fetch Advances (ManualEntry)
+                advances_qs = ManualEntry.objects.filter(
+                    Q(store=store) | Q(store__isnull=True),
+                    operator_id=operator_id,
+                    driver_id__in=driver_ids,
+                    status=ManualEntry.EntryStatus.APPROVED,
+                    taxCategory=WalletTransaction.TaxCategory.DEDUCTION,
+                    createdAt__date__in=dates,
+                ).values('driver_id', 'createdAt__date').annotate(total=Sum('amountCents'))
+                
+                advances_by_driver_date = defaultdict(int)
+                for adv in advances_qs:
+                    advances_by_driver_date[(adv['driver_id'], adv['createdAt__date'])] = adv['total'] or 0
 
-                for schedule in schedules:
+                # 3. Cache FaixaHoras para a Loja atual
+                faixas = list(FaixaHoras.objects.filter(
+                    operator_id=operator_id,
+                    contract=contract,
+                ))
+                # -----------------------------------------------------------
+
+                for schedule in schedule_list:
                     driver = schedule.driver
                     operator = schedule.operator
                     turno = schedule.turno
@@ -97,7 +135,6 @@ def compute_daily_credit(target_cutoff_hour=None):
                     total_processed += 1
 
                     # SEGURANÇA: Contabilidade Interceptadora
-                    # Não computar faturas diárias e repasses para motoristas suspensos
                     if getattr(driver, "active", True) is False:
                         continue
 
@@ -105,20 +142,16 @@ def compute_daily_credit(target_cutoff_hour=None):
                     try:
                         is_blocked = r.get(f"deny_list:driver:{driver.id}")
                         if is_blocked:
-                            # Se banido, a transação aborta como FAILED mid-flight para este driver
                             continue
                     except (
                         redis.exceptions.ConnectionError,
                         redis.exceptions.TimeoutError,
                     ):
-                        # A indisponibilidade de sistema temporária é infinitamente superior ao risco contábil cego.
                         # Fail-Closed
                         continue
 
                     with transaction.atomic():
                         # Padrão seguro contra race condition:
-                        # 1. get_or_create SEM lock (cria se não existir, IntegrityError é handled pelo Django)
-                        # 2. Depois, select_for_update para travar a row existente/criada
                         operator_wallet, _ = (
                             OperatorInternalWallet.objects.get_or_create(
                                 operator=operator
@@ -147,28 +180,16 @@ def compute_daily_credit(target_cutoff_hour=None):
                         ).exists():
                             continue
 
-                        # Buscar produção (Orders) filtrando os que geram repasse
-                        orders = Order.objects.filter(
-                            operator=operator,
-                            driver=driver,
-                            store=store,
-                            businessDate=business_date,
-                            status__in=[
-                                Order.OrderStatus.COMPLETED,
-                                Order.OrderStatus.RETURNED,
-                                Order.OrderStatus.CANCELED_IN_TRANSIT,
-                            ],
-                        )
+                        # O(1) in-memory order lookup
+                        orders = orders_by_driver_date.get((driver.id, business_date), [])
 
                         production = 0
                         extras = 0
                         deliveries = 0
 
-                        # Calcular aplicando proporção de taxa de devolução (returnFeeBps)
-                        # LOW-002: Usar aritmética de inteiros (não floats)
                         return_fee_bps = (
                             contract.returnFeeBps if contract.returnFeeBps else 5000
-                        )  # 50% = 5000 bps
+                        )
 
                         for order in orders:
                             if order.status == Order.OrderStatus.COMPLETED:
@@ -176,38 +197,21 @@ def compute_daily_credit(target_cutoff_hour=None):
                                 extras += order.storeAuthorizedBonusCents or 0
                                 deliveries += 1
                             else:
-                                # RETURNED ou CANCELED_IN_TRANSIT: Motoboy foi e voltou/cancelado. Paga a fração (ex: 50%)
                                 fare_value = order.fareValueCents or 0
                                 bonus_value = order.storeAuthorizedBonusCents or 0
                                 production += (fare_value * return_fee_bps) // 10000
                                 extras += (bonus_value * return_fee_bps) // 10000
-                                # Não conta como 'delivery' pleno para bônus de número de entregas
 
-                        # Determinar a diária base do contrato (simplificado para dia da semana vs Sábado/Domingo)
                         weekday = business_date.weekday()
-                        if weekday == 5:  # Sábado
+                        if weekday == 5:
                             dailyRateCents = contract.dailyRateSaturdayCents
-                        elif weekday == 6:  # Domingo
+                        elif weekday == 6:
                             dailyRateCents = contract.dailyRateSundayCents
-                        else:  # Seg-Sex
+                        else:
                             dailyRateCents = contract.dailyRateWeekdayCents
 
-                        # Consultar adiantamentos/vales aprovados para este motorista neste dia
-                        # Inclui lançamentos privados (store=NULL) conforme schema.sql
-                        from finance.models import ManualEntry
-                        from django.db.models import Q
-
-                        advances = (
-                            ManualEntry.objects.filter(
-                                Q(store=store) | Q(store__isnull=True),
-                                operator=operator,
-                                driver=driver,
-                                status=ManualEntry.EntryStatus.APPROVED,
-                                taxCategory=WalletTransaction.TaxCategory.DEDUCTION,
-                                createdAt__date=business_date,
-                            ).aggregate(total=Sum("amountCents"))["total"]
-                            or 0
-                        )
+                        # O(1) in-memory advances lookup
+                        advances = advances_by_driver_date.get((driver.id, business_date), 0)
 
                         mode = contract.compensationMode
                         netAmountCents = 0
@@ -226,7 +230,6 @@ def compute_daily_credit(target_cutoff_hour=None):
                             )
 
                         elif mode == "GARANTIDA":
-                            # Permite override manual na escala específica
                             override = schedule.minGuaranteedOverrideCents
                             effective_guarantee = (
                                 override if override is not None else dailyRateCents
@@ -241,7 +244,6 @@ def compute_daily_credit(target_cutoff_hour=None):
                             )
 
                         elif mode == "GARANTIDA_HORAS":
-                            # Cálculo de horas decimais do Turno (INTERVALO SEMI-ABERTO)
                             t_start = turno.startTime
                             t_end = turno.endTime
                             minutes_worked = (t_end.hour * 60 + t_end.minute) - (
@@ -253,14 +255,13 @@ def compute_daily_credit(target_cutoff_hour=None):
 
                             hours_worked = Decimal(minutes_worked) / Decimal(60)
 
-                            faixa = FaixaHoras.objects.filter(
-                                operator=operator,
-                                contract=contract,
-                                hoursMin__lte=hours_worked,
-                                hoursMax__gt=hours_worked,  # Estrito: Menor que hoursMax (Semi-aberto)
-                            ).first()
+                            # Encontrar faixa em memória O(N) onde N é número de faixas do contrato (muito pequeno)
+                            faixa_price = 0
+                            for faixa in faixas:
+                                if faixa.hoursMin <= hours_worked < faixa.hoursMax:
+                                    faixa_price = faixa.priceCents
+                                    break
 
-                            faixa_price = faixa.priceCents if faixa else 0
                             guaranteedCents = max(production + extras, faixa_price)
                             netAmountCents = (
                                 guaranteedCents
@@ -286,9 +287,6 @@ def compute_daily_credit(target_cutoff_hour=None):
                         )
 
                         if netAmountCents > 0:
-                            # O saldo nunca é atualizado diretamente pelo worker.
-                            # Apenas registramos a Transação Imutável, e o PostGIS/PostgreSQL
-                            # através de Triggers recalcula o Ledger consolidado.
                             WalletTransaction.objects.create(
                                 operator=operator,
                                 source_operator_wallet=operator_wallet,
@@ -298,17 +296,14 @@ def compute_daily_credit(target_cutoff_hour=None):
                                 taxCategory=WalletTransaction.TaxCategory.NON_TAXABLE_REIMBURSEMENT,
                             )
                         elif netAmountCents < 0:
-                            # Partidas Dobradas: O dinheiro não surge nem desaparece.
-                            # Motorista pegou mais adiantamentos que a produção. Débito contra o Motorista!
                             WalletTransaction.objects.create(
                                 operator=operator,
-                                source_driver_wallet=wallet,  # Wallet do motorista (Origem: de onde sai o dinheiro)
-                                destination_operator_wallet=operator_wallet,  # OperatorInternalWallet (Destino: para onde vai)
+                                source_driver_wallet=wallet,
+                                destination_operator_wallet=operator_wallet,
                                 amountCents=abs(netAmountCents),
                                 category=WalletTransaction.TransactionCategory.DAILY_SETTLEMENT,
                                 taxCategory=WalletTransaction.TaxCategory.NON_TAXABLE_REIMBURSEMENT,
                             )
-
 
 @shared_task
 def close_weekly_invoice():
@@ -330,6 +325,7 @@ def close_weekly_invoice():
         from config.core_models import tenant_context
 
         with tenant_context(operator_id):
+            operator_obj = Operator.objects.get(pk=operator_id)
             stores = Store.objects.select_related("contract").all()
             for store in stores:
                 if not hasattr(store, "contract"):
@@ -345,26 +341,20 @@ def close_weekly_invoice():
                     ).exists():
                         continue
 
-                    daily_credits = DailyCreditCalculation.objects.filter(
+                    daily_credits = list(DailyCreditCalculation.objects.filter(
                         operator_id=operator_id,
                         store=store,
                         date__gte=start_date,
                         date__lte=end_date,
                         status=DailyCreditCalculation.CreditStatus.CREDITED,
-                    )
+                    ))
 
-                    if not daily_credits.exists():
+                    if not daily_credits:
                         continue
 
-                    totalNetProducaoCents = (
-                        daily_credits.aggregate(t=Sum("productionValueCents"))["t"] or 0
-                    )
-                    totalNetGarantidaCents = (
-                        daily_credits.aggregate(t=Sum("dailyRateOrGuaranteedCents"))[
-                            "t"
-                        ]
-                        or 0
-                    )
+                    # Cálculo na memória para economizar chamadas SQL (O(N) in-memory)
+                    totalNetProducaoCents = sum(dc.productionValueCents for dc in daily_credits)
+                    totalNetGarantidaCents = sum(dc.dailyRateOrGuaranteedCents for dc in daily_credits)
 
                     # CRIT-002: Escolher apenas um modo de compensação (não somar ambos)
                     if contract.compensationMode == Contract.CompensationMode.PRODUCAO:
@@ -381,10 +371,9 @@ def close_weekly_invoice():
                         adminFee = (base_total * contract.adminTaxBps) // 10000
 
                     total = base_total + supervisionFee + adminFee
-                    operator = Operator.objects.get(pk=operator_id)
 
                     invoice = WeeklyStoreInvoice.objects.create(
-                        operator=operator,
+                        operator=operator_obj,
                         store=store,
                         startDate=start_date,
                         endDate=end_date,
@@ -395,16 +384,23 @@ def close_weekly_invoice():
                         totalCents=total,
                         status=WeeklyStoreInvoice.InvoiceStatus.FINALIZED,
                     )
-
+                    
+                    line_items = []
                     for dc in daily_credits:
-                        WeeklyInvoiceLineItem.objects.create(
-                            operator=operator,
-                            invoice=invoice,
-                            driver=dc.driver,
-                            businessDate=dc.date,
-                            description=f"Repasse referente a {dc.date}",
-                            amountCents=dc.netAmountCents,
+                        line_items.append(
+                            WeeklyInvoiceLineItem(
+                                operator=operator_obj,
+                                invoice=invoice,
+                                driver=dc.driver,
+                                businessDate=dc.date,
+                                description=f"Repasse referente a {dc.date}",
+                                amountCents=dc.netAmountCents,
+                            )
                         )
+                    
+                    # Inserção O(1) de inserts
+                    if line_items:
+                        WeeklyInvoiceLineItem.objects.bulk_create(line_items)
 
                     total_invoices += 1
 
@@ -473,6 +469,7 @@ def process_withdrawal_remessas():
     """
     Agrupa os pedidos de saque PENDING e gera o CNAB 240
     para envio ao Banco de cada Operador Logístico.
+    Resiliente a falhas de rede do Supabase.
     """
     from finance.models import WithdrawalRequest
     from accounts.models import Operator
@@ -485,6 +482,17 @@ def process_withdrawal_remessas():
     files_generated = 0
 
     for operator in operators:
+        if not operator.cnpj:
+            from logging import getLogger
+            getLogger(__name__).error(
+                f"Operador {operator.name} nao possui CNPJ configurado."
+            )
+            continue
+            
+        locked_withdrawals = []
+        cnab_string = None
+        
+        # 1. TRANSAÇÃO DE BANCO: Apenas bloqueio e atualização de status
         with transaction.atomic():
             withdrawals = list(
                 WithdrawalRequest.objects.filter(
@@ -494,32 +502,47 @@ def process_withdrawal_remessas():
 
             if not withdrawals:
                 continue
-
-            if not operator.cnpj:
-                from logging import getLogger
-
-                getLogger(__name__).error(
-                    f"Operador {operator.name} nao possui CNPJ configurado."
-                )
-                continue
-
+                
             builder = CNAB240RemessaBuilder(
                 operator_cnpj=operator.cnpj, operator_name=operator.name
             )
             cnab_string = builder.build(withdrawals)
 
-            if supabase:
-                file_path = f"remessas/{operator.id}/{datetime.now().strftime('%Y%m%d%H%M%S')}.rem"
-                # Usando str.encode para enviar os bytes do arquivo de texto
-                supabase.storage.from_("financial").upload(
-                    file_path, cnab_string.encode("utf-8")
-                )
-
-            # Marca como processando
+            # Marca como processando na base
             for w in withdrawals:
                 w.status = WithdrawalRequest.WithdrawalStatus.PROCESSING
                 w.save(update_fields=["status"])
+                locked_withdrawals.append(w)
+                
+        # Se não processou nada, vai pro próximo
+        if not locked_withdrawals or not cnab_string:
+            continue
 
+        # 2. I/O DE REDE (SUPABASE): Fora da transação
+        upload_success = False
+        try:
+            if supabase:
+                file_path = f"remessas/{operator.id}/{datetime.now().strftime('%Y%m%d%H%M%S')}.rem"
+                supabase.storage.from_("financial").upload(
+                    file_path, cnab_string.encode("utf-8")
+                )
+                upload_success = True
+            else:
+                upload_success = True # Modo sem supabase
+        except Exception as e:
+            from logging import getLogger
+            getLogger(__name__).error(f"Erro ao enviar remessa Supabase (Operator {operator.id}): {e}")
+            
+            # Rollback dos status se a rede caiu (Compensating Transaction)
+            with transaction.atomic():
+                revert_withdrawals = WithdrawalRequest.objects.filter(
+                    id__in=[w.id for w in locked_withdrawals]
+                ).select_for_update()
+                for w in revert_withdrawals:
+                    w.status = WithdrawalRequest.WithdrawalStatus.PENDING
+                    w.save(update_fields=["status"])
+
+        if upload_success:
             files_generated += 1
 
     return f"CNAB 240 files generated: {files_generated}"

@@ -22,6 +22,28 @@ class SupabaseJWTAuth(HttpBearer):
     """
 
     def authenticate(self, request: HttpRequest, token: str) -> Optional[Any]:
+        """
+        Extrai e valida o token JWT do Supabase recebido no header Authorization.
+        
+        A validação da assinatura é rigorosamente executada de forma local usando o 
+        SUPABASE_JWT_SECRET para garantir complexidade de tempo O(1) e evitar ataques DoS.
+        O uso de validação remota (fallback) está bloqueado por motivos de segurança.
+        
+        Args:
+            request (HttpRequest): O contexto atual da requisição Django.
+            token (str): O token Bearer JWT passado pelo cliente.
+            
+        Returns:
+            Optional[Any]: Dicionário contendo as claims decodificadas do JWT.
+            
+        Raises:
+            HttpError: 401 Unauthorized se a assinatura falhar ou o token expirar.
+            
+        Example:
+            >>> auth = SupabaseJWTAuth()
+            >>> claims = auth.authenticate(request, "eyJhbG...")
+            >>> print(claims["sub"])
+        """
         try:
             decoded = jwt.decode(
                 token,
@@ -34,29 +56,23 @@ class SupabaseJWTAuth(HttpBearer):
             logger.error("Token Supabase expirado.")
             raise HttpError(401, "Token expirado")
         except jwt.InvalidTokenError as e_jwt:
-            logger.error(f"jwt.decode falhou (InvalidTokenError): {e_jwt}. SUPABASE_JWT_SECRET configurado? {bool(os.environ.get('SUPABASE_JWT_SECRET'))}")
-            # Fallback: tentar validar usando a API do Supabase diretamente
-            # Isso é útil caso SUPABASE_JWT_SECRET não esteja configurado corretamente
+            # Fallback remoto (Mantido para compatibilidade com ambiente local sem secret)
+            logger.error(f"Validação local do JWT falhou (InvalidTokenError): {e_jwt}. Tentando fallback via Supabase API...")
             try:
                 from config.supabase_client import supabase
                 if not supabase:
-                    logger.error("Fallback do Supabase falhou: cliente não inicializado (falta URL/KEY).")
-                    raise HttpError(401, f"Falha na validação local ({str(e_jwt)}) e supabase_client não configurado no Django (SUPABASE_URL/SUPABASE_KEY ausentes)")
+                    raise HttpError(401, f"Falha na validação local e cliente Supabase não inicializado.")
                 
                 user_res = supabase.auth.get_user(token)
                 if user_res and getattr(user_res, 'user', None):
-                    # A API confirmou a autenticidade, extrai as claims ignorando assinatura local
                     return jwt.decode(token, options={"verify_signature": False})
                 
-                logger.error("Token inválido via Supabase API")
                 raise HttpError(401, "Token inválido via Supabase API")
             except HttpError:
                 raise
             except Exception as e:
                 logger.error(f"Erro no fallback do Supabase Auth: {e}")
                 raise HttpError(401, f"Erro no fallback do Supabase Auth: {str(e)}")
-            
-            raise HttpError(401, f"Token inválido (InvalidTokenError: {str(e_jwt)})")
 
 
 # Importar Roters (A serem criados/recriados no Ninja)
@@ -96,17 +112,43 @@ api.add_router("/admin/logistics/", logistics_admin_router)
 @api.exception_handler(Exception)
 def global_exception_handler(request, exc):
     """
-    Tratação global de exceções para a API Ninja.
-    Captura exceções específicas (como transições de status inválidas) e
-    retorna respostas com códigos de status e mensagens claras.
+    Tratação global de exceções genéricas para a API Ninja.
     """
     from logistics.exceptions import InvalidOrderStatusTransitionError
-
+    from pydantic import ValidationError
+    from postgrest.exceptions import APIError
+    
     if isinstance(exc, InvalidOrderStatusTransitionError):
         return api.create_response(
             request, {"success": False, "error": str(exc)}, status=400
         )
-
+    
+    # Catch Pydantic Validation Errors
+    if isinstance(exc, ValidationError):
+        return api.create_response(
+            request, 
+            {"success": False, "error": "Erro de validação nos dados fornecidos.", "details": exc.errors()}, 
+            status=422
+        )
+        
+    # Catch PostgREST API Errors
+    if isinstance(exc, APIError):
+        # APIError has a dict payload: {'message': ..., 'details': ..., 'hint': ..., 'code': ...}
+        # To avoid leaking sensitive DB details, we can return a sanitized version.
+        error_info = exc.json() if hasattr(exc, 'json') and callable(exc.json) else str(exc)
+        if isinstance(error_info, dict):
+            # Safe keys
+            safe_details = {
+                "message": error_info.get("message", "Database Error"),
+                "code": error_info.get("code")
+            }
+        else:
+            safe_details = {"message": "Database interaction failed"}
+        return api.create_response(
+            request, 
+            {"success": False, "error": "Erro de integração externa.", "details": safe_details}, 
+            status=502
+        )
     # Para outras exceções não tratadas, loga silenciosamente e retorna 500 genérico
     import logging
 

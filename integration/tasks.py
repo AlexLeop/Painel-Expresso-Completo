@@ -7,6 +7,7 @@ import requests
 import redis
 from config.redis_client import get_redis
 from django.utils import timezone
+from django.db.models.expressions import RawSQL
 import hashlib
 import hmac
 
@@ -38,9 +39,11 @@ r = get_redis()
 @shared_task(bind=True, max_retries=5)
 def flush_outbox_events(self):
     """
+    Time: O(log N) para a busca no B-Tree | Space: O(K) onde K = 50 limit.
+    
     Varre a tabela IntegrationOutbox por eventos PENDING ou FAILED
     e dispara webhooks para os clientes (iFood, Hubster, etc).
-    Implementa Exponential Backoff via Celery se o parceiro estiver offline.
+    Implementa Exponential Backoff via Celery impedindo DDoS local e remoto.
     """
     operators = Operator.objects.values_list("id", flat=True)
 
@@ -57,12 +60,20 @@ def flush_outbox_events(self):
         processing_events = []
         with tenant_context(operator_id):
             events = list(
-                IntegrationOutbox.objects.select_for_update(skip_locked=True).filter(
+                IntegrationOutbox.objects.select_for_update(skip_locked=True)
+                .filter(
                     status__in=[
                         IntegrationOutbox.OutboxStatus.PENDING,
                         IntegrationOutbox.OutboxStatus.FAILED,
                     ]
-                )[:50]
+                )
+                .annotate(
+                    can_retry=RawSQL(
+                        '"lastAttemptAt" IS NULL OR "lastAttemptAt" <= NOW() - (POWER(2, attempts) * INTERVAL \'1 minute\')',
+                        []
+                    )
+                )
+                .filter(can_retry=True)[:50]
             )
 
             for event in events:
@@ -157,7 +168,8 @@ def flush_outbox_events(self):
                             raise Exception(
                                 "Segredo de integração ausente para DELIVERY_DIRETO."
                             )
-                        body_bytes = requests.models.complexjson.dumps(
+                        import json
+                        body_bytes = json.dumps(
                             outbound_payload
                         ).encode("utf-8")
                         headers["X-DeliveryDireto-Signature"] = hmac.new(
@@ -185,9 +197,33 @@ def flush_outbox_events(self):
                         raise Exception(
                             "A URL do Webhook na StoreIntegration está vazia."
                         )
+                    
+                    # Proteção contra SSRF (Server-Side Request Forgery)
+                    from urllib.parse import urlparse
+                    import socket
+                    import ipaddress
+                    
+                    parsed = urlparse(webhook_url)
+                    if parsed.scheme not in ('http', 'https'):
+                        raise Exception(f"Esquema de URL inválido: {parsed.scheme}")
+                        
+                    try:
+                        ip = socket.gethostbyname(parsed.hostname)
+                        ip_obj = ipaddress.ip_address(ip)
+                        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local:
+                            raise Exception("Bloqueio SSRF: A URL aponta para um IP interno/privado.")
+                    except Exception as e:
+                        if "Bloqueio SSRF" in str(e):
+                            raise e
+                        raise Exception(f"Falha de resolução DNS para o Webhook: {e}")
+
+                    # allow_redirects=False previne bypass via redirecionamento HTTP (SSRF)
                     response = requests.post(
-                        webhook_url, json=outbound_payload, headers=headers, timeout=5
+                        webhook_url, json=outbound_payload, headers=headers, timeout=5, allow_redirects=False
                     )
+                    
+                    if response.status_code in [301, 302, 307, 308]:
+                        raise Exception("Bloqueio SSRF: Redirecionamentos HTTP não são permitidos em Webhooks.")
 
                 if response is None or response.status_code in [200, 201, 202, 204]:
                     with tenant_context(operator_id):
@@ -364,13 +400,21 @@ def process_inbound_webhooks(self):
         processing_events = []
         with tenant_context(operator_id):
             events = list(
-                IntegrationOutbox.objects.select_for_update(skip_locked=True).filter(
+                IntegrationOutbox.objects.select_for_update(skip_locked=True)
+                .filter(
                     aggregateType="WEBHOOK_IN",
                     status__in=[
                         IntegrationOutbox.OutboxStatus.PENDING,
                         IntegrationOutbox.OutboxStatus.FAILED,
                     ],
-                )[:50]
+                )
+                .annotate(
+                    can_retry=RawSQL(
+                        '"lastAttemptAt" IS NULL OR "lastAttemptAt" <= NOW() - (POWER(2, attempts) * INTERVAL \'1 minute\')',
+                        []
+                    )
+                )
+                .filter(can_retry=True)[:50]
             )
 
             for event in events:
@@ -427,7 +471,7 @@ def process_inbound_webhooks(self):
                             "status": Order.OrderStatus.PREPARING,
                         },
                     )
-                    if not created and should_apply_inbound_status(
+                    if not created and mapped_status is not None and should_apply_inbound_status(
                         order.status, mapped_status
                     ):
                         try:

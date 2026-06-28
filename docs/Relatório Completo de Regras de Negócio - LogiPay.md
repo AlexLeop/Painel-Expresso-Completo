@@ -39,7 +39,7 @@ As regras foram classificadas nas seguintes categorias:
 ### 📦 Categoria 2: Fluxos Operacionais (Logística)
 | ID | Regra de Negócio | Finalidade | Contexto de Aplicação | Implementação Técnica | Status |
 |---|---|---|---|---|---|
-| **LOG-001** | Máquina de Estado (Order Status) | Garantir transições de status válidas para pedidos | Ciclo de vida do pedido (`Order`) | - Enum `Order.OrderStatus`: `PREPARING` → `READY_FOR_DISPATCH` → `OFFERED` → `ACCEPTED` → `STARTED` → `ARRIVED` → `COMPLETED`<br>- (Outros: `CANCELED`, `CANCELED_IN_TRANSIT`, `RETURNING_TO_STORE`, `RETURNED`) | ⚠️ **LACUNA**: Verificação explícita de transições não está implementada no código (apenas enum, sem validação no save/update). |
+| **LOG-001** | Máquina de Estado (Order Status) | Garantir transições de status válidas para pedidos | Ciclo de vida do pedido (`Order`) | - Enum `Order.OrderStatus`: `PREPARING` → `READY_FOR_DISPATCH` → `OFFERED` → `ACCEPTED` → `STARTED` → `ARRIVED` → `COMPLETED`<br>- (Outros: `CANCELED`, `CANCELED_IN_TRANSIT`, `RETURNING_TO_STORE`, `RETURNED`) | ✅ Resolvido: Validação via `validate_status_transition` blindada contra `.update()`. |
 | **LOG-002** | One Driver Per Shift Per Day | Evitar conflitos de escala de motoristas | Escalas (`ScheduleEntry`) | - Constraint UNIQUE no PostgreSQL: `UNIQUE(driver_id, date, turno_id)` (schema.sql) | ✅ Alinhado com `logistics_system_features_mapping.md` |
 | **LOG-003** | PIN de Entrega para Paradas Sensíveis | Provar entrega válida para pedidos de alto valor | Paradas (`Stop` com `requiresPin=True`) | - PIN hasheado no banco (`deliveryPinHash`, `bcrypt`)<br>- Validação via `check_password()` (HIGH-002 corrigido!) dentro de `select_for_update()` (evita TOCTOU) | ✅ Alinhado com `system_communication_and_security_contracts.md` (seção 6) |
 | **LOG-004** | Pedido Completado apenas quando todas as Paradas estiverem Concluídas | Garantir que todas as etapas do pedido foram executadas | Finalização de pedidos (`Order`) | - No `complete_stops_batch` (logistics/api_driver.py), verifica `Stop.objects.filter(order=order, completedAt__isnull=True).count() == 0` | ✅ Alinhado com lógica básica de logística |
@@ -70,7 +70,7 @@ As regras foram classificadas nas seguintes categorias:
 | **SEC-001** | Deny List Centralizada (Redis + PostgreSQL) | Bloquear motoristas/operadores suspensos em tempo real | Todo o sistema (Fast Lane e Slow Lane) | - `SecurityDenylist` no PostgreSQL<br>- Cache no Redis: chaves `deny_list:driver:{driver_id}`, `deny_list:operator:{operator_id}`<br>- Verificação pré-execução em Celery, FastAPI e API Django (ex: `compute_daily_credit`, `process_withdrawal_remessas`) | ✅ Alinhado com `system_communication_and_security_contracts.md` (seção 4) |
 | **SEC-002** | Fail-Closed para Deny List/Cache | Priorizar segurança sobre disponibilidade | Fast Lane e Slow Lane | - Se Redis indisponível, retorna `503 Service Unavailable` (ex: FastAPI `/telemetry`, `accept_order`)<br>- Não continua execução se não puder verificar Deny List | ✅ Alinhado com `system_communication_and_security_contracts.md` (seção 2.3) |
 | **SEC-003** | Trigger PostgreSQL para bloquear Withdrawal Request | Segunda linha de defesa contra pagamentos a motoristas bloqueados | Pedidos de saque (`WithdrawalRequest`) | - Trigger `trg_block_withdrawal_if_denylisted` no PostgreSQL, disparado antes de UPDATE status para `PROCESSING`/`PAID` | ✅ Alinhado com `system_communication_and_security_contracts.md` (seção 4.3) |
-| **SEC-004** | Campos sensíveis criptografados | Proteger dados de integração | Integrações de loja (`StoreIntegration`) | - (Placeholder, mas mencionado em docs: `clientSecret` e `apiKey` devem ser criptografados antes de INSERT) | ⚠️ **LACUNA**: Criptografia não implementada no código atual (modelo existe, mas lógica de cripto faltando). |
+| **SEC-004** | Campos sensíveis criptografados | Proteger dados de integração | Integrações de loja (`StoreIntegration`) | - Implementado via `Fernet` e `HKDF` com interceptação em `save()` (Criptografia Fática). | ✅ Implementado em `integration/models.py`. |
 
 ---
 ### 🔄 Categoria 5: Two-Lane Architecture (Telemetria e Realtime)
@@ -85,8 +85,7 @@ As regras foram classificadas nas seguintes categorias:
 ## 5. Inconsistências e Lacunas Identificadas
 | Prioridade | Descrição | Impacto | Correção Recomendada |
 |---|---|---|---|
-| ⚠️ MÉDIA | Máquina de estado (Order Status) sem validação explícita | Pedidos podem pular status (ex: direto de ACCEPTED para COMPLETED) | Implementar validação em `save()` de `Order` com allowlist de transições válidas (conforme `logistics_system_features_mapping.md`) |
-| ⚠️ ALTA | Criptografia de campos sensíveis (`StoreIntegration.clientSecret`, `StoreIntegration.apiKey`) não implementada | Risco de vazamento de credenciais de integração | Usar biblioteca como `cryptography.fernet` para criptografar/descriptografar campos sensíveis |
+| ✅ RESOLVIDO | Máquina de estado (Order Status) bypass via update | Transições de status sendo forçadas silenciosamente ignorando Webhooks | Removido uso de `.update()` para mudanças de `status`, substituído por `select_for_update()` + `.save()`. |
 
 ---
 ## 6. Diagramas de Fluxo
@@ -135,7 +134,7 @@ flowchart TD
 
 ---
 ## 8. Conclusão
-O sistema LogiPay tem **alto alinhamento com os requisitos originais**, com todas as regras core implementadas. As duas lacunas identificadas (validação de máquina de estado e criptografia de credenciais) são de alta/média prioridade e devem ser resolvidas antes do lançamento em produção.
+O sistema LogiPay tem **alto alinhamento com os requisitos originais**, com todas as regras core implementadas. As lacunas iniciais (validação de máquina de estado e falsos positivos sobre criptografia) foram validadas e corrigidas (Protocolo Omega Swarm). O sistema encontra-se robusto e pronto para produção no aspecto auditado.
 
 ---
 ## 9. Anexos

@@ -20,6 +20,17 @@ def auth_me(request):
     
     try:
         admin = PlatformAdmin.objects.get(supabase_uid=uid)
+        
+        # Puxa todos os operadores logísticos para que o Admin Master possa alternar no dropdown do frontend
+        from accounts.models import Operator
+        all_ops = Operator.objects.all()
+        companies_list = [{"id": "global", "nome": "Administração Global"}]
+        for op in all_ops:
+            companies_list.append({
+                "id": str(op.id),
+                "nome": op.name
+            })
+            
         return {
             "authenticated": True,
             "user": {
@@ -29,7 +40,7 @@ def auth_me(request):
                 "role": "admin",
                 "company_id": "global",
                 "machine_empresa_id": "global",
-                "companies": [{"id": "global", "nome": "Administração Global"}]
+                "companies": companies_list
             }
         }
     except PlatformAdmin.DoesNotExist:
