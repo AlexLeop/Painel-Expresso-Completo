@@ -28,10 +28,16 @@
     display: none;
   }
   .glass-panel {
-    @apply bg-white border border-zinc-200/80 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.05),0_1px_4px_-1px_rgba(0,0,0,0.02)] rounded-xl;
+    @apply bg-white/95 backdrop-blur-md border border-zinc-200/60 shadow-[0_4px_24px_-8px_rgba(0,0,0,0.08)] rounded-xl transition-all duration-300;
+  }
+  .glass-header {
+    @apply bg-white/80 backdrop-blur-lg border-b border-zinc-200/50 supports-[backdrop-filter]:bg-white/60;
   }
   .animate-\[dash_20s_linear_infinite\] {
     animation: dash 20s linear infinite;
+  }
+  .hover-lift {
+    @apply transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-md;
   }
 }
 

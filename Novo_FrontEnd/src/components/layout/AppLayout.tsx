@@ -220,7 +220,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   if (isSupervisor) {
     return (
       <div className="h-screen flex flex-col bg-[#F9F9FA] overflow-hidden">
-        <header className="h-14 bg-white border-b border-zinc-200 flex items-center justify-between px-6 shrink-0">
+        <header className="h-14 glass-header z-10 sticky top-0 flex items-center justify-between px-6 shrink-0">
           <div className="flex items-center gap-2">
             <Bike strokeWidth={2.5} className="h-5 w-5 text-zinc-900" />
             <span className="text-sm font-bold text-zinc-900">
