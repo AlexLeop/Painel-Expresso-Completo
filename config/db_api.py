@@ -138,8 +138,20 @@ def update_company_driver(request, payload: CompanyDriverPayload):
     except Driver.DoesNotExist:
         return {"success": False, "error": "Driver not found"}
 
+class DriverCreateSchema(BaseModel):
+    companyId: str
+    nome: str
+    phone: str
+    email: str
+    password: Optional[str] = "123456"
+    document: Optional[str] = None
+    pixKeyType: str = "TELEFONE"
+    pixKey: str = ""
+    maxActiveOrders: int = 3
+    tax_classification: str = "PESSOA_FISICA_AUTONOMO"
+
 @router.post("/company-drivers")
-def create_company_driver(request, payload: dict):
+def create_company_driver(request, payload: DriverCreateSchema):
     """
     Cadastra um novo motoboy. Cria usuário no Supabase Auth usando o Admin SDK,
     e persiste o Driver no BD.
@@ -150,11 +162,11 @@ def create_company_driver(request, payload: dict):
     from config.supabase_client import get_supabase_admin
     import uuid
 
-    company_id = payload.get("companyId")
-    nome = payload.get("nome")
-    phone = payload.get("phone")
-    email = payload.get("email")
-    password = payload.get("password", "123456") # Default password if none
+    company_id = payload.companyId
+    nome = payload.nome
+    phone = payload.phone
+    email = payload.email
+    password = payload.password
     
     if not all([company_id, nome, phone, email]):
         return {"success": False, "error": "Dados insuficientes (companyId, nome, phone, email são obrigatórios)"}
@@ -165,8 +177,8 @@ def create_company_driver(request, payload: dict):
         # 1. Criar Auth User no Supabase
         supabase_admin = get_supabase_admin()
         user_res = supabase_admin.auth.admin.create_user({
-            "email": str(email),
-            "password": str(password),
+            "email": email,
+            "password": password,
             "email_confirm": True,
             "user_metadata": {"name": nome, "role": "driver"}
         })
@@ -179,8 +191,11 @@ def create_company_driver(request, payload: dict):
             supabase_uid=supa_uid,
             name=nome,
             phone=phone,
-            pixKeyType="TELEFONE",
-            pixKey=phone
+            document=payload.document,
+            pixKeyType=payload.pixKeyType,
+            pixKey=payload.pixKey or phone,
+            maxActiveOrders=payload.maxActiveOrders,
+            tax_classification=payload.tax_classification
         )
         
         # 3. Vincular a uma Store do operador (primeira Store encontrada ou criar genérica)
@@ -196,8 +211,16 @@ def create_company_driver(request, payload: dict):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+class StoreCreateSchema(BaseModel):
+    companyId: str
+    name: str
+    documento: Optional[str] = ""
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    averagePrepTimeMinutes: int = 15
+
 @router.post("/companies")
-def create_company_store(request, payload: dict):
+def create_company_store(request, payload: StoreCreateSchema):
     """
     Cadastra uma nova Empresa/Loja (Store) para o Operador logístico.
     Payload expected: companyId (operator), name, documento, endereco, lat, lng
@@ -206,8 +229,8 @@ def create_company_store(request, payload: dict):
     from logistics.models import Store, Client
     import uuid
 
-    operator_id = payload.get("companyId")
-    name = payload.get("name")
+    operator_id = payload.companyId
+    name = payload.name
     
     if not operator_id or not name:
         return {"success": False, "error": "operator_id (companyId) e name obrigatórios"}
@@ -218,24 +241,23 @@ def create_company_store(request, payload: dict):
         client = Client.objects.create(
             operator=operator,
             name=name,
-            document=payload.get("documento", ""),
-            email=payload.get("email", ""),
-            phone=payload.get("telefone", "")
+            document=payload.documento or ""
         )
         
         # Criar Store
-        lat = payload.get("lat")
-        lng = payload.get("lng")
+        lat = payload.lat
+        lng = payload.lng
         geom = None
         if lat and lng:
             from django.contrib.gis.geos import Point
-            geom = Point(float(lng), float(lat), srid=4326)
+            geom = Point(lng, lat, srid=4326)
             
         store = Store.objects.create(
             operator=operator,
             client=client,
             name=name,
-            geom=geom
+            geom=geom,
+            averagePrepTimeMinutes=payload.averagePrepTimeMinutes
         )
         
         return {"success": True, "storeId": str(store.id)}
@@ -265,3 +287,46 @@ def get_positions(request, max_age_minutes: int = 720, limit: int = 1000):
     return []
 
 
+class StoreUpdateSchema(BaseModel):
+    name: Optional[str] = None
+    documento: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    averagePrepTimeMinutes: Optional[int] = None
+    status: Optional[str] = None
+
+@router.put('/companies/{company_id}')
+def update_company_store(request, company_id: str, payload: StoreUpdateSchema):
+    from logistics.models import Store
+    from django.contrib.gis.geos import Point
+    try:
+        store = Store.objects.get(id=company_id)
+        if payload.name is not None:
+            store.name = payload.name
+        if payload.averagePrepTimeMinutes is not None:
+            store.averagePrepTimeMinutes = payload.averagePrepTimeMinutes
+        if payload.lat is not None and payload.lng is not None:
+            store.geom = Point(payload.lng, payload.lat, srid=4326)
+        if payload.status is not None:
+            store.operational = payload.status == 'Ativo'
+        store.save()
+        
+        if payload.documento is not None and store.client:
+            store.client.document = payload.documento
+            store.client.save()
+            
+        return {'success': True}
+    except Store.DoesNotExist:
+        return {'success': False, 'error': 'Store not found'}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+@router.delete('/companies/{company_id}')
+def delete_company_store(request, company_id: str):
+    from logistics.models import Store
+    try:
+        store = Store.objects.get(id=company_id)
+        store.delete()
+        return {'success': True}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}

@@ -17,6 +17,10 @@ export interface EmpresaType {
   endereco: string;
   telefone: string;
   status: string;
+  documento?: string;
+  lat?: number;
+  lng?: number;
+  averagePrepTimeMinutes?: number;
   // Regras Financeiras
   taxaCorridaPerEntrega: number;
   pisoFixo: number;
@@ -73,6 +77,10 @@ export function EmpresaModal({
     endereco: "",
     telefone: "",
     status: "Ativo",
+    documento: "",
+    lat: undefined,
+    lng: undefined,
+    averagePrepTimeMinutes: 15,
     taxaCorridaPerEntrega: 1.6,
     pisoFixo: 350,
     pisoPercentual: 0,
@@ -125,6 +133,10 @@ export function EmpresaModal({
       setFormData({
         ...empresa,
         // Garantir fallbacks para campos que podem ser novos
+        documento: empresa.documento || "",
+        lat: empresa.lat,
+        lng: empresa.lng,
+        averagePrepTimeMinutes: empresa.averagePrepTimeMinutes ?? 15,
         taxaCorridaPerEntrega: empresa.taxaCorridaPerEntrega ?? 1.6,
         pisoFixo: empresa.pisoFixo ?? 350,
         diaria_weekday: empresa.diaria_weekday ?? 60,
@@ -257,6 +269,72 @@ export function EmpresaModal({
                         placeholder="Ex: Av. Paulista, 1000"
                       />
                     </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        CNPJ
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.documento}
+                        onChange={(e) =>
+                          setFormData({ ...formData, documento: e.target.value })
+                        }
+                        className="w-full px-3 py-2 text-sm bg-white border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                        placeholder="00.000.000/0000-00"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                        Tempo Médio Preparo (min)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={formData.averagePrepTimeMinutes}
+                        onChange={(e) =>
+                          setFormData({ ...formData, averagePrepTimeMinutes: Number(e.target.value) })
+                        }
+                        className="w-full px-3 py-2 text-sm bg-white border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-zinc-50 rounded-lg border border-zinc-100 space-y-3">
+                    <label className="block text-xs font-semibold text-zinc-700">
+                      Geolocalização (Lat/Lng)
+                    </label>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[10px] text-zinc-500 mb-1">Latitude</label>
+                        <input
+                          type="number"
+                          step="0.000001"
+                          value={formData.lat ?? ""}
+                          onChange={(e) =>
+                            setFormData({ ...formData, lat: e.target.value ? parseFloat(e.target.value) : undefined })
+                          }
+                          className="w-full px-3 py-2 text-sm bg-white border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-mono"
+                          placeholder="-23.55052"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-zinc-500 mb-1">Longitude</label>
+                        <input
+                          type="number"
+                          step="0.000001"
+                          value={formData.lng ?? ""}
+                          onChange={(e) =>
+                            setFormData({ ...formData, lng: e.target.value ? parseFloat(e.target.value) : undefined })
+                          }
+                          className="w-full px-3 py-2 text-sm bg-white border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-mono"
+                          placeholder="-46.63330"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-zinc-500"> Necessário para o cálculo de distância do PostGIS.</p>
                   </div>
 
                   <div>

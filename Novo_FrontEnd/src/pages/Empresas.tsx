@@ -242,8 +242,10 @@ export function Empresas() {
           body: JSON.stringify({
             companyId,
             name: empresa.nome,
-            documento: empresa.endereco, // O modal atualmente não tem um campo documento
-            telefone: empresa.telefone
+            documento: empresa.documento || "",
+            lat: empresa.lat,
+            lng: empresa.lng,
+            averagePrepTimeMinutes: empresa.averagePrepTimeMinutes || 15
           }),
         });
 
