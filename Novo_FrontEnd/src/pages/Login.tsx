@@ -221,7 +221,7 @@ function TabButton({
 
 export function Login() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, session } = useAuth();
 
   const [mode, setMode] = useState<AuthMode>("login");
 
@@ -285,6 +285,12 @@ export function Login() {
     }),
     [],
   );
+
+  useEffect(() => {
+    if (session) {
+      navigate("/");
+    }
+  }, [session, navigate]);
 
   useEffect(() => {
     const hash = String(window.location.hash || "").replace(/^#/, "");
