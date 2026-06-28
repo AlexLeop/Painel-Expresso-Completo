@@ -96,10 +96,14 @@ def get_rides(
     from logistics.models import Order
     from accounts.models import Operator
     
-    qs = Order.objects.all().order_by("-requestedAt")
+    qs = Order.objects.select_related('driver').all().order_by("-requestedAt")
     
     if empresa_id and empresa_id != "global":
-        qs = qs.filter(operator_id=empresa_id)
+        from django.core.exceptions import ValidationError
+        try:
+            qs = qs.filter(operator_id=empresa_id)
+        except ValidationError:
+            qs = qs.none()
         
     if status_solicitacao:
         # Mapeamento basico do Taxi Machine status para o OrderStatus local

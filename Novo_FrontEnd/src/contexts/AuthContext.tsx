@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { authFetch } from "../lib/api";
 
 export interface Company {
   id: string;
@@ -126,7 +127,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(updatedSession);
 
       try {
-        await fetch("/api/auth/change-tenant", {
+        await authFetch("/api/auth/change-tenant", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ company_id: companyId }),

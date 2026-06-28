@@ -22,10 +22,14 @@ class EntryPayload(BaseModel):
 
 @router.get("/entries")
 def get_entries(request, company_id: Optional[str] = None, start: Optional[str] = None, end: Optional[str] = None):
+    from django.core.exceptions import ValidationError
     # This is a compatibility layer mapping legacy React queries to ManualEntry
     qs = ManualEntry.objects.all()
     if company_id and company_id != "global":
-        qs = qs.filter(operator_id=company_id)
+        try:
+            qs = qs.filter(operator_id=company_id)
+        except ValidationError:
+            pass
     if start:
         qs = qs.filter(createdAt__gte=start)
     if end:
@@ -179,10 +183,14 @@ class CompanyDriverPayload(BaseModel):
 
 @router.get("/company-drivers")
 def get_company_drivers(request, company_id: Optional[str] = None, active_only: int = 0):
+    from django.core.exceptions import ValidationError
     from logistics.models import StoreDriver, Store
     qs = StoreDriver.objects.select_related('driver').all()
     if company_id and company_id != "global":
-        store = Store.objects.filter(operator_id=company_id).first()
+        try:
+            store = Store.objects.filter(operator_id=company_id).first()
+        except ValidationError:
+            store = None
         if store:
             qs = qs.filter(store=store)
         else:
@@ -217,7 +225,8 @@ def update_company_driver(request, payload: CompanyDriverPayload):
 class DriverCreateSchema(BaseModel):
     companyId: str
     nome: str
-    phone: str
+    phone: Optional[str] = None
+    telefone: Optional[str] = None
     email: str
     password: Optional[str] = "123456"
     document: Optional[str] = None
@@ -240,12 +249,12 @@ def create_company_driver(request, payload: DriverCreateSchema):
 
     company_id = payload.companyId
     nome = payload.nome
-    phone = payload.phone
+    phone = payload.phone or payload.telefone
     email = payload.email
     password = payload.password
     
     if not all([company_id, nome, phone, email]):
-        return {"success": False, "error": "Dados insuficientes (companyId, nome, phone, email são obrigatórios)"}
+        return {"success": False, "error": "Dados insuficientes (companyId, nome, phone/telefone, email são obrigatórios)"}
     
     try:
         operator = Operator.objects.get(id=company_id)
@@ -341,9 +350,13 @@ def create_company_store(request, payload: StoreCreateSchema):
         return {"success": False, "error": str(e)}
 @router.get("/configs")
 def get_configs(request, company_id: Optional[str] = None, company_name: Optional[str] = None):
+    from django.core.exceptions import ValidationError
     from accounts.models import Operator
     if company_id and company_id != "global":
-        op = Operator.objects.filter(id=company_id).first()
+        try:
+            op = Operator.objects.filter(id=company_id).first()
+        except ValidationError:
+            op = None
         if op:
             return {"id": str(op.id), "nome": op.name, "company_id": str(op.id), "features": {}}
     return {"company_id": company_id, "features": {}}
