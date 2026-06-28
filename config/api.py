@@ -59,13 +59,14 @@ class SupabaseJWTAuth(HttpBearer):
             # Fallback remoto (Mantido para compatibilidade com ambiente local sem secret)
             logger.error(f"Validação local do JWT falhou (InvalidTokenError): {e_jwt}. Tentando fallback via Supabase API...")
             try:
-                from config.supabase_client import supabase
+                from config.supabase_client import get_supabase_client
+                supabase = get_supabase_client()
                 if not supabase:
                     raise HttpError(401, f"Falha na validação local e cliente Supabase não inicializado.")
                 
                 user_res = supabase.auth.get_user(token)
                 if user_res and getattr(user_res, 'user', None):
-                    return jwt.decode(token, options={"verify_signature": False})
+                    return jwt.decode(token, options={"verify_signature": False, "verify_audience": False})
                 
                 raise HttpError(401, "Token inválido via Supabase API")
             except HttpError:
