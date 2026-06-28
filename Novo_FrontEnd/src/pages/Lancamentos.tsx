@@ -148,7 +148,7 @@ export function Lancamentos() {
         companyId: Number(companyId),
         company_id: Number(companyId),
         driverName: lancamento.motoboy,
-        driverId: driverObj ? driverObj.id : "9999",
+        driverId: motoboy ? motoboy.id : "9999",
         type:
           lancamento.categoria === "Débito"
             ? "adiantamento"
