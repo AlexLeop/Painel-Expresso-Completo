@@ -64,6 +64,8 @@ CORS_ALLOW_CREDENTIALS = True
 from corsheaders.defaults import default_headers
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "x-user-role",
+    "x-user-email",
+    "x-tenant-id",
 ]
 
 TEMPLATES = [
