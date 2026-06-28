@@ -82,13 +82,15 @@ export async function authFetch(url: string, options: RequestInit = {}) {
     const is403 = response.status === 403;
     let customError = "Sessão expirada ou acesso negado (401).";
     
-    if (is403) {
+    if (is403 || response.status === 401) {
       try {
         const errorData = await response.clone().json();
+        console.error("403/401 Payload do Backend:", errorData);
         if (errorData.error) customError = errorData.error;
+        if (errorData.detail) customError = errorData.detail;
       } catch (e) {
         // Fallback
-        customError = "Acesso negado. Sua conta não possui permissões no sistema.";
+        customError = is403 ? "Acesso negado. Sua conta não possui permissões no sistema." : "Token inválido ou expirado.";
       }
       window.dispatchEvent(new CustomEvent("nevesgo:network-error", { detail: customError }));
     }
