@@ -84,18 +84,58 @@ def get_companies(request):
 
 
 @panel_api.get("/machine/rides")
-def get_rides(request):
-    orders = Order.objects.all().order_by("-created_at")[:50]
+def get_rides(
+    request, 
+    empresa_id: Optional[str] = None, 
+    limite: int = 50, 
+    pagina: int = 1, 
+    status_solicitacao: Optional[str] = None,
+    data_inicio: Optional[str] = None,
+    data_fim: Optional[str] = None
+):
+    from logistics.models import Order
+    from accounts.models import Operator
+    
+    qs = Order.objects.all().order_by("-requestedAt")
+    
+    if empresa_id and empresa_id != "global":
+        qs = qs.filter(operator_id=empresa_id)
+        
+    if status_solicitacao:
+        # Mapeamento basico do Taxi Machine status para o OrderStatus local
+        status_map = {
+            "F": Order.OrderStatus.COMPLETED,
+            "C": Order.OrderStatus.CANCELED,
+            "A": Order.OrderStatus.ACCEPTED,
+            "E": Order.OrderStatus.STARTED
+        }
+        mapped_status = status_map.get(status_solicitacao)
+        if mapped_status:
+            qs = qs.filter(status=mapped_status)
+            
+    if data_inicio:
+        qs = qs.filter(requestedAt__date__gte=data_inicio)
+    if data_fim:
+        qs = qs.filter(requestedAt__date__lte=data_fim)
+
+    # Paginação manual
+    offset = (pagina - 1) * limite
+    orders = qs[offset:offset + limite]
+    
     return [
         {
             "id": str(o.id),
             "driver_id": str(o.driver_id) if o.driver_id else None,
+            "motorista": o.driver.name if o.driver else "Não atribuído",
             "status": o.status,
-            "price": 0,
-            "distance": 0,
+            "price": o.fareValueCents / 100.0 if hasattr(o, 'fareValueCents') else 0,
+            "valor_total": o.fareValueCents / 100.0 if hasattr(o, 'fareValueCents') else 0,
+            "distance": o.distanceMeters / 1000.0 if hasattr(o, 'distanceMeters') else 0,
+            "data": o.requestedAt.strftime("%Y-%m-%d %H:%M:%S") if o.requestedAt else None
         }
         for o in orders
     ]
+
 
 
 @panel_api.get("/schedules")
