@@ -46,9 +46,9 @@ function DeltaBadge({ value }: { value: number }) {
 export function Historico() {
   const { session } = useAuth();
   const user = session?.user;
-  const companyId = Number(user?.machine_empresa_id) || 0;
+  const companyId = user?.machine_empresa_id || user?.company_id || "";
   const currentCompany = user?.companies?.find(
-    (c) => Number(c.id) === companyId,
+    (c) => c.id == companyId,
   );
   const companyName = currentCompany?.nome || "Empresa";
 

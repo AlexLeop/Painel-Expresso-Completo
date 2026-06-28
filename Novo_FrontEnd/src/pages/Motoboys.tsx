@@ -9,7 +9,7 @@ import { useApiQuery, mutateCache } from "../lib/useApiQuery";
 
 export function Motoboys() {
   const session = getSession();
-  const companyId = session?.user?.machine_empresa_id;
+  const companyId = session?.user?.machine_empresa_id || session?.user?.company_id || "";
 
   const dbKey = companyId
     ? `/api/db/company-drivers?company_id=${companyId}&active_only=0`

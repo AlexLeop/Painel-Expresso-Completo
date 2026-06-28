@@ -145,7 +145,7 @@ export function Dashboard() {
   }, [layoutMode]);
 
   const session = getSession();
-  const companyId = session?.user?.machine_empresa_id;
+  const companyId = session?.user?.machine_empresa_id || session?.user?.company_id || "";
 
   const { startISO, endISO } = useMemo(() => {
     const today = formatDateISO(new Date());

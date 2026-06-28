@@ -301,7 +301,7 @@ const EscalaRow = memo(function EscalaRow({
 export function Escala() {
   const { session } = useAuth();
   const user = session?.user;
-  const machineCompanyId = Number(user?.machine_empresa_id) || 0;
+  const machineCompanyId = user?.machine_empresa_id || user?.company_id || "";
   const currentCompany = user?.companies?.find(
     (c) => Number(c.id) === machineCompanyId,
   );

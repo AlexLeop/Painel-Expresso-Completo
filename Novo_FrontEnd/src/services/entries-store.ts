@@ -22,7 +22,7 @@ export interface DailyEntry {
   faixaId?: string; // ID da faixa de horas (modo 'garantida_horas')
   amount: number; // valor efetivo da diária
   diariaOverride: boolean; // true = gestor alterou manualmente
-  companyId: number;
+  companyId: number | string;
   // Credit tracking
   creditStatus?: "pending" | "credited" | "failed" | "skipped";
   creditedAt?: string;
@@ -38,7 +38,7 @@ export interface ManualEntry {
   type: "diaria" | "extra" | "missao" | "adiantamento" | "corrida_manual";
   amount: number;
   description: string;
-  companyId: number;
+  companyId: number | string;
   createdAt: string;
   visibilidade?: "loja" | "motoboy" | "ambos";
   entregas?: number;
@@ -137,7 +137,7 @@ export async function setDailyEntry(entry: DailyEntry): Promise<boolean> {
 export function removeDailyEntry(
   driverId: string,
   date: string,
-  companyId: number,
+  companyId: number | string,
   turnoId?: string,
 ) {
   // 1. Remove from local cache
@@ -166,10 +166,9 @@ export function getDailyEntriesForWeek(
   weekStart: string,
   weekEnd: string,
 ): DailyEntry[] {
-  const cid = Number(companyId);
   return getDailiesCache().filter(
     (e) =>
-      Number(e.companyId) === cid && e.date >= weekStart && e.date <= weekEnd,
+      String(e.companyId) === String(companyId) && e.date >= weekStart && e.date <= weekEnd,
   );
 }
 
@@ -179,14 +178,13 @@ export function getDailyEntryForDriver(
   companyId: number | string,
   turnoId?: string,
 ): DailyEntry | null {
-  const cid = Number(companyId);
   const did = String(driverId);
   return (
     getDailiesCache().find(
       (e) =>
         String(e.driverId) === did &&
         e.date === date &&
-        Number(e.companyId) === cid &&
+        String(e.companyId) === String(companyId) &&
         e.turnoId === turnoId,
     ) || null
   );
@@ -252,10 +250,9 @@ export function getManualEntriesForWeek(
   weekStart: string,
   weekEnd: string,
 ): ManualEntry[] {
-  const cid = Number(companyId);
   return getManualEntriesCache().filter(
     (e) =>
-      Number(e.companyId) === cid && e.date >= weekStart && e.date <= weekEnd,
+      String(e.companyId) === String(companyId) && e.date >= weekStart && e.date <= weekEnd,
   );
 }
 
@@ -270,17 +267,16 @@ export interface DriverDayEntries {
 }
 
 export function getDriverDayAggregation(
-  companyId: number,
+  companyId: number | string,
   driverId: string,
   date: string,
   turnoId?: string,
   viewMode?: "loja" | "motoboy",
 ): DriverDayEntries {
-  const cid = Number(companyId);
   const did = String(driverId);
   const dailyEntries = getDailiesCache().filter(
     (e) =>
-      Number(e.companyId) === cid &&
+      String(e.companyId) === String(companyId) &&
       String(e.driverId) === did &&
       e.date === date &&
       (turnoId ? e.turnoId === turnoId : true),
@@ -288,7 +284,7 @@ export function getDriverDayAggregation(
   const diaria = dailyEntries.reduce((s, e) => s + (Number(e.amount) || 0), 0);
   const manuals = getManualEntriesCache().filter((e) => {
     if (
-      Number(e.companyId) !== cid ||
+      e.companyId !== companyId ||
       String(e.driverId) !== did ||
       e.date !== date
     )
@@ -321,7 +317,7 @@ export function getDriverDayAggregation(
 }
 
 export function getDriverWeekAggregation(
-  companyId: number,
+  companyId: number | string,
   driverId: string,
   weekStart: string,
   weekEnd: string,
@@ -360,7 +356,7 @@ export interface CreditLogEntry {
   date: string;
   driverId: string;
   driverName: string;
-  companyId: number;
+  companyId: number | string;
   companyName: string;
   amount: number;
   breakdown: {
@@ -431,23 +427,23 @@ export function addCreditLogEntry(
 }
 
 export function getCreditLogForWeek(
-  companyId: number,
+  companyId: number | string,
   weekStart: string,
   weekEnd: string,
 ): CreditLogEntry[] {
   return getCreditLogCache().filter(
     (e) =>
-      e.companyId === companyId && e.date >= weekStart && e.date <= weekEnd,
+      String(e.companyId) === String(companyId) && e.date >= weekStart && e.date <= weekEnd,
   );
 }
 
 export function getPendingCreditsForDate(
-  companyId: number,
+  companyId: number | string,
   date: string,
 ): DailyEntry[] {
   return getDailiesCache().filter(
     (e) =>
-      e.companyId === companyId &&
+      String(e.companyId) === String(companyId) &&
       e.date === date &&
       (!e.creditStatus ||
         e.creditStatus === "pending" ||
@@ -458,13 +454,13 @@ export function getPendingCreditsForDate(
 export function markDailyEntryCredited(
   driverId: string,
   date: string,
-  companyId: number,
+  companyId: number | string,
   transactionId?: string,
 ) {
   const all = getDailiesCache();
   const idx = all.findIndex(
     (e) =>
-      e.driverId === driverId && e.date === date && e.companyId === companyId,
+      e.driverId === driverId && e.date === date && String(e.companyId) === String(companyId),
   );
   if (idx >= 0) {
     all[idx] = {
@@ -498,13 +494,13 @@ export function markDailyEntryCredited(
 export function markDailyEntryFailed(
   driverId: string,
   date: string,
-  companyId: number,
+  companyId: number | string,
   error: string,
 ) {
   const all = getDailiesCache();
   const idx = all.findIndex(
     (e) =>
-      e.driverId === driverId && e.date === date && e.companyId === companyId,
+      e.driverId === driverId && e.date === date && String(e.companyId) === String(companyId),
   );
   if (idx >= 0) {
     all[idx] = {
@@ -534,7 +530,7 @@ export function markDailyEntryFailed(
 }
 
 export function getCreditStats(
-  companyId: number,
+  companyId: number | string,
   weekStart: string,
   weekEnd: string,
 ) {
@@ -567,7 +563,6 @@ export async function pullEntriesFromSupabase(
       return false;
     }
     const entries = await res.json();
-    const cid = Number(companyId);
 
     // ── Authoritative replace for this company+period ──
     // Remove all local entries for this company+period, then add server entries.
@@ -580,7 +575,7 @@ export async function pullEntriesFromSupabase(
     const otherDailies = localDailies.filter(
       (e) =>
         !(
-          Number(e.companyId) === cid &&
+          String(e.companyId) === String(companyId) &&
           e.date >= weekStart &&
           e.date <= weekEnd
         ),
@@ -588,7 +583,7 @@ export async function pullEntriesFromSupabase(
     const otherManuals = localManuals.filter(
       (e) =>
         !(
-          Number(e.companyId) === cid &&
+          String(e.companyId) === String(companyId) &&
           e.date >= weekStart &&
           e.date <= weekEnd
         ),

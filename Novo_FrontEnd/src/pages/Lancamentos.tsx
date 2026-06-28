@@ -55,7 +55,7 @@ export function Lancamentos() {
     setError(null);
     try {
       const session = getSession();
-      const companyId = session?.user?.machine_empresa_id || 112905;
+      const companyId = session?.user?.machine_empresa_id || session?.user?.company_id || "";
       if (!companyId) {
         setError("Empresa não encontrada na sessão. Faça login novamente.");
         setLoading(false);
@@ -134,8 +134,8 @@ export function Lancamentos() {
   const handleSaveLancamento = async (lancamento: LancamentoType) => {
     try {
       const session = getSession();
-      const companyId = session?.user?.machine_empresa_id || 112905;
-      const driverObj = motoboys.find((m) => m.nome === lancamento.motoboy);
+      const companyId = session?.user?.machine_empresa_id || session?.user?.company_id || "";
+      const motoboy = Array.isArray(motoboys) ? motoboys.find((m) => m.nome === lancamento.motoboy) : undefined;
 
       // Map date DD/MM/YYYY -> YYYY-MM-DD
       let isoDate = lancamento.data;

@@ -45,10 +45,10 @@ interface DriverBalance {
 export function Financeiro() {
   const { session } = useAuth();
   const user = session?.user;
-  const companyId = Number(user?.machine_empresa_id) || 0;
+  const companyId = user?.machine_empresa_id || user?.company_id || "";
   const companies = Array.isArray(user?.companies) ? user?.companies : [];
   const currentCompany = companies?.find(
-    (c: any) => Number(c.id) === companyId,
+    (c: any) => String(c.id) === String(companyId),
   );
   const companyName = currentCompany?.nome || "Empresa";
   const isAdmin =

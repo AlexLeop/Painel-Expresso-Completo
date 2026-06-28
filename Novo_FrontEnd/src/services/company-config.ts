@@ -167,7 +167,7 @@ export function getCompanyConfig(
   companyName?: string,
 ): CompanyConfig {
   const all = getAllConfigs();
-  const existing = all.find((c) => c.companyId === companyId);
+  const existing = Array.isArray(all) ? all.find((c) => c.companyId === companyId) : undefined;
   if (existing) return existing;
   return {
     companyId,

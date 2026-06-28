@@ -53,9 +53,9 @@ export function Configuracoes() {
   const { session } = useAuth();
   const user = session?.user;
   const isAdmin = user?.role === "admin" || user?.role === "administrador";
-  const currentCompany = user?.companies?.find(
-    (c: any) => Number(c.id) === Number(user?.machine_empresa_id),
-  );
+  const currentCompany = Array.isArray(user?.companies) ? user.companies.find(
+    (c: any) => String(c.id) === String(user?.machine_empresa_id || user?.company_id),
+  ) : undefined;
   const companyName = currentCompany?.nome || user?.name || "";
 
   // Profile form state
@@ -86,8 +86,8 @@ export function Configuracoes() {
 
   // Configs state
   const { data: configsRaw, refresh: refreshConfigs } = useApiQuery<any>(
-    user?.machine_empresa_id
-      ? `/api/db/configs?company_id=${user.machine_empresa_id}`
+    user?.machine_empresa_id || user?.company_id
+      ? `/api/db/configs?company_id=${user?.machine_empresa_id || user?.company_id}`
       : null,
   );
 
@@ -132,7 +132,7 @@ export function Configuracoes() {
         const res = await authFetch("/api/db/configs", {
           method: "PUT",
           body: JSON.stringify({
-            company_id: user.machine_empresa_id,
+            company_id: user?.machine_empresa_id || user?.company_id,
             ...regrasForm,
           }),
         });

@@ -436,7 +436,13 @@ class Order(TenantModel):
 
     @classmethod
     def validate_status_transition(cls, current_status: str, desired_status: str):
-        allowed = cls.VALID_TRANSITIONS.get(current_status, [])
+        try:
+            status_enum = cls.OrderStatus(current_status)
+        except ValueError:
+            raise InvalidOrderStatusTransitionError(
+                current_status=current_status, desired_status=desired_status
+            )
+        allowed = [s.value for s in cls.VALID_TRANSITIONS.get(status_enum, [])]
         if desired_status not in allowed:
             raise InvalidOrderStatusTransitionError(
                 current_status=current_status, desired_status=desired_status
@@ -482,6 +488,7 @@ class Order(TenantModel):
         db_column="external_source",
         help_text="Ex: 'ifood', 'hubster', 'delivery_direto'",
     )
+    metadata = models.JSONField(default=dict, blank=True, help_text="Payload legado da Machine")
 
     class Meta:
         db_table = "Order"
@@ -521,6 +528,7 @@ class Stop(TenantModel):
         null=True, blank=True, db_column="deliveryPinHash"
     )
     completedAt = models.DateTimeField(null=True, blank=True, db_column="completedAt")
+    metadata = models.JSONField(default=dict, blank=True, help_text="Dados do cliente e endereço")
 
     class Meta:
         db_table = "Stop"
