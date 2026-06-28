@@ -34,7 +34,8 @@ class SupabaseRLSMiddleware:
                 # Fallback: Se o token usar RS256 (novo padrão do Supabase) ou houver erro local,
                 # validamos o token fazendo uma chamada oficial para a API do Supabase.
                 try:
-                    from config.supabase_client import supabase
+                    from config.supabase_client import get_supabase_client
+                    supabase = get_supabase_client()
                     if not supabase:
                         raise e
                     user_res = supabase.auth.get_user(token)
