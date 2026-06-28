@@ -70,6 +70,8 @@ from accounts.api import router as accounts_router
 from accounts.api_admin import router as accounts_admin_router
 from integration.api import router as integration_router
 from todos.api import router as todos_router
+from config.panel_api import panel_api
+from config.db_api import router as db_router
 
 api = NinjaAPI(
     title="Expresso Neves API",
@@ -78,6 +80,7 @@ api = NinjaAPI(
     auth=SupabaseJWTAuth(),
 )
 
+api.add_router("/db/", db_router)
 api.add_router("/driver/", driver_router)
 api.add_router("/operator/", operator_router)
 api.add_router("/client/", client_router)
