@@ -20,3 +20,9 @@ nevesgo/gradle-*/
 nevesgo/jdk-*/
 nevesgo/*.zip
 nevesgo/*.jks
+
+# Ignorar pastas de agentes AI
+.pai/
+.agent/
+.antigravity/
+
