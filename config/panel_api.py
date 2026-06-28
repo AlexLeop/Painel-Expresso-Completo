@@ -73,7 +73,7 @@ def auth_me(request):
             }
         }
     except StaffMember.DoesNotExist:
-        return panel_api.create_response(request, {"authenticated": False, "error": "Usuário não encontrado no banco de dados."}, status=401)
+        return panel_api.create_response(request, {"authenticated": False, "error": "Sua conta do Supabase não possui vínculos de permissões (Operador ou Admin) no sistema Logístico."}, status=403)
 
 @panel_api.get("/db/configs")
 def get_configs(request, company_id: Optional[str] = None):

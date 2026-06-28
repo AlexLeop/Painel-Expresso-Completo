@@ -78,12 +78,26 @@ export async function authFetch(url: string, options: RequestInit = {}) {
     throw new Error(errorMessage);
   }
 
-  if (response.status === 401) {
+  if (response.status === 401 || response.status === 403) {
+    const is403 = response.status === 403;
+    let customError = "Sessão expirada ou acesso negado (401).";
+    
+    if (is403) {
+      try {
+        const errorData = await response.clone().json();
+        if (errorData.error) customError = errorData.error;
+      } catch (e) {
+        // Fallback
+        customError = "Acesso negado. Sua conta não possui permissões no sistema.";
+      }
+      window.dispatchEvent(new CustomEvent("nevesgo:network-error", { detail: customError }));
+    }
+    
     localStorage.removeItem("nevesgo:session");
     if (window.location.pathname !== "/login") {
       window.location.href = "/login";
     }
-    throw new Error("Sessão expirada ou acesso negado (401).");
+    throw new Error(customError);
   }
 
   return response;
