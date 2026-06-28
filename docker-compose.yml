@@ -18,6 +18,9 @@ services:
       - static_volume:/app/static
     environment:
       # Geral e Supabase
+      - SUPABASE_URL=${SUPABASE_URL:-https://xxxx.supabase.co}
+      - SUPABASE_KEY=${SUPABASE_KEY:-sua-chave-anon}
+      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:senha@pooler.supabase.com:6543/postgres?pgbouncer=true}
       - DIRECT_URL=${DIRECT_URL:-postgresql://postgres:senha@pooler.supabase.com:5432/postgres}
       
@@ -51,6 +54,9 @@ services:
       context: .
       dockerfile: fast_lane/Dockerfile
     environment:
+      - SUPABASE_URL=${SUPABASE_URL:-https://xxxx.supabase.co}
+      - SUPABASE_KEY=${SUPABASE_KEY:-sua-chave-anon}
+      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/1}
       # A FastAPI pode precisar das integrações se tiver endpoints que as usem
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:senha@pooler.supabase.com:6543/postgres?pgbouncer=true}
@@ -66,6 +72,9 @@ services:
     command: celery -A config worker -l info --concurrency=2
     environment:
       # Copia do Django para os tasks do Celery terem acesso a tudo
+      - SUPABASE_URL=${SUPABASE_URL:-https://xxxx.supabase.co}
+      - SUPABASE_KEY=${SUPABASE_KEY:-sua-chave-anon}
+      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:senha@pooler.supabase.com:6543/postgres?pgbouncer=true}
       - DIRECT_URL=${DIRECT_URL:-postgresql://postgres:senha@pooler.supabase.com:5432/postgres}
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-sua-chave-secreta-aqui}
@@ -94,6 +103,9 @@ services:
     command: celery -A config beat -l info
     environment:
       # Idem ao worker
+      - SUPABASE_URL=${SUPABASE_URL:-https://xxxx.supabase.co}
+      - SUPABASE_KEY=${SUPABASE_KEY:-sua-chave-anon}
+      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:senha@pooler.supabase.com:6543/postgres?pgbouncer=true}
       - DIRECT_URL=${DIRECT_URL:-postgresql://postgres:senha@pooler.supabase.com:5432/postgres}
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-sua-chave-secreta-aqui}

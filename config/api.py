@@ -31,19 +31,24 @@ class SupabaseJWTAuth(HttpBearer):
             )
             return decoded
         except jwt.ExpiredSignatureError:
+            logger.error("Token Supabase expirado.")
             raise HttpError(401, "Token expirado")
         except jwt.InvalidTokenError as e_jwt:
+            logger.error(f"jwt.decode falhou (InvalidTokenError): {e_jwt}. SUPABASE_JWT_SECRET configurado? {bool(os.environ.get('SUPABASE_JWT_SECRET'))}")
             # Fallback: tentar validar usando a API do Supabase diretamente
             # Isso é útil caso SUPABASE_JWT_SECRET não esteja configurado corretamente
             try:
                 from config.supabase_client import supabase
                 if not supabase:
+                    logger.error("Fallback do Supabase falhou: cliente não inicializado (falta URL/KEY).")
                     raise HttpError(401, f"Falha na validação local ({str(e_jwt)}) e supabase_client não configurado no Django (SUPABASE_URL/SUPABASE_KEY ausentes)")
                 
                 user_res = supabase.auth.get_user(token)
                 if user_res and getattr(user_res, 'user', None):
-                    # Retorna um dicionário compatível com o 'decoded' original
-                    return {"sub": user_res.user.id, "email": user_res.user.email}
+                    # A API confirmou a autenticidade, extrai as claims ignorando assinatura local
+                    return jwt.decode(token, options={"verify_signature": False})
+                
+                logger.error("Token inválido via Supabase API")
                 raise HttpError(401, "Token inválido via Supabase API")
             except HttpError:
                 raise

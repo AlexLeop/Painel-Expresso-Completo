@@ -31,11 +31,24 @@ class SupabaseRLSMiddleware:
                     token, secret, algorithms=["HS256"], audience=audience
                 )
             except Exception as e:
-                from django.http import JsonResponse
-
-                return JsonResponse(
-                    {"detail": "Invalid or expired token.", "error": str(e)}, status=401
-                )
+                # Fallback: Se o token usar RS256 (novo padrão do Supabase) ou houver erro local,
+                # validamos o token fazendo uma chamada oficial para a API do Supabase.
+                try:
+                    from config.supabase_client import supabase
+                    if not supabase:
+                        raise e
+                    user_res = supabase.auth.get_user(token)
+                    if user_res and getattr(user_res, 'user', None):
+                        # A API do Supabase confirmou que o token é autêntico e válido!
+                        # Agora podemos extrair as claims com segurança ignorando a assinatura local
+                        jwt_payload = jwt.decode(token, options={"verify_signature": False})
+                    else:
+                        raise e
+                except Exception as fallback_e:
+                    from django.http import JsonResponse
+                    return JsonResponse(
+                        {"detail": "Invalid or expired token.", "error": str(e), "fallback_error": str(fallback_e)}, status=401
+                    )
 
         # Antes de executar a view, abrimos o contexto no banco atrelado à transação
         if jwt_payload:
