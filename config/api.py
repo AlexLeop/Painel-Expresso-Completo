@@ -1,8 +1,9 @@
 import os
 import jwt
+import logging
 from typing import Any, Optional
 from ninja.security import HttpBearer
-from ninja import NinjaAPI
+from ninja.errors import HttpError
 from django.http import HttpRequest
 
 SUPABASE_JWT_SECRET = os.environ.get(
@@ -10,6 +11,7 @@ SUPABASE_JWT_SECRET = os.environ.get(
 )
 SUPABASE_JWT_AUDIENCE = os.environ.get("SUPABASE_JWT_AUDIENCE", "authenticated")
 
+logger = logging.getLogger(__name__)
 
 class SupabaseJWTAuth(HttpBearer):
     """
@@ -28,23 +30,27 @@ class SupabaseJWTAuth(HttpBearer):
             )
             return decoded
         except jwt.ExpiredSignatureError:
-            return None  # Ninja mapeia None para 401 Unauthorized
-        except jwt.InvalidTokenError:
+            raise HttpError(401, "Token expirado")
+        except jwt.InvalidTokenError as e_jwt:
             # Fallback: tentar validar usando a API do Supabase diretamente
             # Isso é útil caso SUPABASE_JWT_SECRET não esteja configurado corretamente
             try:
                 from config.supabase_client import supabase
                 if not supabase:
-                    return None
+                    raise HttpError(401, f"Falha na validação local ({str(e_jwt)}) e supabase_client não configurado no Django (SUPABASE_URL/SUPABASE_KEY ausentes)")
+                
                 user_res = supabase.auth.get_user(token)
-                if user_res and user_res.user:
+                if user_res and getattr(user_res, 'user', None):
                     # Retorna um dicionário compatível com o 'decoded' original
                     return {"sub": user_res.user.id, "email": user_res.user.email}
+                raise HttpError(401, "Token inválido via Supabase API")
+            except HttpError:
+                raise
             except Exception as e:
-                import logging
-                logging.getLogger(__name__).error(f"Erro no fallback do Supabase Auth: {e}")
-                pass
-            return None
+                logger.error(f"Erro no fallback do Supabase Auth: {e}")
+                raise HttpError(401, f"Erro no fallback do Supabase Auth: {str(e)}")
+            
+            raise HttpError(401, f"Token inválido (InvalidTokenError: {str(e_jwt)})")
 
 
 # Importar Roters (A serem criados/recriados no Ninja)
