@@ -91,17 +91,65 @@ def get_rides(request):
 
 @panel_api.get("/schedules")
 def get_schedules(request, company_id: Optional[str] = None):
-    return []
+    from logistics.models import ScheduleEntry
+    qs = ScheduleEntry.objects.all()
+    if company_id:
+        qs = qs.filter(operator_id=company_id)
+    # Limita pra não explodir
+    entries = qs.order_by("-date")[:100]
+    return [
+        {
+            "id": str(e.id),
+            "driverId": str(e.driver_id),
+            "storeId": str(e.store_id),
+            "turnoId": str(e.turno_id),
+            "date": str(e.date),
+            "minGuaranteedOverrideCents": e.minGuaranteedOverrideCents
+        }
+        for e in entries
+    ]
 
 
 @panel_api.get("/db/entries")
 def get_entries(request, company_id: Optional[str] = None):
-    return []
+    from finance.models import ManualEntry
+    qs = ManualEntry.objects.all()
+    if company_id:
+        qs = qs.filter(operator_id=company_id)
+    entries = qs.select_related("driver").order_by("-created_at")[:100]
+    return [
+        {
+            "id": str(e.id),
+            "driverId": str(e.driver_id),
+            "driverName": e.driver.name if e.driver else "Desconhecido",
+            "date": str(e.created_at.date()) if e.created_at else "",
+            "type": "extra", 
+            "amount": e.amountCents,
+            "description": e.description,
+            "companyId": str(e.operator_id),
+            "createdAt": e.created_at.isoformat() if e.created_at else None,
+            "visibilidade": "loja" if e.visibleToStore else "ambos"
+        }
+        for e in entries
+    ]
 
 
 @panel_api.get("/db/users")
-def get_users(request):
-    return []
+def get_users(request, company_id: Optional[str] = None):
+    qs = StaffMember.objects.all()
+    if company_id:
+        qs = qs.filter(operator_id=company_id)
+    return [
+        {
+            "id": str(u.id),
+            "name": u.name,
+            "email": u.email,
+            "role": u.role,
+            "active": u.active,
+            "company_id": str(u.operator_id)
+        }
+        for u in qs
+    ]
 
 
 @panel_api.get("/db/snapshots")
