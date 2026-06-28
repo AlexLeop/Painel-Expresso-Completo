@@ -163,10 +163,10 @@ export function Dashboard() {
 
   // ─── Queries SWR (com cache compartilhado entre páginas) ──────────────────
   const entriesKey = companyId
-    ? `/api/db/entries?company_id=${companyId}&start=${startISO}&end=${endISO}`
+    ? `/api/v1/db/entries?company_id=${companyId}&start=${startISO}&end=${endISO}`
     : null;
   const driversKey = companyId
-    ? `/api/db/company-drivers?company_id=${companyId}`
+    ? `/api/v1/db/company-drivers?company_id=${companyId}`
     : null;
   const ridesKey = companyId
     ? `/api/machine/rides?empresa_id=${companyId}&limite=20&status_solicitacao=D`

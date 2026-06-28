@@ -52,7 +52,7 @@ export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
 
   useEffect(() => {
     if (isOpen) {
-      authFetch("/api/db/companies")
+      authFetch("/api/v1/db/companies")
         .then((res) => res.json())
         .then((data) => {
           if (Array.isArray(data)) {

@@ -39,7 +39,7 @@ export function Usuarios() {
     setLoading(true);
     setError(null);
     try {
-      const res = await authFetch("/api/db/users");
+      const res = await authFetch("/api/v1/db/users");
       if (res.ok) {
         const data = await res.json();
         const rawList = Array.isArray(data) ? data : data.users || [];
@@ -110,7 +110,7 @@ export function Usuarios() {
       const previousUsuarios = usuarios;
       if (user.id) {
         setUsuarios(usuarios.map((u) => (u.id === user.id ? user : u)));
-        const res = await authFetch("/api/db/users", {
+        const res = await authFetch("/api/v1/db/users", {
           method: "PUT",
           body: JSON.stringify({
             id: user.id,
@@ -132,7 +132,7 @@ export function Usuarios() {
           role: apiRole,
           companyIds: user.empresas,
         };
-        const response = await authFetch("/api/db/users", {
+        const response = await authFetch("/api/v1/db/users", {
           method: "POST",
           body: JSON.stringify(payload),
         });
@@ -159,7 +159,7 @@ export function Usuarios() {
   const confirmDelete = async () => {
     if (usuarioToDelete !== null) {
       try {
-        await authFetch(`/api/db/users?id=${usuarioToDelete}`, {
+        await authFetch(`/api/v1/db/users?id=${usuarioToDelete}`, {
           method: "DELETE",
         });
         setUsuarios(usuarios.filter((u) => u.id !== usuarioToDelete));
@@ -183,7 +183,7 @@ export function Usuarios() {
       usuarios.map((u) => (u.id === id ? { ...u, status: newStatus } : u)),
     );
     try {
-      const res = await authFetch("/api/db/users", {
+      const res = await authFetch("/api/v1/db/users", {
         method: "PUT",
         body: JSON.stringify({ id, active: newStatus === "Ativo" }),
       });

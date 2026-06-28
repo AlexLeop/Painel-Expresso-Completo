@@ -438,7 +438,7 @@ export function Escala() {
           ? `&company_name=${encodeURIComponent(companyName)}`
           : "";
         const cfgRes = await authFetch(
-          `/api/db/configs?company_id=${machineCompanyId}${companyNameParam}`,
+          `/api/v1/db/configs?company_id=${machineCompanyId}${companyNameParam}`,
         );
         if (!cfgRes.ok) throw new Error("Falha ao carregar configuração");
         const cfg = await cfgRes.json();
@@ -467,7 +467,7 @@ export function Escala() {
 
         const [driversRes, schedRes] = await Promise.all([
           authFetch(
-            `/api/db/company-drivers?company_id=${machineCompanyId}&active_only=0`,
+            `/api/v1/db/company-drivers?company_id=${machineCompanyId}&active_only=0`,
           ),
           cfg.company_id
             ? authFetch(
@@ -548,7 +548,7 @@ export function Escala() {
                 relevantDrivers.push(d);
               } else if (d.driverId) {
                 authFetch(
-                  `/api/db/company-drivers?company_id=${machineCompanyId}&driver_id=${d.driverId}`,
+                  `/api/v1/db/company-drivers?company_id=${machineCompanyId}&driver_id=${d.driverId}`,
                   { method: "DELETE" },
                 ).catch(() => {});
               }
@@ -562,7 +562,7 @@ export function Escala() {
             for (const [mId, mInfo] of machineDriversMap.entries()) {
               if (!existingIds.has(mId)) {
                 try {
-                  const syncRes = await authFetch(`/api/db/company-drivers`, {
+                  const syncRes = await authFetch(`/api/v1/db/company-drivers`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -1515,7 +1515,7 @@ export function Escala() {
                   }
                   try {
                     setLoading(true);
-                    const res = await authFetch("/api/db/company-drivers", {
+                    const res = await authFetch("/api/v1/db/company-drivers", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({

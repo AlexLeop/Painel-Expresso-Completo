@@ -62,9 +62,9 @@ export function Lancamentos() {
         return;
       }
       const [res, driversRes] = await Promise.all([
-        authFetch(`/api/db/entries?company_id=${companyId}`),
+        authFetch(`/api/v1/db/entries?company_id=${companyId}`),
         authFetch(
-          `/api/db/company-drivers?company_id=${companyId}&active_only=0`,
+          `/api/v1/db/company-drivers?company_id=${companyId}&active_only=0`,
         ),
       ]);
 
@@ -172,13 +172,13 @@ export function Lancamentos() {
       };
 
       if (lancamento.id) {
-        await authFetch(`/api/db/entries`, {
+        await authFetch(`/api/v1/db/entries`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
       } else {
-        await authFetch("/api/db/entries", {
+        await authFetch("/api/v1/db/entries", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -201,7 +201,7 @@ export function Lancamentos() {
   const confirmDelete = async () => {
     if (lancamentoToDelete !== null) {
       try {
-        await authFetch(`/api/db/entries?id=${lancamentoToDelete}`, {
+        await authFetch(`/api/v1/db/entries?id=${lancamentoToDelete}`, {
           method: "DELETE",
         });
         setLancamentos(lancamentos.filter((l) => l.id !== lancamentoToDelete));

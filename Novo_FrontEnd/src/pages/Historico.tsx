@@ -57,7 +57,7 @@ export function Historico() {
   const [period, setPeriod] = useState<Period>("6m");
 
   const snapsKey = companyId
-    ? `/api/db/snapshots?company_id=${companyId}&limit=52`
+    ? `/api/v1/db/snapshots?company_id=${companyId}&limit=52`
     : null;
 
   const { data: snapsRaw, isLoading } = useApiQuery<any>(snapsKey, {

@@ -12,7 +12,7 @@ export function Motoboys() {
   const companyId = session?.user?.machine_empresa_id || session?.user?.company_id || "";
 
   const dbKey = companyId
-    ? `/api/db/company-drivers?company_id=${companyId}&active_only=0`
+    ? `/api/v1/db/company-drivers?company_id=${companyId}&active_only=0`
     : null;
   const machineKey = `/api/machine/drivers`;
 
@@ -38,7 +38,7 @@ export function Motoboys() {
   }, []);
 
   const entriesKey = companyId
-    ? `/api/db/entries?company_id=${companyId}&start=${startISO}&end=${endISO}`
+    ? `/api/v1/db/entries?company_id=${companyId}&start=${startISO}&end=${endISO}`
     : null;
   const { data: entriesRaw, isLoading: loadingEntries } = useApiQuery<any[]>(
     entriesKey,
@@ -167,7 +167,7 @@ export function Motoboys() {
         );
       }
 
-      const res = await authFetch(`/api/db/company-drivers`, {
+      const res = await authFetch(`/api/v1/db/company-drivers`, {
         method: "PATCH",
         body: JSON.stringify({
           companyId,
@@ -204,7 +204,7 @@ export function Motoboys() {
 
   const handleSaveMotoboy = async (data: Partial<MotoboyType>) => {
     try {
-      const res = await authFetch(`/api/db/company-drivers`, {
+      const res = await authFetch(`/api/v1/db/company-drivers`, {
         method: "POST",
         body: JSON.stringify({
           companyId,

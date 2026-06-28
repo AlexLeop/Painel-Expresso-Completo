@@ -191,7 +191,7 @@ export function Relatorios() {
 
       try {
         const cfgRes = await authFetch(
-          `/api/db/configs?company_id=${companyId}`,
+          `/api/v1/db/configs?company_id=${companyId}`,
         );
         const cfgData = cfgRes.ok ? await cfgRes.json() : null;
         const companyUUID = cfgData?.company_id
@@ -199,7 +199,7 @@ export function Relatorios() {
           : null;
 
         const cdRes = await authFetch(
-          `/api/db/company-drivers?company_id=${companyId}&active_only=0`,
+          `/api/v1/db/company-drivers?company_id=${companyId}&active_only=0`,
         );
         const cdRaw = cdRes.ok ? await cdRes.json() : [];
         const cdList: Array<{ driverUUID: string; driverId: string }> = (

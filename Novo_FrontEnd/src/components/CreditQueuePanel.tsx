@@ -115,7 +115,7 @@ export default function CreditQueuePanel({ companyId }: CreditQueuePanelProps) {
         params.set("status", "pending,processing,failed");
       else if (filter === "dead") params.set("status", "dead");
 
-      const res = await authFetch(`/api/db/credit-queue?${params.toString()}`);
+      const res = await authFetch(`/api/v1/db/credit-queue?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         setItems(data.items || []);
@@ -138,7 +138,7 @@ export default function CreditQueuePanel({ companyId }: CreditQueuePanelProps) {
   const handleRetry = async (queueId: string) => {
     setRetrying(queueId);
     try {
-      const res = await authFetch("/api/db/credit-queue/retry", {
+      const res = await authFetch("/api/v1/db/credit-queue/retry", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ queue_ids: [queueId] }),
@@ -156,7 +156,7 @@ export default function CreditQueuePanel({ companyId }: CreditQueuePanelProps) {
   const handleRetryAll = async () => {
     setRetrying("all");
     try {
-      const res = await authFetch("/api/db/credit-queue/retry", {
+      const res = await authFetch("/api/v1/db/credit-queue/retry", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ retry_all: true }),

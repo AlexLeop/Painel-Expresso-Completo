@@ -50,7 +50,7 @@ export function Empresas() {
     setLoading(true);
     setError(null);
     try {
-      const res = await authFetch("/api/db/companies");
+      const res = await authFetch("/api/v1/db/companies");
       if (res.ok) {
         const data = await res.json();
         const rawList = Array.isArray(data) ? data : data.empresas || [];
@@ -194,7 +194,7 @@ export function Empresas() {
         empresas.map((e) => (e.id === id ? { ...e, status: newStatus } : e)),
       );
 
-      const response = await authFetch(`/api/db/companies/${id}`, {
+      const response = await authFetch(`/api/v1/db/companies/${id}`, {
         method: "PUT",
         body: JSON.stringify({ ...empresa, status: newStatus }),
       });
@@ -225,7 +225,7 @@ export function Empresas() {
         const previousEmpresas = empresas;
         setEmpresas(empresas.map((e) => (e.id === empresa.id ? empresa : e)));
 
-        const response = await authFetch(`/api/db/companies/${empresa.id}`, {
+        const response = await authFetch(`/api/v1/db/companies/${empresa.id}`, {
           method: "PUT",
           body: JSON.stringify(empresa),
         });
@@ -237,7 +237,7 @@ export function Empresas() {
         }
         await fetchEmpresas();
       } else {
-        const response = await authFetch("/api/db/companies", {
+        const response = await authFetch("/api/v1/db/companies", {
           method: "POST",
           body: JSON.stringify({
             companyId,
@@ -274,7 +274,7 @@ export function Empresas() {
     if (empresaToDelete !== null) {
       try {
         const response = await authFetch(
-          `/api/db/companies/${empresaToDelete}`,
+          `/api/v1/db/companies/${empresaToDelete}`,
           {
             method: "DELETE",
           },

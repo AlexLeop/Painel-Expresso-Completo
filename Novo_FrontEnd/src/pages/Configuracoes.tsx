@@ -67,7 +67,7 @@ export function Configuracoes() {
     if (!user?.id) return;
     setProfileSaving(true);
     try {
-      const res = await authFetch("/api/db/users", {
+      const res = await authFetch("/api/v1/db/users", {
         method: "PUT",
         body: JSON.stringify({ id: user.id, fullName: profileName }),
       });
@@ -87,7 +87,7 @@ export function Configuracoes() {
   // Configs state
   const { data: configsRaw, refresh: refreshConfigs } = useApiQuery<any>(
     user?.machine_empresa_id || user?.company_id
-      ? `/api/db/configs?company_id=${user?.machine_empresa_id || user?.company_id}`
+      ? `/api/v1/db/configs?company_id=${user?.machine_empresa_id || user?.company_id}`
       : null,
   );
 
@@ -129,7 +129,7 @@ export function Configuracoes() {
     setProfileSaving(true);
     try {
       if (activeTab === "regras") {
-        const res = await authFetch("/api/db/configs", {
+        const res = await authFetch("/api/v1/db/configs", {
           method: "PUT",
           body: JSON.stringify({
             company_id: user?.machine_empresa_id || user?.company_id,
@@ -140,7 +140,7 @@ export function Configuracoes() {
       } else if (activeTab === "whitelabel") {
         if (!currentCompany?.id)
           throw new Error("Empresa não encontrada localmente");
-        const res = await authFetch(`/api/db/companies/${currentCompany.id}`, {
+        const res = await authFetch(`/api/v1/db/companies/${currentCompany.id}`, {
           method: "PUT",
           body: JSON.stringify({ primaryColor }),
         });

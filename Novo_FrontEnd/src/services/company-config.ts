@@ -189,7 +189,7 @@ export function saveCompanyConfig(config: CompanyConfig) {
   saveAllConfigs(all);
 
   // 2. Persist to Supabase
-  authFetch("/api/db/configs", {
+  authFetch("/api/v1/db/configs", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(config),
@@ -218,7 +218,7 @@ export async function pullConfigFromSupabase(
   companyName?: string,
 ): Promise<CompanyConfig | null> {
   try {
-    const res = await authFetch(`/api/db/configs?company_id=${companyId}`);
+    const res = await authFetch(`/api/v1/db/configs?company_id=${companyId}`);
     if (!res.ok) return null;
     const data = await res.json();
 

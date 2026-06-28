@@ -72,7 +72,7 @@ export function Financeiro() {
     try {
       // 1. Fetch active drivers for the company
       const resDrivers = await authFetch(
-        `/api/db/company-drivers?company_id=${companyId}&active_only=0`,
+        `/api/v1/db/company-drivers?company_id=${companyId}&active_only=0`,
       );
       if (!resDrivers.ok) throw new Error("Erro ao buscar motoboys");
       const drivers = await resDrivers.json();

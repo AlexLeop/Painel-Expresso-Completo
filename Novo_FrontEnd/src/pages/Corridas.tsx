@@ -697,7 +697,7 @@ export function Corridas() {
           const companyIdStr = String(companyId);
           if (companyIdStr) {
             const driversRes = await authFetch(
-              `/api/db/company-drivers?company_id=${companyIdStr}&active_only=0`,
+              `/api/v1/db/company-drivers?company_id=${companyIdStr}&active_only=0`,
             );
             if (driversRes.ok) {
               const rows = await driversRes.json();
@@ -766,7 +766,7 @@ export function Corridas() {
 
         try {
           const posRes = await authFetch(
-            "/api/db/positions?max_age_minutes=720&limit=1000",
+            "/api/v1/db/positions?max_age_minutes=720&limit=1000",
           );
           if (posRes.ok) {
             const posData = await posRes.json();

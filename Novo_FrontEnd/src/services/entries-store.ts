@@ -108,7 +108,7 @@ export async function setDailyEntry(entry: DailyEntry): Promise<boolean> {
 
   // 2. Persist to Supabase (awaited)
   try {
-    const res = await authFetch("/api/db/entries", {
+    const res = await authFetch("/api/v1/db/entries", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -153,7 +153,7 @@ export function removeDailyEntry(
   saveDailiesCache(all);
 
   // 2. Delete from Supabase
-  let url = `/api/db/entries?driver_id=${driverId}&date=${date}&company_id=${companyId}`;
+  let url = `/api/v1/db/entries?driver_id=${driverId}&date=${date}&company_id=${companyId}`;
   if (turnoId) url += `&turno_id=${turnoId}`;
 
   authFetch(url, {
@@ -210,7 +210,7 @@ export async function addManualEntry(
 
   // 2. Persist to Supabase (awaited)
   try {
-    const res = await authFetch("/api/db/entries", {
+    const res = await authFetch("/api/v1/db/entries", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -240,7 +240,7 @@ export function deleteManualEntry(id: string) {
   saveManualEntriesCache(all);
 
   // 2. Delete from Supabase
-  authFetch(`/api/db/entries?id=${id}`, {
+  authFetch(`/api/v1/db/entries?id=${id}`, {
     method: "DELETE",
   }).catch((err) => logger.warn("[EntriesStore] Manual delete failed:", err));
 }
@@ -405,7 +405,7 @@ export function addCreditLogEntry(
   saveCreditLogCache(all);
 
   // 2. Persist to Supabase
-  authFetch("/api/db/entries/credit", {
+  authFetch("/api/v1/db/entries/credit", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -472,7 +472,7 @@ export function markDailyEntryCredited(
     saveDailiesCache(all);
 
     // Sync to Supabase
-    authFetch("/api/db/entries", {
+    authFetch("/api/v1/db/entries", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -510,7 +510,7 @@ export function markDailyEntryFailed(
     };
     saveDailiesCache(all);
 
-    authFetch("/api/db/entries", {
+    authFetch("/api/v1/db/entries", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -556,7 +556,7 @@ export async function pullEntriesFromSupabase(
 ): Promise<boolean> {
   try {
     const res = await authFetch(
-      `/api/db/entries?company_id=${companyId}&start=${weekStart}&end=${weekEnd}`,
+      `/api/v1/db/entries?company_id=${companyId}&start=${weekStart}&end=${weekEnd}`,
     );
     if (!res.ok) {
       logger.warn("[EntriesStore] Pull returned non-OK:", res.status);

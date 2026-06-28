@@ -94,7 +94,80 @@ def get_companies(request):
 def get_users(request):
     from accounts.models import StaffMember
     users = StaffMember.objects.all()
-    return [{"id": str(u.id), "nome": u.name, "email": u.email, "role": u.role} for u in users]
+    return [{"id": str(u.id), "nome": u.name, "name": u.name, "email": u.email, "role": u.role} for u in users]
+
+class UserPayload(BaseModel):
+    id: Optional[str] = None
+    fullName: str
+    email: Optional[str] = None
+    role: Optional[str] = None
+    password: Optional[str] = None
+    companyId: Optional[str] = None
+
+@router.post("/users")
+def create_user(request, payload: UserPayload):
+    from accounts.models import StaffMember, Operator
+    from config.supabase_client import get_supabase_admin
+    try:
+        supabase_admin = get_supabase_admin()
+        user_res = supabase_admin.auth.admin.create_user({
+            "email": payload.email,
+            "password": payload.password or "123456",
+            "email_confirm": True,
+            "user_metadata": {"name": payload.fullName, "role": payload.role or "staff"}
+        })
+        operator = None
+        if payload.companyId and payload.companyId != "global":
+            operator = Operator.objects.filter(id=payload.companyId).first()
+        StaffMember.objects.create(
+            supabase_uid=user_res.user.id,
+            name=payload.fullName,
+            email=payload.email,
+            role=payload.role or "staff",
+            operator=operator,
+            active=True
+        )
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@router.put("/users")
+def update_user(request, payload: UserPayload):
+    from accounts.models import StaffMember, PlatformAdmin
+    try:
+        staff = StaffMember.objects.get(id=payload.id)
+        staff.name = payload.fullName
+        if payload.role: staff.role = payload.role
+        staff.save()
+        return {"success": True}
+    except StaffMember.DoesNotExist:
+        try:
+            admin = PlatformAdmin.objects.get(id=payload.id)
+            admin.name = payload.fullName
+            admin.save()
+            return {"success": True}
+        except PlatformAdmin.DoesNotExist:
+            return {"success": False, "error": "User not found"}
+
+@router.delete("/users")
+def delete_user(request, id: str):
+    from accounts.models import StaffMember, PlatformAdmin
+    from config.supabase_client import get_supabase_admin
+    try:
+        try:
+            user = StaffMember.objects.get(id=id)
+        except StaffMember.DoesNotExist:
+            user = PlatformAdmin.objects.get(id=id)
+        
+        # Delete from Supabase
+        supabase_admin = get_supabase_admin()
+        supabase_admin.auth.admin.delete_user(user.supabase_uid)
+        
+        # Delete local
+        user.delete()
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 class CompanyDriverPayload(BaseModel):
     driver_id: Optional[str] = None

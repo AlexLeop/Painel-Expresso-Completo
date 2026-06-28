@@ -52,7 +52,7 @@ export function Snapshots() {
           return;
         }
         const res = await authFetch(
-          `/api/db/snapshots?company_id=${companyId}`,
+          `/api/v1/db/snapshots?company_id=${companyId}`,
         );
         if (res.ok) {
           const data = await res.json();

@@ -88,13 +88,13 @@ export function Gerencial() {
   // Dados consolidados de todas as empresas
   const { data: companiesRaw, isLoading: loadingCompanies } = useApiQuery<
     any[]
-  >("/api/db/companies", { refreshInterval: 120_000 });
+  >("/api/v1/db/companies", { refreshInterval: 120_000 });
   const { data: driversRaw, isLoading: loadingDrivers } = useApiQuery<any[]>(
-    "/api/db/company-drivers?active_only=1",
+    "/api/v1/db/company-drivers?active_only=1",
     { refreshInterval: 120_000 },
   );
   const { data: snapshotsRaw, isLoading: loadingSnaps } = useApiQuery<any>(
-    "/api/db/snapshots?limit=50",
+    "/api/v1/db/snapshots?limit=50",
     { refreshInterval: 300_000 },
   );
 

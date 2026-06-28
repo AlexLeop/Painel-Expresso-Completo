@@ -1,22 +1,9 @@
-import psycopg2
-import os
+import psycopg
 
-DATABASE_URL = "postgresql://postgres.mdrutawgropwgsmwygtz:cad35b2f3964e05fd894@aws-0-sa-east-1.pooler.supabase.com:6543/postgres"
+DATABASE_URL = 'postgresql://postgres.mdrutawgropwgsmwygtz:91203095_%23%23%40@aws-1-us-west-2.pooler.supabase.com:5432/postgres'
 
-conn = psycopg2.connect(DATABASE_URL)
-cur = conn.cursor()
-
-cur.execute("SELECT id, email, supabase_uid FROM accounts_platformadmin")
-admins = cur.fetchall()
-print("--- Platform Admins ---")
-for admin in admins:
-    print(admin)
-
-cur.execute("SELECT id, email, supabase_uid FROM accounts_staffmember")
-staff = cur.fetchall()
-print("\n--- Staff Members ---")
-for s in staff:
-    print(s)
-
-cur.close()
-conn.close()
+with psycopg.connect(DATABASE_URL) as conn:
+    with conn.cursor() as cur:
+        cur.execute('SELECT id, email, supabase_uid FROM "PlatformAdmin"')
+        for row in cur.fetchall():
+            print(row)

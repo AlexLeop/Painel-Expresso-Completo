@@ -75,39 +75,7 @@ def auth_me(request):
     except StaffMember.DoesNotExist:
         return panel_api.create_response(request, {"authenticated": False, "error": "Sua conta do Supabase não possui vínculos de permissões (Operador ou Admin) no sistema Logístico."}, status=403)
 
-@panel_api.get("/db/configs")
-def get_configs(request, company_id: Optional[str] = None):
-    return {"company_id": company_id, "features": {}}
 
-
-@panel_api.get("/db/company-drivers")
-def get_company_drivers(
-    request, company_id: Optional[str] = None, active_only: Optional[int] = 0
-):
-    from django.core.exceptions import ValidationError
-    drivers = Driver.objects.all()
-    if company_id:
-        try:
-            drivers = drivers.filter(operator_id=company_id)
-        except ValidationError:
-            return []
-    drivers = drivers[:50]
-    return [
-        {
-            "id": str(d.id),
-            "name": d.name,
-            "active": d.active,
-            "company_id": company_id,
-            "driverId": str(d.id),
-        }
-        for d in drivers
-    ]
-
-
-@panel_api.get("/db/companies")
-def get_companies(request):
-    ops = Operator.objects.all()
-    return [{"id": str(o.id), "name": o.name} for o in ops]
 
 
 @panel_api.get("/machine/rides")
@@ -190,82 +158,7 @@ def get_schedules(request, company_id: Optional[str] = None):
     ]
 
 
-@panel_api.get("/db/entries")
-def get_entries(request, company_id: Optional[str] = None):
-    from django.core.exceptions import ValidationError
-    from finance.models import ManualEntry
-    qs = ManualEntry.objects.all()
-    if company_id:
-        try:
-            qs = qs.filter(operator_id=company_id)
-        except ValidationError:
-            return []
-    entries = qs.select_related("driver").order_by("-createdAt")[:100]
-    return [
-        {
-            "id": str(e.id),
-            "driverId": str(e.driver_id),
-            "driverName": e.driver.name if e.driver_id else "Desconhecido",
-            "date": str(e.createdAt.date()) if e.createdAt else "",
-            "type": "extra", 
-            "amount": e.amountCents,
-            "description": e.description,
-            "companyId": str(e.operator_id),
-            "createdAt": e.createdAt.isoformat() if e.createdAt else None,
-            "visibilidade": "loja" if e.visibleToStore else "ambos"
-        }
-        for e in entries
-    ]
 
-
-@panel_api.get("/db/users")
-def get_users(request, company_id: Optional[str] = None):
-    from django.core.exceptions import ValidationError
-    qs = StaffMember.objects.all()
-    if company_id:
-        try:
-            qs = qs.filter(operator_id=company_id)
-        except ValidationError:
-            return []
-    return [
-        {
-            "id": str(u.id),
-            "name": u.name,
-            "email": u.email,
-            "role": u.role,
-            "active": u.active,
-            "company_id": str(u.operator_id)
-        }
-        for u in qs
-    ]
-
-
-from ninja import Schema
-
-class UserUpdateSchema(Schema):
-    id: str
-    fullName: str
-
-@panel_api.put("/db/users")
-def update_user(request, payload: UserUpdateSchema):
-    try:
-        staff = StaffMember.objects.get(id=payload.id)
-        staff.name = payload.fullName
-        staff.save()
-        return {"success": True}
-    except StaffMember.DoesNotExist:
-        try:
-            admin = PlatformAdmin.objects.get(id=payload.id)
-            admin.name = payload.fullName
-            admin.save()
-            return {"success": True}
-        except PlatformAdmin.DoesNotExist:
-            return panel_api.create_response(request, {"error": "User not found"}, status=404)
-
-
-@panel_api.get("/db/snapshots")
-def get_snapshots(request):
-    return []
 
 
 
