@@ -75,6 +75,11 @@ def auth_me(request):
     except StaffMember.DoesNotExist:
         return panel_api.create_response(request, {"authenticated": False, "error": "Sua conta do Supabase não possui vínculos de permissões (Operador ou Admin) no sistema Logístico."}, status=403)
 
+@panel_api.post("/auth/change-tenant")
+def change_tenant(request, payload: dict):
+    # Mock endpoint to prevent 404 from frontend
+    return {"success": True}
+
 
 
 
@@ -123,10 +128,10 @@ def get_rides(
             "driver_id": str(o.driver_id) if o.driver_id else None,
             "motorista": o.driver.name if o.driver else "Não atribuído",
             "status": o.status,
-            "price": o.fareValueCents / 100.0 if hasattr(o, 'fareValueCents') else 0,
-            "valor_total": o.fareValueCents / 100.0 if hasattr(o, 'fareValueCents') else 0,
-            "distance": o.distanceMeters / 1000.0 if hasattr(o, 'distanceMeters') else 0,
-            "data": o.requestedAt.strftime("%Y-%m-%d %H:%M:%S") if o.requestedAt else None
+            "price": (o.fareValueCents or 0) / 100.0 if hasattr(o, 'fareValueCents') else 0,
+            "valor_total": (o.fareValueCents or 0) / 100.0 if hasattr(o, 'fareValueCents') else 0,
+            "distance": (o.distanceMeters or 0) / 1000.0 if hasattr(o, 'distanceMeters') else 0,
+            "data": o.requestedAt.strftime("%Y-%m-%d %H:%M:%S") if getattr(o, 'requestedAt', None) else None
         }
         for o in orders
     ]

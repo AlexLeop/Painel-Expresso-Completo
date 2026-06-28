@@ -24,7 +24,7 @@ class EntryPayload(BaseModel):
 def get_entries(request, company_id: Optional[str] = None, start: Optional[str] = None, end: Optional[str] = None):
     # This is a compatibility layer mapping legacy React queries to ManualEntry
     qs = ManualEntry.objects.all()
-    if company_id:
+    if company_id and company_id != "global":
         qs = qs.filter(operator_id=company_id)
     if start:
         qs = qs.filter(createdAt__gte=start)
@@ -178,10 +178,10 @@ class CompanyDriverPayload(BaseModel):
     active: Optional[bool] = None
 
 @router.get("/company-drivers")
-def get_company_drivers(request, company_id: Optional[int] = None, active_only: int = 0):
+def get_company_drivers(request, company_id: Optional[str] = None, active_only: int = 0):
     from logistics.models import StoreDriver, Store
     qs = StoreDriver.objects.select_related('driver').all()
-    if company_id:
+    if company_id and company_id != "global":
         store = Store.objects.filter(operator_id=company_id).first()
         if store:
             qs = qs.filter(store=store)
@@ -340,9 +340,13 @@ def create_company_store(request, payload: StoreCreateSchema):
     except Exception as e:
         return {"success": False, "error": str(e)}
 @router.get("/configs")
-def get_configs(request, company_id: Optional[int] = None):
-    # Return mock config to prevent frontend crash
-    return [{"id": 1, "company_id": company_id or 1, "chave": "tema", "valor": "light"}]
+def get_configs(request, company_id: Optional[str] = None, company_name: Optional[str] = None):
+    from accounts.models import Operator
+    if company_id and company_id != "global":
+        op = Operator.objects.filter(id=company_id).first()
+        if op:
+            return {"id": str(op.id), "nome": op.name, "company_id": str(op.id), "features": {}}
+    return {"company_id": company_id, "features": {}}
 
 @router.post("/configs")
 def create_config(request, payload: dict):
@@ -353,7 +357,7 @@ def update_config(request, payload: dict):
     return {"success": True}
 
 @router.get("/snapshots")
-def get_snapshots(request, company_id: Optional[int] = None, limit: int = 50):
+def get_snapshots(request, company_id: Optional[str] = None, limit: int = 50):
     # Mock snapshot to prevent crash in dashboards
     return []
 
