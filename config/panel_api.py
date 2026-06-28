@@ -116,18 +116,18 @@ def get_entries(request, company_id: Optional[str] = None):
     qs = ManualEntry.objects.all()
     if company_id:
         qs = qs.filter(operator_id=company_id)
-    entries = qs.select_related("driver").order_by("-created_at")[:100]
+    entries = qs.select_related("driver").order_by("-createdAt")[:100]
     return [
         {
             "id": str(e.id),
             "driverId": str(e.driver_id),
-            "driverName": e.driver.name if e.driver else "Desconhecido",
-            "date": str(e.created_at.date()) if e.created_at else "",
+            "driverName": e.driver.name if e.driver_id else "Desconhecido",
+            "date": str(e.createdAt.date()) if e.createdAt else "",
             "type": "extra", 
             "amount": e.amountCents,
             "description": e.description,
             "companyId": str(e.operator_id),
-            "createdAt": e.created_at.isoformat() if e.created_at else None,
+            "createdAt": e.createdAt.isoformat() if e.createdAt else None,
             "visibilidade": "loja" if e.visibleToStore else "ambos"
         }
         for e in entries

@@ -5,6 +5,7 @@ from typing import Any, Optional
 from ninja.security import HttpBearer
 from ninja.errors import HttpError
 from django.http import HttpRequest
+from ninja import NinjaAPI
 
 SUPABASE_JWT_SECRET = os.environ.get(
     "SUPABASE_JWT_SECRET", "super-secret-jwt-token-with-at-least-32-characters-long"
