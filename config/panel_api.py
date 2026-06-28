@@ -15,9 +15,10 @@ def auth_me(request):
     """
     uid = request.auth.get("sub")
     
+    from accounts.models import PlatformAdmin, StaffMember
+    from logistics.models import Store
+    
     try:
-        from accounts.models import PlatformAdmin, StaffMember
-        from logistics.models import Store
         admin = PlatformAdmin.objects.get(supabase_uid=uid)
         return {
             "authenticated": True,
@@ -35,8 +36,6 @@ def auth_me(request):
         pass
 
     try:
-        from accounts.models import StaffMember
-        from logistics.models import Store
         staff = StaffMember.objects.get(supabase_uid=uid, active=True)
         
         # Puxar todas as lojas (companies/clientes) atreladas ao Operador logístico deste funcionário
