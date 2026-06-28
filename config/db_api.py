@@ -119,20 +119,24 @@ def get_company_drivers(request, company_id: Optional[int] = None, active_only: 
             "driverId": str(sd.driver.id),
             "nome": sd.driver.name,
             "phone": sd.driver.phone,
-            "active": sd.active
+            "active": sd.driver.active
         })
     return res
 
 @router.patch("/company-drivers")
 def update_company_driver(request, payload: CompanyDriverPayload):
-    from logistics.models import StoreDriver
+    from logistics.models import Driver
     try:
-        sd = StoreDriver.objects.get(id=payload.id)
-        sd.active = payload.active
-        sd.save()
+        if not payload.driver_id:
+            return {"success": False, "error": "driver_id is required"}
+            
+        driver = Driver.objects.get(id=payload.driver_id)
+        if payload.active is not None:
+            driver.active = payload.active
+            driver.save()
         return {"success": True}
-    except StoreDriver.DoesNotExist:
-        return {"success": False, "error": "StoreDriver not found"}
+    except Driver.DoesNotExist:
+        return {"success": False, "error": "Driver not found"}
 
 @router.post("/company-drivers")
 def create_company_driver(request, payload: dict):
@@ -161,8 +165,8 @@ def create_company_driver(request, payload: dict):
         # 1. Criar Auth User no Supabase
         supabase_admin = get_supabase_admin()
         user_res = supabase_admin.auth.admin.create_user({
-            "email": email,
-            "password": password,
+            "email": str(email),
+            "password": str(password),
             "email_confirm": True,
             "user_metadata": {"name": nome, "role": "driver"}
         })
