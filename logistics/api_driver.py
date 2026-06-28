@@ -75,7 +75,7 @@ router = Router(tags=["Logistics"])
 
 r = get_redis()
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "http://127.0.0.1:54321")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://mdrutawgropwgsmwygtz.supabase.co")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
 SUPPORTED_DRIVER_STATUSES = {

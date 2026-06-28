@@ -647,7 +647,7 @@ def get_proof_url(request, proof_id: UUID):
     import os
     import httpx
 
-    SUPABASE_URL = os.environ.get("SUPABASE_URL", "http://127.0.0.1:54321")
+    SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://mdrutawgropwgsmwygtz.supabase.co")
     SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
