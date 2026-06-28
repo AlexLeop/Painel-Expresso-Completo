@@ -550,7 +550,7 @@ def create_order(request, payload: OrderCreateSchema):
             Stop.objects.create(
                 order=order,
                 sequence=idx,
-                type=Stop.StopType.DELIVERY,
+                type=Stop.StopType.DROPOFF,
                 geom=Point(float(stop.lng_parada), float(stop.lat_parada), srid=4326),
                 address=f"{stop.endereco_parada}, {stop.numero_parada} - {stop.bairro_parada}",
                 contactName=stop.nome_cliente_parada,
@@ -578,7 +578,7 @@ def cancel_order(request, payload: OrderCancelPayload):
         return {"sucesso": False, "msg": str(e)}
 
 @router.get("/orders/estimate")
-def estimate_order(request, payload: dict = None):
+def estimate_order(request, payload: Optional[dict] = None):
     # Native mock estimation for MVP phase
     return {
         "sucesso": True,
