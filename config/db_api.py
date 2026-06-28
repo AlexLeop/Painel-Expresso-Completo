@@ -109,6 +109,9 @@ def create_user(request, payload: UserPayload):
     from accounts.models import StaffMember, Operator
     from config.supabase_client import get_supabase_admin
     try:
+        if not payload.email:
+            return {"success": False, "error": "Email is required"}
+            
         supabase_admin = get_supabase_admin()
         user_res = supabase_admin.auth.admin.create_user({
             "email": payload.email,
@@ -161,7 +164,7 @@ def delete_user(request, id: str):
         
         # Delete from Supabase
         supabase_admin = get_supabase_admin()
-        supabase_admin.auth.admin.delete_user(user.supabase_uid)
+        supabase_admin.auth.admin.delete_user(str(user.supabase_uid))
         
         # Delete local
         user.delete()
