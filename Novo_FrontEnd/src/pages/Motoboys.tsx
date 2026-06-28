@@ -14,7 +14,7 @@ export function Motoboys() {
   const dbKey = companyId
     ? `/api/v1/db/company-drivers?company_id=${companyId}&active_only=0`
     : null;
-  const machineKey = `/api/machine/drivers`;
+  const machineKey = `/api/v1/db/company-drivers`;
 
   const {
     data: dbRaw,

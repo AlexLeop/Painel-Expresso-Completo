@@ -169,7 +169,7 @@ export function Dashboard() {
     ? `/api/v1/db/company-drivers?company_id=${companyId}`
     : null;
   const ridesKey = companyId
-    ? `/api/machine/rides?empresa_id=${companyId}&limite=20&status_solicitacao=D`
+    ? `/api/v1/db/orders?empresa_id=${companyId}&limite=20&status_solicitacao=D`
     : null;
 
   const {

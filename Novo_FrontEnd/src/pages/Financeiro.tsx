@@ -89,7 +89,7 @@ export function Financeiro() {
       for (const driver of drivers) {
         try {
           const res = await authFetch(
-            `/api/machine/credits/driver/balance?condutor_id=${driver.id}`,
+            `/api/v1/db/driver-balance?condutor_id=${driver.id}`,
           );
           if (res.ok) {
             const data = await res.json();

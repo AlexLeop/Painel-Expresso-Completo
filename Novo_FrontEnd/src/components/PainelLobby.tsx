@@ -133,7 +133,7 @@ export function PainelLobby({
         retorno: false,
       };
 
-      const res = await authFetch("/api/machine/rides/create", {
+      const res = await authFetch("/api/v1/db/orders/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -149,7 +149,7 @@ export function PainelLobby({
       // Cancel original rides so they don't show up in the Lobby anymore
       await Promise.allSettled(
         selectedOrders.map((order) =>
-          authFetch("/api/machine/rides/cancel", {
+          authFetch("/api/v1/db/orders/cancel", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ id_mch: order.id, motivo_id: 7 }),

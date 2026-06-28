@@ -385,7 +385,7 @@ export function Corridas() {
     setLoadingTracking(String(idMch));
     try {
       const res = await authFetch(
-        `/api/machine/rides/tracking?id_mch=${idMch}`,
+        `/api/v1/db/orders/tracking?id_mch=${idMch}`,
       );
       const data = await res.json();
       if (
@@ -420,7 +420,7 @@ export function Corridas() {
         let currentCompanies = companies;
         if (Object.keys(companies).length === 0) {
           try {
-            const compRes = await authFetch("/api/machine/companies");
+            const compRes = await authFetch("/api/v1/db/companies");
             if (compRes.ok) {
               const compData = await compRes.json();
               const map: Record<string, string> = {};
@@ -442,7 +442,7 @@ export function Corridas() {
         const params = new URLSearchParams({ limite: "1000" });
         if (companyId) params.set("empresa_id", String(companyId));
 
-        const res = await authFetch(`/api/machine/rides?${params.toString()}`);
+        const res = await authFetch(`/api/v1/db/orders?${params.toString()}`);
 
         if (res.ok) {
           const data = await res.json();
@@ -667,7 +667,7 @@ export function Corridas() {
         // Tentar pegar localização da loja
         const companyIdStr = String(companyId);
         try {
-          const compRes = await authFetch("/api/machine/companies");
+          const compRes = await authFetch("/api/v1/db/companies");
           if (compRes.ok) {
             const compData = await compRes.json();
             const myComp = compData.companies?.find(
@@ -730,7 +730,7 @@ export function Corridas() {
         }
 
         try {
-          const machineDriversRes = await authFetch("/api/machine/drivers");
+          const machineDriversRes = await authFetch("/api/v1/db/company-drivers");
           if (machineDriversRes.ok) {
             const machineDriversData = await machineDriversRes.json();
             const drivers = Array.isArray(machineDriversData?.drivers)
@@ -2073,7 +2073,7 @@ export function Corridas() {
                                   onClick={async () => {
                                     try {
                                       const res = await authFetch(
-                                        "/api/machine/rides/cancel",
+                                        "/api/v1/db/orders/cancel",
                                         {
                                           method: "POST",
                                           headers: {
@@ -2480,7 +2480,7 @@ export function Corridas() {
                                 e.stopPropagation();
                                 try {
                                   const res = await fetch(
-                                    `/api/machine/rides/receipt?solicitacao_id=${corrida.id}`,
+                                    `/api/v1/db/orders/receipt?solicitacao_id=${corrida.id}`,
                                   );
                                   if (res.ok) {
                                     const data = await res.json();

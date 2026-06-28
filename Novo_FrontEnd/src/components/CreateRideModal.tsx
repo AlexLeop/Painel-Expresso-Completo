@@ -269,7 +269,7 @@ export function CreateRideModal({
 
           try {
             const res = await authFetch(
-              `/api/machine/rides/estimate?${params.toString()}`,
+              `/api/v1/db/orders/estimate?${params.toString()}`,
             );
             if (res.ok) {
               const data = await res.json();
@@ -374,7 +374,7 @@ export function CreateRideModal({
         retorno: false,
       };
 
-      const res = await authFetch("/api/machine/rides/create", {
+      const res = await authFetch("/api/v1/db/orders/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

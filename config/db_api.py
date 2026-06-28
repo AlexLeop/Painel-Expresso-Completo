@@ -423,3 +423,176 @@ def delete_company_store(request, company_id: str):
         return {'success': True}
     except Exception as e:
         return {'success': False, 'error': str(e)}
+
+# ==============================================================================
+# UNIFIED NATIVE ORDERS API (Replaces Legacy Taxi Machine Proxy)
+# ==============================================================================
+
+from typing import List, Optional
+
+class OrderStopSchema(BaseModel):
+    endereco_parada: str
+    bairro_parada: str
+    cidade_parada: str
+    estado_parada: str
+    lat_parada: str
+    lng_parada: str
+    cep_parada: str = ""
+    numero_parada: str = ""
+    complemento_parada: str = ""
+    nome_cliente_parada: str = ""
+    telefone_cliente_parada: str = ""
+    observacao_parada: str = ""
+
+class OrderCreateSchema(BaseModel):
+    empresa_id: str
+    endereco_partida: str
+    bairro_partida: str
+    cidade_partida: str
+    estado_partida: str
+    lat_partida: str
+    lng_partida: str
+    cep_partida: str = ""
+    numero_partida: str = ""
+    complemento_partida: str = ""
+    nome_cliente_partida: str = ""
+    telefone_cliente_partida: str = ""
+    observacao_partida: str = ""
+    pontos: List[OrderStopSchema]
+    forma_pagamento: str = "DINHEIRO"
+    tipo_veiculo: str = "MOTO"
+    valor_estimado: Optional[float] = None
+    distancia_estimada: Optional[float] = None
+    tempo_estimado: Optional[int] = None
+
+@router.get("/orders")
+def get_orders(
+    request,
+    empresa_id: Optional[str] = None,
+    limite: int = 500,
+    status_solicitacao: Optional[str] = None,
+    data_hora_solicitacao_min: Optional[str] = None,
+    data_hora_solicitacao_max: Optional[str] = None
+):
+    from logistics.models import Order
+    from accounts.models import Operator
+    from django.core.exceptions import ValidationError
+    
+    qs = Order.objects.select_related('driver').all().order_by("-requestedAt")
+    
+    if empresa_id and empresa_id != "global":
+        try:
+            qs = qs.filter(operator_id=empresa_id)
+        except ValidationError:
+            qs = qs.none()
+        
+    if status_solicitacao:
+        status_map = {
+            "F": Order.OrderStatus.COMPLETED,
+            "C": Order.OrderStatus.CANCELED,
+            "A": Order.OrderStatus.ACCEPTED,
+            "E": Order.OrderStatus.STARTED
+        }
+        mapped_status = status_map.get(status_solicitacao)
+        if mapped_status:
+            qs = qs.filter(status=mapped_status)
+            
+    if data_hora_solicitacao_min:
+        qs = qs.filter(requestedAt__gte=data_hora_solicitacao_min)
+    if data_hora_solicitacao_max:
+        qs = qs.filter(requestedAt__lte=data_hora_solicitacao_max)
+        
+    orders = qs[:limite]
+    
+    return [
+        {
+            "id": str(o.id),
+            "driver_id": str(o.driver_id) if o.driver_id else None,
+            "motorista": o.driver.name if getattr(o, 'driver', None) else "Não atribuído",
+            "status": o.status,
+            "price": (o.fareValueCents or 0) / 100.0 if hasattr(o, 'fareValueCents') else 0,
+            "valor_total": (o.fareValueCents or 0) / 100.0 if hasattr(o, 'fareValueCents') else 0,
+            "distance": (o.distanceMeters or 0) / 1000.0 if hasattr(o, 'distanceMeters') else 0,
+            "data": o.requestedAt.strftime("%Y-%m-%d %H:%M:%S") if getattr(o, 'requestedAt', None) else None
+        }
+        for o in orders
+    ]
+
+@router.post("/orders/create")
+def create_order(request, payload: OrderCreateSchema):
+    from logistics.models import Order, Stop
+    from django.contrib.gis.geos import Point
+    from accounts.models import Operator
+    
+    try:
+        operator_id = payload.empresa_id if payload.empresa_id != "global" else None
+        
+        order = Order.objects.create(
+            operator_id=operator_id,
+            status=Order.OrderStatus.OFFERED,
+            fareValueCents=int((payload.valor_estimado or 0) * 100),
+            distanceMeters=int((payload.distancia_estimada or 0) * 1000)
+        )
+        
+        # Origin Stop
+        Stop.objects.create(
+            order=order,
+            sequence=0,
+            type=Stop.StopType.PICKUP,
+            geom=Point(float(payload.lng_partida), float(payload.lat_partida), srid=4326),
+            address=f"{payload.endereco_partida}, {payload.numero_partida} - {payload.bairro_partida}",
+            contactName=payload.nome_cliente_partida,
+            contactPhone=payload.telefone_cliente_partida
+        )
+        
+        # Destinations
+        for idx, stop in enumerate(payload.pontos, start=1):
+            Stop.objects.create(
+                order=order,
+                sequence=idx,
+                type=Stop.StopType.DELIVERY,
+                geom=Point(float(stop.lng_parada), float(stop.lat_parada), srid=4326),
+                address=f"{stop.endereco_parada}, {stop.numero_parada} - {stop.bairro_parada}",
+                contactName=stop.nome_cliente_parada,
+                contactPhone=stop.telefone_cliente_parada
+            )
+            
+        return {"sucesso": True, "solicitacao_id": str(order.id), "msg": "Pedido criado localmente com sucesso"}
+    except Exception as e:
+        return {"sucesso": False, "msg": str(e)}
+
+class OrderCancelPayload(BaseModel):
+    solicitacao_id: str
+
+@router.post("/orders/cancel")
+def cancel_order(request, payload: OrderCancelPayload):
+    from logistics.models import Order
+    try:
+        order = Order.objects.get(id=payload.solicitacao_id)
+        order.status = Order.OrderStatus.CANCELED
+        order.save()
+        return {"sucesso": True, "msg": "Cancelado com sucesso"}
+    except Order.DoesNotExist:
+        return {"sucesso": False, "msg": "Corrida não encontrada"}
+    except Exception as e:
+        return {"sucesso": False, "msg": str(e)}
+
+@router.get("/orders/estimate")
+def estimate_order(request, payload: dict = None):
+    # Native mock estimation for MVP phase
+    return {
+        "sucesso": True,
+        "valor_total": 15.50,
+        "distancia_total": 5.2,
+        "tempo_total": 12,
+        "msg": "Estimativa nativa"
+    }
+
+@router.get("/driver-balance")
+def get_driver_balance(request, driver_id: str):
+    from finance.models import Wallet
+    try:
+        w = Wallet.objects.get(driver_id=driver_id)
+        return {"saldo": w.balanceCents / 100.0}
+    except Wallet.DoesNotExist:
+        return {"saldo": 0.0}

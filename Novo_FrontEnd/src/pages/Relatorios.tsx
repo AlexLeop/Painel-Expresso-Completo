@@ -142,7 +142,7 @@ export function Relatorios() {
           });
 
           const res = await authFetch(
-            `/api/machine/rides?${params.toString()}`,
+            `/api/v1/db/orders?${params.toString()}`,
           );
           if (!res.ok) {
             logger.error("Erro ao buscar corridas:", res.status);

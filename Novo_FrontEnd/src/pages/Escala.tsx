@@ -516,7 +516,7 @@ export function Escala() {
         const fetchMachineAsync = async () => {
           try {
             const res = await authFetch(
-              `/api/machine/rides?${params.toString()}`,
+              `/api/v1/db/orders?${params.toString()}`,
             );
             const data = res.ok ? await res.json() : {};
             const ridesList = Array.isArray(data.rides) ? data.rides : [];
