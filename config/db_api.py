@@ -119,15 +119,124 @@ def get_company_drivers(request, company_id: Optional[int] = None, active_only: 
             "driverId": str(sd.driver.id),
             "nome": sd.driver.name,
             "phone": sd.driver.phone,
-            "active": sd.driver.active
+            "active": sd.active
         })
     return res
 
 @router.patch("/company-drivers")
 def update_company_driver(request, payload: CompanyDriverPayload):
-    # Mock implementation to prevent frontend crash
-    return {"success": True}
+    from logistics.models import StoreDriver
+    try:
+        sd = StoreDriver.objects.get(id=payload.id)
+        sd.active = payload.active
+        sd.save()
+        return {"success": True}
+    except StoreDriver.DoesNotExist:
+        return {"success": False, "error": "StoreDriver not found"}
 
+@router.post("/company-drivers")
+def create_company_driver(request, payload: dict):
+    """
+    Cadastra um novo motoboy. Cria usuário no Supabase Auth usando o Admin SDK,
+    e persiste o Driver no BD.
+    Payload expected: companyId (str), nome (str), phone (str), email (str), password (opt)
+    """
+    from accounts.models import Operator
+    from logistics.models import Driver, Store, StoreDriver
+    from config.supabase_client import get_supabase_admin
+    import uuid
+
+    company_id = payload.get("companyId")
+    nome = payload.get("nome")
+    phone = payload.get("phone")
+    email = payload.get("email")
+    password = payload.get("password", "123456") # Default password if none
+    
+    if not all([company_id, nome, phone, email]):
+        return {"success": False, "error": "Dados insuficientes (companyId, nome, phone, email são obrigatórios)"}
+    
+    try:
+        operator = Operator.objects.get(id=company_id)
+        
+        # 1. Criar Auth User no Supabase
+        supabase_admin = get_supabase_admin()
+        user_res = supabase_admin.auth.admin.create_user({
+            "email": email,
+            "password": password,
+            "email_confirm": True,
+            "user_metadata": {"name": nome, "role": "driver"}
+        })
+        
+        supa_uid = user_res.user.id
+        
+        # 2. Criar Driver record
+        driver = Driver.objects.create(
+            operator=operator,
+            supabase_uid=supa_uid,
+            name=nome,
+            phone=phone,
+            pixKeyType="TELEFONE",
+            pixKey=phone
+        )
+        
+        # 3. Vincular a uma Store do operador (primeira Store encontrada ou criar genérica)
+        store = Store.objects.filter(operator_id=operator.id).first()
+        if store:
+            StoreDriver.objects.create(
+                store=store,
+                driver=driver,
+                active=True
+            )
+            
+        return {"success": True, "driverId": str(driver.id)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@router.post("/companies")
+def create_company_store(request, payload: dict):
+    """
+    Cadastra uma nova Empresa/Loja (Store) para o Operador logístico.
+    Payload expected: companyId (operator), name, documento, endereco, lat, lng
+    """
+    from accounts.models import Operator
+    from logistics.models import Store, Client
+    import uuid
+
+    operator_id = payload.get("companyId")
+    name = payload.get("name")
+    
+    if not operator_id or not name:
+        return {"success": False, "error": "operator_id (companyId) e name obrigatórios"}
+        
+    try:
+        operator = Operator.objects.get(id=operator_id)
+        # Criar um Client base para a Store
+        client = Client.objects.create(
+            operator=operator,
+            name=name,
+            document=payload.get("documento", ""),
+            email=payload.get("email", ""),
+            phone=payload.get("telefone", "")
+        )
+        
+        # Criar Store
+        lat = payload.get("lat")
+        lng = payload.get("lng")
+        geom = None
+        if lat and lng:
+            from django.contrib.gis.geos import Point
+            geom = Point(float(lng), float(lat), srid=4326)
+            
+        store = Store.objects.create(
+            operator=operator,
+            client=client,
+            name=name,
+            geom=geom
+        )
+        
+        return {"success": True, "storeId": str(store.id)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 @router.get("/configs")
 def get_configs(request, company_id: Optional[int] = None):
     # Return mock config to prevent frontend crash

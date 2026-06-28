@@ -26,9 +26,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn, formatCurrency } from "../lib/utils";
 import { EmpresaModal, EmpresaType } from "../components/EmpresaModal";
 import { ConfirmModal } from "../components/ConfirmModal";
-import { authFetch } from "../lib/api";
+import { authFetch, getSession } from "../lib/api";
 
 export function Empresas() {
+  const session = getSession();
+  const companyId = session?.user?.machine_empresa_id || session?.user?.company_id;
+
   const [empresas, setEmpresas] = useState<EmpresaType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -236,7 +239,12 @@ export function Empresas() {
       } else {
         const response = await authFetch("/api/db/companies", {
           method: "POST",
-          body: JSON.stringify(empresa),
+          body: JSON.stringify({
+            companyId,
+            name: empresa.nome,
+            documento: empresa.endereco, // O modal atualmente não tem um campo documento
+            telefone: empresa.telefone
+          }),
         });
 
         if (!response.ok) {
@@ -244,8 +252,7 @@ export function Empresas() {
           throw new Error(errorData.error || "Erro ao criar empresa");
         }
 
-        const savedEmpresa = await response.json();
-        setEmpresas([...empresas, savedEmpresa.data || savedEmpresa]);
+        alert("Empresa criada com sucesso!");
         await fetchEmpresas();
       }
       setIsModalOpen(false);

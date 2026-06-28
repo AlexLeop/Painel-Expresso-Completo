@@ -40,6 +40,9 @@ const Usuarios = React.lazy(() =>
 const Configuracoes = React.lazy(() =>
   import("./pages/Configuracoes").then((m) => ({ default: m.Configuracoes })),
 );
+const Operadores = React.lazy(() =>
+  import("./pages/Operadores").then((m) => ({ default: m.Operadores })),
+);
 const Gerencial = React.lazy(() =>
   import("./pages/Gerencial").then((m) => ({ default: m.Gerencial })),
 );
@@ -186,6 +189,14 @@ export default function App() {
             element={
               <PrivateRoute>
                 <Gerencial />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/operadores"
+            element={
+              <PrivateRoute>
+                <Operadores />
               </PrivateRoute>
             }
           />

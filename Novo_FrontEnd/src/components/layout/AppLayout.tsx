@@ -109,6 +109,12 @@ const navigationGroups = [
         icon: Activity,
         roles: ["admin"],
       },
+      {
+        name: "Operadores",
+        href: "/operadores",
+        icon: Activity,
+        roles: ["admin"],
+      },
     ],
   },
   {

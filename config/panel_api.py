@@ -551,6 +551,82 @@ def get_machine_rides_receipt(request, solicitacao_id: str):
         return panel_api.create_response(request, {"error": "Order not found"}, status=404)
 
 
+@panel_api.get("/admin/operators", auth=auth_bearer)
+def get_operators(request):
+    """
+    Retorna a lista de Operadores (apenas para PlatformAdmin).
+    """
+    from accounts.models import PlatformAdmin, Operator
+    uid = request.auth.get("sub")
+    if not PlatformAdmin.objects.filter(supabase_uid=uid).exists():
+        return panel_api.create_response(request, {"error": "Acesso Negado"}, status=403)
+        
+    ops = Operator.objects.all().order_by("-createdAt")
+    res = []
+    for o in ops:
+        res.append({
+            "id": str(o.id),
+            "name": o.name,
+            "cnpj": o.cnpj,
+            "status": o.status
+        })
+    return res
+
+@panel_api.post("/admin/operators", auth=auth_bearer)
+def create_operator(request, payload: dict):
+    """
+    Cria um novo Operador Logístico e o seu primeiro Gerente (Owner).
+    Payload: name, cnpj, managerName, managerEmail, managerPassword
+    """
+    from accounts.models import PlatformAdmin, Operator, StaffMember
+    from config.supabase_client import get_supabase_admin
+    import uuid
+    
+    uid = request.auth.get("sub")
+    if not PlatformAdmin.objects.filter(supabase_uid=uid).exists():
+        return panel_api.create_response(request, {"error": "Acesso Negado"}, status=403)
+        
+    name = payload.get("name")
+    cnpj = payload.get("cnpj", "")
+    manager_name = payload.get("managerName")
+    manager_email = payload.get("managerEmail")
+    manager_pwd = payload.get("managerPassword", "123456")
+    
+    if not name or not manager_name or not manager_email:
+        return panel_api.create_response(request, {"error": "Dados obrigatórios faltando"}, status=400)
+        
+    try:
+        # 1. Create Operator
+        operator = Operator.objects.create(
+            name=name,
+            cnpj=cnpj,
+            status=Operator.OperatorStatus.ACTIVE
+        )
+        
+        # 2. Create Auth User for Manager in Supabase
+        supabase_admin = get_supabase_admin()
+        user_res = supabase_admin.auth.admin.create_user({
+            "email": manager_email,
+            "password": manager_pwd,
+            "email_confirm": True,
+            "user_metadata": {"name": manager_name, "role": "operator_owner"}
+        })
+        
+        # 3. Create StaffMember
+        StaffMember.objects.create(
+            operator=operator,
+            supabase_uid=user_res.user.id,
+            name=manager_name,
+            email=manager_email,
+            role=StaffMember.RoleType.ADMIN,
+            active=True
+        )
+        
+        return {"success": True, "operatorId": str(operator.id)}
+    except Exception as e:
+        return panel_api.create_response(request, {"success": False, "error": str(e)}, status=500)
+
+
 
 # Catch-all
 @panel_api.api_operation(['GET', 'POST', 'PUT', 'DELETE'], '/{path:path}')

@@ -1,5 +1,5 @@
 import { logger } from "@/lib/logger";
-import { Search, Phone, Star, Edit2, Power, PowerOff } from "lucide-react";
+import { Search, MapPin, Bike, Truck, Activity, MoreVertical, Plus, Phone, Star, Edit2, Power, PowerOff } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn, formatCurrency } from "../lib/utils";
 import { useState, useMemo } from "react";
@@ -202,6 +202,28 @@ export function Motoboys() {
     }
   };
 
+  const handleSaveMotoboy = async (data: Partial<MotoboyType>) => {
+    try {
+      const res = await authFetch(`/api/db/company-drivers`, {
+        method: "POST",
+        body: JSON.stringify({
+          companyId,
+          ...data
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || "Failed to create driver");
+      }
+      alert("Motoboy criado com sucesso!");
+      // Força o recarregamento (ou você pode usar mutateCache para inserir manualmente)
+      window.location.reload();
+    } catch (err: any) {
+      alert("Erro ao criar motoboy: " + err.message);
+      throw err;
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 py-2">
@@ -213,6 +235,13 @@ export function Motoboys() {
             Gerencie a frota de entregadores, contratos e disponibilidade.
           </p>
         </div>
+        <button
+          onClick={() => handleOpenModal()}
+          className="bg-zinc-900 hover:bg-zinc-800 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors shadow-sm"
+        >
+          <Plus className="h-4 w-4" />
+          Novo Motoboy
+        </button>
       </div>
 
       <div className="glass-panel overflow-hidden flex flex-col">
@@ -415,6 +444,7 @@ export function Motoboys() {
         onClose={() => setIsModalOpen(false)}
         motoboy={selectedMotoboy}
         onToggleActive={handleToggleActive}
+        onSave={handleSaveMotoboy}
       />
     </div>
   );
