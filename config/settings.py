@@ -54,11 +54,8 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "config.urls"
 
-CORS_ALLOWED_ORIGINS = [
-    origin.strip() for origin in os.environ.get(
-        "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
-    ).split(",") if origin.strip()
-]
+# Permitir TODAS as origens (CORS) - Necessário para Web (Easypanel) e App (Capacitor/Cordova)
+CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
 from corsheaders.defaults import default_headers

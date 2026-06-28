@@ -90,8 +90,8 @@ def get_rides(
     limite: int = 50, 
     pagina: int = 1, 
     status_solicitacao: Optional[str] = None,
-    data_inicio: Optional[str] = None,
-    data_fim: Optional[str] = None
+    data_hora_solicitacao_min: Optional[str] = None,
+    data_hora_solicitacao_max: Optional[str] = None
 ):
     from logistics.models import Order
     from accounts.models import Operator
@@ -113,10 +113,10 @@ def get_rides(
         if mapped_status:
             qs = qs.filter(status=mapped_status)
             
-    if data_inicio:
-        qs = qs.filter(requestedAt__date__gte=data_inicio)
-    if data_fim:
-        qs = qs.filter(requestedAt__date__lte=data_fim)
+    if data_hora_solicitacao_min:
+        qs = qs.filter(requestedAt__gte=data_hora_solicitacao_min)
+    if data_hora_solicitacao_max:
+        qs = qs.filter(requestedAt__lte=data_hora_solicitacao_max)
 
     # Paginação manual
     offset = (pagina - 1) * limite

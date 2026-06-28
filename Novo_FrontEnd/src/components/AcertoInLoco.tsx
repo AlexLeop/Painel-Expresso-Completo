@@ -16,7 +16,8 @@ export default function AcertoInLoco() {
   const { data: driversData, isLoading } = useApiQuery<any>(
     "/api/operator/drivers",
   );
-  const driversList = driversData?.items || driversData || [];
+  const rawDrivers = driversData?.items || driversData;
+  const driversList = Array.isArray(rawDrivers) ? rawDrivers : [];
 
   const [selectedDriver, setSelectedDriver] = useState<string | null>(null);
   const [acertados, setAcertados] = useState<Set<string>>(new Set());
