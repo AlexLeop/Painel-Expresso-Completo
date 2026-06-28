@@ -41,7 +41,7 @@ class SupabaseRLSMiddleware:
                     if user_res and getattr(user_res, 'user', None):
                         # A API do Supabase confirmou que o token é autêntico e válido!
                         # Agora podemos extrair as claims com segurança ignorando a assinatura local
-                        jwt_payload = jwt.decode(token, options={"verify_signature": False}, algorithms=["HS256"])
+                        jwt_payload = jwt.decode(token, options={"verify_signature": False})
                     else:
                         raise e
                 except Exception as fallback_e:
