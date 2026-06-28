@@ -178,7 +178,7 @@ def create_company_driver(request, payload: DriverCreateSchema):
         supabase_admin = get_supabase_admin()
         user_res = supabase_admin.auth.admin.create_user({
             "email": email,
-            "password": password,
+            "password": password or "123456",
             "email_confirm": True,
             "user_metadata": {"name": nome, "role": "driver"}
         })
