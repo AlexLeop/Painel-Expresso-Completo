@@ -11,11 +11,13 @@ auth_bearer = SupabaseJWTAuth()
 def auth_me(request):
     """
     Retorna o perfil do usuário autenticado no Supabase.
-    Procura em StaffMember e PlatformAdmin.
+    Procura em StaffMember e PlatformAdmin e injeta as 'companies' (Store/Lojas) vinculadas.
     """
     uid = request.auth.get("sub")
     
     try:
+        from accounts.models import PlatformAdmin, StaffMember
+        from logistics.models import Store
         admin = PlatformAdmin.objects.get(supabase_uid=uid)
         return {
             "authenticated": True,
@@ -26,13 +28,28 @@ def auth_me(request):
                 "role": "admin",
                 "company_id": "global",
                 "machine_empresa_id": "global",
+                "companies": [{"id": "global", "nome": "Administração Global"}]
             }
         }
     except PlatformAdmin.DoesNotExist:
         pass
 
     try:
+        from accounts.models import StaffMember
+        from logistics.models import Store
         staff = StaffMember.objects.get(supabase_uid=uid, active=True)
+        
+        # Puxar todas as lojas (companies/clientes) atreladas ao Operador logístico deste funcionário
+        stores = Store.objects.filter(operator_id=staff.operator_id)
+        companies_list = [
+            {
+                "id": str(s.id),
+                "nome": s.name,
+                "documento": s.document if hasattr(s, 'document') else "",
+            }
+            for s in stores
+        ]
+        
         return {
             "authenticated": True,
             "user": {
@@ -42,11 +59,11 @@ def auth_me(request):
                 "role": staff.role.lower(),
                 "company_id": str(staff.operator_id),
                 "machine_empresa_id": str(staff.operator_id),
+                "companies": companies_list if companies_list else [{"id": str(staff.operator_id), "nome": "Matriz Operador"}]
             }
         }
     except StaffMember.DoesNotExist:
         return panel_api.create_response(request, {"authenticated": False, "error": "Usuário não encontrado no banco de dados."}, status=401)
-
 
 @panel_api.get("/db/configs")
 def get_configs(request, company_id: Optional[str] = None):
