@@ -66,7 +66,7 @@ class SupabaseJWTAuth(HttpBearer):
                 
                 user_res = supabase.auth.get_user(token)
                 if user_res and getattr(user_res, 'user', None):
-                    return jwt.decode(token, options={"verify_signature": False, "verify_audience": False})  # type: ignore
+                    return jwt.decode(token, options={"verify_signature": False, "verify_audience": False}, algorithms=["HS256"])  # type: ignore
                 
                 raise HttpError(401, "Token inválido via Supabase API")
             except HttpError:
