@@ -21,7 +21,7 @@ class EntryPayload(BaseModel):
     turnoId: Optional[str] = None
 
 @router.get("/entries")
-def get_entries(request, company_id: str = None, start: str = None, end: str = None):
+def get_entries(request, company_id: Optional[str] = None, start: Optional[str] = None, end: Optional[str] = None):
     # This is a compatibility layer mapping legacy React queries to ManualEntry
     qs = ManualEntry.objects.all()
     if company_id:
@@ -35,8 +35,8 @@ def get_entries(request, company_id: str = None, start: str = None, end: str = N
     for entry in qs:
         res.append({
             "id": str(entry.id),
-            "driverName": entry.driver.name if entry.driver else "",
-            "motoboy": entry.driver.name if entry.driver else "",
+            "driverName": entry.driver.name if entry.driver_id else "",
+            "motoboy": entry.driver.name if entry.driver_id else "",
             "type": entry.description,
             "categoria": "Crédito" if entry.amountCents > 0 else "Débito",
             "valor": entry.amountCents / 100.0,
@@ -102,7 +102,7 @@ class CompanyDriverPayload(BaseModel):
     active: Optional[bool] = None
 
 @router.get("/company-drivers")
-def get_company_drivers(request, company_id: int = None, active_only: int = 0):
+def get_company_drivers(request, company_id: Optional[int] = None, active_only: int = 0):
     from logistics.models import StoreDriver, Store
     qs = StoreDriver.objects.select_related('driver').all()
     if company_id:
@@ -119,7 +119,7 @@ def get_company_drivers(request, company_id: int = None, active_only: int = 0):
             "driverId": str(sd.driver.id),
             "nome": sd.driver.name,
             "phone": sd.driver.phone,
-            "active": sd.is_active
+            "active": sd.driver.active
         })
     return res
 
@@ -129,7 +129,7 @@ def update_company_driver(request, payload: CompanyDriverPayload):
     return {"success": True}
 
 @router.get("/configs")
-def get_configs(request, company_id: int = None):
+def get_configs(request, company_id: Optional[int] = None):
     # Return mock config to prevent frontend crash
     return [{"id": 1, "company_id": company_id or 1, "chave": "tema", "valor": "light"}]
 
@@ -142,7 +142,7 @@ def update_config(request, payload: dict):
     return {"success": True}
 
 @router.get("/snapshots")
-def get_snapshots(request, company_id: int = None, limit: int = 50):
+def get_snapshots(request, company_id: Optional[int] = None, limit: int = 50):
     # Mock snapshot to prevent crash in dashboards
     return []
 
