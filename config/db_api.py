@@ -169,7 +169,8 @@ def update_user(request, payload: UserPayload):
     try:
         staff = StaffMember.objects.get(id=payload.id)
         staff.name = payload.fullName
-        if payload.role: staff.role = payload.role
+        if payload.role:
+            staff.role = payload.role
         staff.save()
         return {"success": True}
     except StaffMember.DoesNotExist:
@@ -212,7 +213,7 @@ class CompanyDriverPayload(BaseModel):
 def get_company_drivers(request, company_id: Optional[str] = None, active_only: int = 0):
     try:
         from django.core.exceptions import ValidationError
-        from logistics.models import StoreDriver, Store
+        from logistics.models import StoreDriver
         qs = StoreDriver.objects.select_related('driver').all()
         if company_id and company_id != "global":
             try:
@@ -278,7 +279,7 @@ def create_company_driver(request, payload: DriverCreateSchema):
     Payload expected: companyId (str), nome (str), phone (str), email (str), password (opt)
     """
     from accounts.models import Operator
-    from logistics.models import Driver, Store, StoreDriver
+    from logistics.models import Driver, StoreDriver
     from config.supabase_client import get_supabase_admin
     import uuid
 
@@ -346,7 +347,7 @@ def create_company_store(request, payload: StoreCreateSchema):
     Payload expected: companyId (operator), name, documento, endereco, lat, lng
     """
     from accounts.models import Operator
-    from logistics.models import Store, Client
+    from logistics.models import Client
     import uuid
 
     operator_id = payload.companyId
@@ -426,7 +427,6 @@ class StoreUpdateSchema(BaseModel):
 
 @router.put('/companies/{company_id}')
 def update_company_store(request, company_id: str, payload: StoreUpdateSchema):
-    from logistics.models import Store
     from django.contrib.gis.geos import Point
     try:
         store = Store.objects.get(id=company_id)
@@ -452,7 +452,6 @@ def update_company_store(request, company_id: str, payload: StoreUpdateSchema):
 
 @router.delete('/companies/{company_id}')
 def delete_company_store(request, company_id: str):
-    from logistics.models import Store
     try:
         store = Store.objects.get(id=company_id)
         store.delete()
@@ -464,7 +463,7 @@ def delete_company_store(request, company_id: str):
 # UNIFIED NATIVE ORDERS API (Replaces Legacy Taxi Machine Proxy)
 # ==============================================================================
 
-from typing import List, Optional
+from typing import Optional
 
 class OrderStopSchema(BaseModel):
     endereco_parada: str

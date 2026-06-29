@@ -15,7 +15,6 @@ def auth_me(request):
     """
     uid = request.auth.get("sub")
     
-    from accounts.models import PlatformAdmin, StaffMember
     from logistics.models import Store
     
     try:
@@ -94,7 +93,6 @@ def get_rides(
     data_hora_solicitacao_max: Optional[str] = None
 ):
     from logistics.models import Order
-    from accounts.models import Operator
     
     qs = Order.objects.select_related('driver').all().order_by("-requestedAt")
     
@@ -173,7 +171,6 @@ def get_schedules(request, company_id: Optional[str] = None):
 
 @panel_api.get("/machine/companies", auth=auth_bearer)
 def get_machine_companies(request):
-    from accounts.models import StaffMember, Operator
     from logistics.models import Store
     
     uid = request.auth.get("sub")
@@ -256,7 +253,6 @@ class RideCreatePayload(BaseModel):
 @panel_api.post("/machine/rides/create")
 def post_machine_ride_create(request, payload: RideCreatePayload):
     from logistics.models import Store, Order, Stop
-    from accounts.models import Operator
     from finance.models import KmFaixa
     from django.core.exceptions import ValidationError
     from django.contrib.gis.geos import Point
@@ -405,7 +401,6 @@ def get_machine_rides_estimate(
 ):
     import math
     from finance.models import KmFaixa
-    from accounts.models import StaffMember, Operator
     
     try:
         lat1, lon1 = float(lat_partida), float(lng_partida)
@@ -469,7 +464,6 @@ def get_operators(request):
     """
     Retorna a lista de Operadores (apenas para PlatformAdmin).
     """
-    from accounts.models import PlatformAdmin, Operator
     uid = request.auth.get("sub")
     if not PlatformAdmin.objects.filter(supabase_uid=uid).exists():
         return panel_api.create_response(request, {"error": "Acesso Negado"}, status=403)
@@ -491,7 +485,6 @@ def create_operator(request, payload: dict):
     Cria um novo Operador Logístico e o seu primeiro Gerente (Owner).
     Payload: name, cnpj, managerName, managerEmail, managerPassword
     """
-    from accounts.models import PlatformAdmin, Operator, StaffMember
     from config.supabase_client import get_supabase_admin
     import uuid
     

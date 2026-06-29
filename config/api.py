@@ -62,7 +62,7 @@ class SupabaseJWTAuth(HttpBearer):
                 from config.supabase_client import get_supabase_client
                 supabase = get_supabase_client()
                 if not supabase:
-                    raise HttpError(401, f"Falha na validação local e cliente Supabase não inicializado.")
+                    raise HttpError(401, "Falha na validação local e cliente Supabase não inicializado.")
                 
                 user_res = supabase.auth.get_user(token)
                 if user_res and getattr(user_res, 'user', None):
