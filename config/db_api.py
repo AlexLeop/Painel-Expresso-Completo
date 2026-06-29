@@ -163,6 +163,8 @@ def update_user(request, payload: UserPayload):
             return {"success": True}
         except PlatformAdmin.DoesNotExist:
             return {"success": False, "error": "User not found"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 @router.delete("/users")
 def delete_user(request, id: str):
@@ -520,19 +522,30 @@ def get_orders(
         
     orders = qs[:limite]
     
-    return [
-        {
-            "id": str(o.id),
-            "driver_id": str(o.driver_id) if o.driver_id else None,
-            "motorista": o.driver.name if getattr(o, 'driver', None) else "Não atribuído",
-            "status": o.status,
-            "price": (o.fareValueCents or 0) / 100.0 if hasattr(o, 'fareValueCents') else 0,
-            "valor_total": (o.fareValueCents or 0) / 100.0 if hasattr(o, 'fareValueCents') else 0,
-            "distance": (o.distanceMeters or 0) / 1000.0 if hasattr(o, 'distanceMeters') else 0,
-            "data": o.requestedAt.strftime("%Y-%m-%d %H:%M:%S") if getattr(o, 'requestedAt', None) else None
-        }
-        for o in orders
-    ]
+    res = []
+    for o in orders:
+        try:
+            drv_name = "Não atribuído"
+            try:
+                if o.driver_id and hasattr(o, 'driver') and o.driver:
+                    drv_name = o.driver.name
+            except Exception:
+                pass
+                
+            res.append({
+                "id": str(o.id),
+                "driver_id": str(o.driver_id) if o.driver_id else None,
+                "motorista": drv_name,
+                "status": o.status,
+                "price": (o.fareValueCents or 0) / 100.0 if hasattr(o, 'fareValueCents') else 0,
+                "valor_total": (o.fareValueCents or 0) / 100.0 if hasattr(o, 'fareValueCents') else 0,
+                "distance": (o.distanceMeters or 0) / 1000.0 if hasattr(o, 'distanceMeters') else 0,
+                "data": o.requestedAt.strftime("%Y-%m-%d %H:%M:%S") if getattr(o, 'requestedAt', None) and hasattr(o.requestedAt, 'strftime') else str(getattr(o, 'requestedAt', ''))
+            })
+        except Exception:
+            continue
+            
+    return res
 
 @router.post("/orders/create")
 def create_order(request, payload: OrderCreateSchema):
