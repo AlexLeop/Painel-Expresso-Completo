@@ -126,16 +126,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem("nevesgo:session", JSON.stringify(updatedSession));
       setSession(updatedSession);
 
-      try {
-        await authFetch("/api/auth/change-tenant", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ company_id: companyId }),
-        });
-      } catch (err) {
-        console.error("Failed to change tenant on backend:", err);
-      }
-
       window.location.reload();
     }
   };

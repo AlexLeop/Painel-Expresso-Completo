@@ -21,33 +21,41 @@ class EntryPayload(BaseModel):
     turnoId: Optional[str] = None
 
 @router.get("/entries")
-def get_entries(request, company_id: Optional[str] = None, start: Optional[str] = None, end: Optional[str] = None):
-    from django.core.exceptions import ValidationError
-    # This is a compatibility layer mapping legacy React queries to ManualEntry
-    qs = ManualEntry.objects.all()
-    if company_id and company_id != "global":
-        try:
-            qs = qs.filter(operator_id=company_id)
-        except ValidationError:
-            pass
-    if start:
-        qs = qs.filter(createdAt__gte=start)
-    if end:
-        qs = qs.filter(createdAt__lte=end)
-        
-    res = []
-    for entry in qs:
-        res.append({
-            "id": str(entry.id),
-            "driverName": entry.driver.name if entry.driver_id else "",
-            "motoboy": entry.driver.name if entry.driver_id else "",
-            "type": entry.description,
-            "categoria": "Crédito" if entry.amountCents > 0 else "Débito",
-            "valor": entry.amountCents / 100.0,
-            "data": entry.createdAt.strftime("%Y-%m-%d"),
-            "description": entry.description
-        })
-    return res
+def get_entries(request, company_id: str = None, start: str = None, end: str = None):
+    try:
+        from django.core.exceptions import ValidationError
+        qs = ManualEntry.objects.all()
+        if company_id and company_id != "global":
+            try:
+                qs = qs.filter(operator_id=company_id)
+            except ValidationError:
+                pass
+        if start:
+            qs = qs.filter(createdAt__gte=start)
+        if end:
+            qs = qs.filter(createdAt__lte=end)
+            
+        res = []
+        for entry in qs:
+            try:
+                drv_name = entry.driver.name if entry.driver_id else ""
+            except Exception:
+                drv_name = ""
+            res.append({
+                "id": str(entry.id),
+                "driverName": drv_name,
+                "motoboy": drv_name,
+                "type": entry.description or "",
+                "categoria": "Crédito" if (entry.amountCents or 0) > 0 else "Débito",
+                "valor": (entry.amountCents or 0) / 100.0,
+                "data": entry.createdAt.strftime("%Y-%m-%d") if hasattr(entry.createdAt, 'strftime') else str(entry.createdAt),
+                "description": entry.description or ""
+            })
+        return res
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return []
 
 @router.post("/entries")
 def create_entry(request, payload: EntryPayload):
@@ -182,30 +190,38 @@ class CompanyDriverPayload(BaseModel):
     active: Optional[bool] = None
 
 @router.get("/company-drivers")
-def get_company_drivers(request, company_id: Optional[str] = None, active_only: int = 0):
-    from django.core.exceptions import ValidationError
-    from logistics.models import StoreDriver, Store
-    qs = StoreDriver.objects.select_related('driver').all()
-    if company_id and company_id != "global":
-        try:
-            store = Store.objects.filter(operator_id=company_id).first()
-        except ValidationError:
-            store = None
-        if store:
-            qs = qs.filter(store=store)
-        else:
-            qs = qs.none()
-    
-    res = []
-    for sd in qs:
-        res.append({
-            "id": sd.id,
-            "driverId": str(sd.driver.id),
-            "nome": sd.driver.name,
-            "phone": sd.driver.phone,
-            "active": sd.driver.active
-        })
-    return res
+def get_company_drivers(request, company_id: str = None, active_only: int = 0):
+    try:
+        from django.core.exceptions import ValidationError
+        from logistics.models import StoreDriver, Store
+        qs = StoreDriver.objects.select_related('driver').all()
+        if company_id and company_id != "global":
+            try:
+                store = Store.objects.filter(operator_id=company_id).first()
+            except ValidationError:
+                store = None
+            if store:
+                qs = qs.filter(store=store)
+            else:
+                qs = qs.none()
+        
+        res = []
+        for sd in qs:
+            try:
+                res.append({
+                    "id": sd.id,
+                    "driverId": str(sd.driver.id) if sd.driver_id else "",
+                    "nome": sd.driver.name if sd.driver_id else "Desconhecido",
+                    "phone": sd.driver.phone if sd.driver_id else "",
+                    "active": sd.driver.active if sd.driver_id else False
+                })
+            except Exception:
+                continue
+        return res
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return []
 
 @router.patch("/company-drivers")
 def update_company_driver(request, payload: CompanyDriverPayload):
