@@ -86,7 +86,8 @@ export function PainelLobby({
 
       const storeLat = storeLocation?.[0] || companyData?.lat || "";
       const storeLng = storeLocation?.[1] || companyData?.lng || "";
-      const storeAddr = companyData?.endereco || "Endereço da Loja";
+      const storeEndereco = companyData?.endereco || "";
+      const storeName = companyData?.nome_fantasia || companyData?.nome || "Loja";
       const storeBairro = companyData?.bairro || "";
       const storeCidade = companyData?.cidade || "";
       const storeEstado = companyData?.estado || "RJ";
@@ -94,15 +95,16 @@ export function PainelLobby({
       const payload = {
         empresa_id: machineEmpId,
         forma_pagamento: "F",
-        partida: {
-          endereco: storeAddr,
-          bairro: storeBairro,
-          cidade: storeCidade,
-          estado: storeEstado,
-          lat: String(storeLat),
-          lng: String(storeLng),
-        },
-        paradas: selectedOrders.flatMap((order) => {
+        endereco_partida: storeEndereco || "",
+        bairro_partida: storeBairro || "",
+        cidade_partida: storeCidade || "",
+        estado_partida: storeEstado || "",
+        lat_partida: String(storeLat),
+        lng_partida: String(storeLng),
+        nome_cliente_partida: storeName,
+        telefone_cliente_partida: "",
+        observacao_partida: "Coleta agrupada",
+        pontos: selectedOrders.flatMap((order) => {
           if (order.paradas && order.paradas.length > 0) {
             return order.paradas.map((p) => ({
               endereco_parada: p.endereco || order.entrega?.endereco || "",
@@ -112,6 +114,7 @@ export function PainelLobby({
               lat_parada: String(p.lat || order.destination?.lat || ""),
               lng_parada: String(p.lng || order.destination?.lng || ""),
               nome_cliente_parada: p.nome_cliente || order.cliente || "",
+              telefone_cliente_parada: p.telefone_cliente || "",
               observacao_parada:
                 p.observacao || `Pedido #${order.codigoPedido}`,
             }));
@@ -125,12 +128,12 @@ export function PainelLobby({
                 lat_parada: String(order.destination?.lat || ""),
                 lng_parada: String(order.destination?.lng || ""),
                 nome_cliente_parada: order.cliente || "",
+                telefone_cliente_parada: "",
                 observacao_parada: `Pedido #${order.codigoPedido}`,
               },
             ];
           }
         }),
-        retorno: false,
       };
 
       const res = await authFetch("/api/v1/db/orders/create", {
@@ -138,11 +141,12 @@ export function PainelLobby({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      
+      const errorData = await res.json().catch(() => ({}));
 
-      if (!res.ok) {
-        const errorData = await res.json();
+      if (!res.ok || errorData.error || errorData.sucesso === false || errorData.success === false) {
         throw new Error(
-          errorData.error || "Erro ao agrupar corrida na Machine API",
+          errorData.msg || errorData.error || "Erro ao agrupar corrida na Machine API",
         );
       }
 

@@ -356,22 +356,32 @@ export function CreateRideModal({
           : 112905);
 
       const payload = {
-        empresa_id: machineEmpId,
+        empresa_id: String(machineEmpId),
         forma_pagamento: formaPagamento === "Faturado" ? "F" : "D",
-        partida: pickup,
-        paradas: deliveries.map((d) => ({
+        endereco_partida: pickup.endereco || "",
+        bairro_partida: pickup.bairro || defaultBairro,
+        cidade_partida: pickup.cidade || defaultCidade,
+        estado_partida: getStateAbbr(pickup.estado || defaultUF),
+        lat_partida: String(pickup.lat || ""),
+        lng_partida: String(pickup.lng || ""),
+        complemento_partida: "",
+        nome_cliente_partida: currentCompany?.nome || "",
+        telefone_cliente_partida: "",
+        observacao_partida: observacaoGeral || "",
+        pontos: deliveries.map((d) => ({
           endereco_parada: `${d.address || ""}${d.number ? ", " + d.number : ""}`,
           bairro_parada: d.bairro || defaultBairro,
           cidade_parada: d.cidade || defaultCidade,
           estado_parada: getStateAbbr(d.estado || defaultUF),
-          lat_parada: d.lat || "",
-          lng_parada: d.lng || "",
+          lat_parada: String(d.lat || ""),
+          lng_parada: String(d.lng || ""),
           complemento_parada: d.complement || "",
           nome_cliente_parada: d.name || "",
           telefone_cliente_parada: d.phone || "",
           observacao_parada: d.notes || observacaoGeral || "",
         })),
-        retorno: false,
+        valor_estimado: null,
+        distancia_estimada: null,
       };
 
       const res = await authFetch("/api/v1/db/orders/create", {
@@ -380,10 +390,11 @@ export function CreateRideModal({
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || data.error || data.sucesso === false || data.success === false) {
         throw new Error(
-          data.error || data.details || "Erro ao criar corrida na Machine",
+          data.msg || data.error || "Erro ao agrupar corrida na Machine API",
         );
       }
 

@@ -229,11 +229,12 @@ export function Empresas() {
           method: "PUT",
           body: JSON.stringify(empresa),
         });
+        
+        const data = await response.json().catch(() => ({}));
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
+        if (!response.ok || data.error || data.success === false) {
           setEmpresas(previousEmpresas);
-          throw new Error(errorData.error || "Erro ao atualizar empresa");
+          throw new Error(data.error || "Erro ao atualizar empresa");
         }
         await fetchEmpresas();
       } else {
@@ -248,10 +249,11 @@ export function Empresas() {
             averagePrepTimeMinutes: empresa.averagePrepTimeMinutes || 15
           }),
         });
+        
+        const data = await response.json().catch(() => ({}));
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || "Erro ao criar empresa");
+        if (!response.ok || data.error || data.success === false) {
+          throw new Error(data.error || "Erro ao criar empresa");
         }
 
         alert("Empresa criada com sucesso!");

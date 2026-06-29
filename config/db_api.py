@@ -73,7 +73,8 @@ def create_entry(request, payload: EntryPayload):
         driver=driver,
         amountCents=amt_cents,
         description=payload.description or payload.type or "",
-        status=ManualEntry.EntryStatus.APPROVED
+        status=ManualEntry.EntryStatus.APPROVED,
+        taxCategory="NON_TAXABLE_REIMBURSEMENT" if amt_cents >= 0 else "DEDUCTION"
     )
     return {"success": True, "id": str(entry.id)}
 
@@ -115,6 +116,7 @@ class UserPayload(BaseModel):
     role: Optional[str] = None
     password: Optional[str] = None
     companyId: Optional[str] = None
+    companyIds: Optional[list] = None
 
 @router.post("/users")
 def create_user(request, payload: UserPayload):
@@ -132,16 +134,31 @@ def create_user(request, payload: UserPayload):
             "user_metadata": {"name": payload.fullName, "role": payload.role or "staff"}
         })
         operator = None
-        if payload.companyId and payload.companyId != "global":
-            operator = Operator.objects.filter(id=payload.companyId).first()
-        StaffMember.objects.create(
-            supabase_uid=user_res.user.id,
-            name=payload.fullName,
-            email=payload.email,
-            role=payload.role or "staff",
-            operator=operator,
-            active=True
-        )
+        c_id = payload.companyId
+        if not c_id and payload.companyIds and len(payload.companyIds) > 0:
+            c_id = payload.companyIds[0]
+            
+        if c_id and c_id != "global":
+            operator = Operator.objects.filter(id=c_id).first()
+            
+        if operator:
+            StaffMember.objects.create(
+                supabase_uid=user_res.user.id,
+                name=payload.fullName,
+                email=payload.email,
+                role=payload.role or "OPERATOR_ROLE",
+                operator=operator,
+                active=True
+            )
+        else:
+            from accounts.models import PlatformAdmin
+            PlatformAdmin.objects.create(
+                supabase_uid=user_res.user.id,
+                name=payload.fullName,
+                email=payload.email,
+                active=True
+            )
+            
         return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -305,9 +322,9 @@ def create_company_driver(request, payload: DriverCreateSchema):
         store = Store.objects.filter(operator_id=operator.id).first()
         if store:
             StoreDriver.objects.create(
+                operator=operator,
                 store=store,
-                driver=driver,
-                active=True
+                driver=driver
             )
             
         return {"success": True, "driverId": str(driver.id)}
@@ -350,10 +367,11 @@ def create_company_store(request, payload: StoreCreateSchema):
         # Criar Store
         lat = payload.lat
         lng = payload.lng
-        geom = None
+        from django.contrib.gis.geos import Point
         if lat and lng:
-            from django.contrib.gis.geos import Point
             geom = Point(lng, lat, srid=4326)
+        else:
+            geom = Point(-43.1729, -22.9068, srid=4326) # Default Rio coords
             
         store = Store.objects.create(
             operator=operator,
@@ -549,15 +567,31 @@ def get_orders(
 
 @router.post("/orders/create")
 def create_order(request, payload: OrderCreateSchema):
-    from logistics.models import Order, Stop
+    from logistics.models import Order, Stop, Store
     from django.contrib.gis.geos import Point
     from accounts.models import Operator
+    from django.utils import timezone
     
     try:
         operator_id = payload.empresa_id if payload.empresa_id != "global" else None
         
+        # Get or create a fallback store for the operator to satisfy DB constraints
+        store = None
+        if operator_id:
+            store = Store.objects.filter(operator_id=operator_id).first()
+        if not store and operator_id:
+            store = Store.objects.create(
+                operator_id=operator_id,
+                name="Loja Principal",
+                operational=True,
+                averagePrepTimeMinutes=10,
+                geom=Point(-43.1729, -22.9068, srid=4326) # Default Rio coords
+            )
+            
         order = Order.objects.create(
             operator_id=operator_id,
+            store=store,
+            businessDate=timezone.now().date(),
             status=Order.OrderStatus.OFFERED,
             fareValueCents=int((payload.valor_estimado or 0) * 100),
             distanceMeters=int((payload.distancia_estimada or 0) * 1000)
