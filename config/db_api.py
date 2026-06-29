@@ -21,7 +21,7 @@ class EntryPayload(BaseModel):
     turnoId: Optional[str] = None
 
 @router.get("/entries")
-def get_entries(request, company_id: str = None, start: str = None, end: str = None):
+def get_entries(request, company_id: Optional[str] = None, start: Optional[str] = None, end: Optional[str] = None):
     try:
         from django.core.exceptions import ValidationError
         qs = ManualEntry.objects.all()
@@ -190,7 +190,7 @@ class CompanyDriverPayload(BaseModel):
     active: Optional[bool] = None
 
 @router.get("/company-drivers")
-def get_company_drivers(request, company_id: str = None, active_only: int = 0):
+def get_company_drivers(request, company_id: Optional[str] = None, active_only: int = 0):
     try:
         from django.core.exceptions import ValidationError
         from logistics.models import StoreDriver, Store
