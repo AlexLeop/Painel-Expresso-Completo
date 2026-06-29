@@ -52,7 +52,7 @@ def get_entries(request, company_id: Optional[str] = None, start: Optional[str] 
                 "description": entry.description or ""
             })
         return res
-    except Exception as e:
+    except Exception:
         import traceback
         traceback.print_exc()
         return []
@@ -238,7 +238,7 @@ def get_company_drivers(request, company_id: Optional[str] = None, active_only: 
             except Exception:
                 continue
         return res
-    except Exception as e:
+    except Exception:
         import traceback
         traceback.print_exc()
         return []
