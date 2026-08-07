@@ -25,7 +25,7 @@
         "build": {
           "type": "dockerfile",
           "dockerfile": "Dockerfile",
-          "context": "."
+          "context": "./backend"
         },
         "deploy": {
           "command": "bash -c \"python manage.py migrate && python manage.py warmup_denylist && python manage.py collectstatic --noinput && gunicorn --bind 0.0.0.0:8000 --workers 3 config.wsgi:application\""
@@ -56,7 +56,7 @@
         "build": {
           "type": "dockerfile",
           "dockerfile": "Dockerfile",
-          "context": "./Novo_FrontEnd"
+          "context": "./frontend"
         },
         "env": "VITE_API_URL=https://api.expressoneves.com\nVITE_SUPABASE_URL=https://xxxx.supabase.co\nVITE_SUPABASE_ANON_KEY=eyJh...\nPORT=5173\nNODE_ENV=production",
         "domains": [
@@ -84,7 +84,7 @@
         "build": {
           "type": "dockerfile",
           "dockerfile": "fast_lane/Dockerfile",
-          "context": "."
+          "context": "./backend"
         },
         "env": "DATABASE_URL=postgresql://postgres:senha@pooler.supabase.com:6543/postgres?pgbouncer=true\nDIRECT_URL=postgresql://postgres:senha@pooler.supabase.com:5432/postgres\nREDIS_URL=redis://redis:6379/1\nGEMINI_API_KEY=sua-chave-gemini",
         "domains": [
@@ -112,7 +112,7 @@
         "build": {
           "type": "dockerfile",
           "dockerfile": "Dockerfile",
-          "context": "."
+          "context": "./backend"
         },
         "deploy": {
           "command": "celery -A config worker -l info --concurrency=2"
@@ -137,7 +137,7 @@
         "build": {
           "type": "dockerfile",
           "dockerfile": "Dockerfile",
-          "context": "."
+          "context": "./backend"
         },
         "deploy": {
           "command": "celery -A config beat -l info"

@@ -1,0 +1,263 @@
+<!DOCTYPE html><html lang="pt-br" style="width: 390px; height: 931px; overflow: hidden; position: relative;"><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0" name="viewport"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=block" rel="stylesheet"><script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script><script id="tailwind-config">try{try{
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                "outline-variant": "#c6c6cd",
+                "surface-container-highest": "#e0e3e5",
+                "on-surface": "#191c1e",
+                "primary": "#0f172a",
+                "surface-tint": "#565e74",
+                "outline": "#76777d",
+                "inverse-primary": "#bec6e0",
+                "on-error": "#ffffff",
+                "on-error-container": "#93000a",
+                "on-secondary-fixed": "#002109",
+                "surface-dim": "#d8dadc",
+                "tertiary-container": "#2a1700",
+                "inverse-on-surface": "#eff1f3",
+                "on-tertiary-fixed": "#2a1700",
+                "inverse-surface": "#2d3133",
+                "surface-container-low": "#f2f4f6",
+                "on-tertiary": "#ffffff",
+                "secondary-fixed-dim": "#4ae176",
+                "tertiary-fixed-dim": "#ffb95f",
+                "surface-container-lowest": "#ffffff",
+                "on-primary-container": "#7c839b",
+                "on-primary-fixed-variant": "#3f465c",
+                "on-surface-variant": "#45464d",
+                "secondary-container": "#6bff8f",
+                "on-primary-fixed": "#131b2e",
+                "on-secondary": "#ffffff",
+                "secondary": "#006e2f",
+                "on-secondary-container": "#007432",
+                "error": "#ba1a1a",
+                "primary-fixed-dim": "#bec6e0",
+                "on-background": "#191c1e",
+                "tertiary-fixed": "#ffddb8",
+                "error-container": "#ffdad6",
+                "primary-container": "#131b2e",
+                "primary-fixed": "#dae2fd",
+                "secondary-fixed": "#6bff8f",
+                "surface-container": "#eceef0",
+                "on-tertiary-container": "#b87500",
+                "surface-bright": "#f7f9fb",
+                "on-tertiary-fixed-variant": "#653e00",
+                "background": "#f7f9fb",
+                "on-primary": "#ffffff",
+                "on-secondary-fixed-variant": "#005321",
+                "surface-container-high": "#e6e8ea",
+                "surface": "#f7f9fb",
+                "surface-variant": "#e0e3e5",
+                "tertiary": "#000000"
+            },
+            "borderRadius": {
+                "DEFAULT": "0.5rem",
+                "lg": "0.5rem",
+                "xl": "0.75rem",
+                "full": "9999px"
+            },
+            "spacing": {
+                "gutter": "16px",
+                "touch-target-min": "48px",
+                "stack-gap": "12px",
+                "base": "4px",
+                "container-padding": "16px"
+            },
+            "fontFamily": {
+                "body-md": ["Inter"],
+                "headline-md": ["Inter"],
+                "headline-lg": ["Inter"],
+                "label-lg": ["Inter"],
+                "data-mono": ["Geist"],
+                "label-sm": ["Inter"],
+                "body-lg": ["Inter"]
+            }
+          }
+        }
+      }
+    }catch(_e){}}catch(_e){}</script></head><body class="bg-surface text-on-surface font-body-md overflow-hidden">
+
+<!-- Main Viewport Container -->
+<div class="relative flex h-screen w-full flex-col overflow-hidden">
+    
+    <!-- Full-screen Map Background -->
+    <div class="absolute inset-0 z-0">
+        <div class="w-full h-full bg-cover bg-center" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAUfdJ8W-I8fHKfgtv0vZ2oUrYul_2LTCH7wahhxU78i20_1850lwpcVdIVtyRIkmwHurD_iuMf2oUDK1HsE-ddvRPbmZ1xoyBPk_KnQYSqYSCm0Wy1k0zahzl4acsT9Z1Ro_E4aYGDgfYH4HWIRlDmKxxjREMBLg5J7URme0AHApWExvvSXRRuUNvttHcDnEhTFK24lNa2EyS42NIV07sEzUAtEvtm0lR8esiz7mtEmc8HFjnhf2szMA')"></div>
+    </div>
+
+    <!-- Floating Header Card (Merged Style) -->
+    <div class="absolute top-4 left-4 right-4 z-10">
+        <div class="flex items-center justify-between rounded-2xl px-6 py-4 shadow-lg bg-surface-container-low border border-outline-variant/20">
+            <div class="flex items-center gap-3">
+                <div class="size-10 rounded-full bg-primary/10 flex items-center justify-center border border-primary/5">
+                    <span class="material-symbols-outlined text-primary text-xl">account_circle</span>
+                </div>
+                <div class="flex flex-col">
+                    <span class="text-on-surface font-bold text-base leading-tight">Ricardo Oliveira</span>
+                    <span class="text-secondary text-[10px] font-bold uppercase tracking-widest" id="status-label">ONLINE E DISPONÍVEL</span>
+                </div>
+            </div>
+            <div class="flex items-center gap-3"><label class="relative inline-flex items-center cursor-pointer">
+  <input type="checkbox" value="" class="sr-only peer" checked="">
+  <div class="w-11 h-6 bg-outline-variant/30 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-secondary"></div>
+</label></div>
+        </div>
+    </div>
+
+    <!-- Floating Content Area -->
+    <div class="relative flex-1 pointer-events-none">
+        
+        <!-- Map Controls -->
+        <div class="absolute right-4 top-24 z-10 flex flex-col gap-3 pointer-events-auto bottom-20">
+            <div class="flex flex-col glass-card rounded-xl overflow-hidden shadow-lg border border-outline-variant/30">
+                <button class="flex size-11 items-center justify-center hover:bg-surface-container-high transition-colors">
+                    <span class="material-symbols-outlined text-on-surface">add</span>
+                </button>
+                <div class="h-[1px] bg-outline-variant/20 w-6 mx-auto"></div>
+                <button class="flex size-11 items-center justify-center hover:bg-surface-container-high transition-colors">
+                    <span class="material-symbols-outlined text-on-surface">remove</span>
+                </button>
+            </div>
+            <button class="flex size-11 items-center justify-center rounded-xl glass-card shadow-lg hover:bg-surface-container-high transition-colors pointer-events-auto">
+                <span class="material-symbols-outlined text-on-surface">my_location</span>
+            </button>
+        </div>
+
+        <!-- Wallet FAB (Enhanced Style) -->
+        <div class="absolute right-4 z-10 pointer-events-auto bottom-20">
+            <button class="flex size-14 items-center justify-center rounded-full bg-primary text-white shadow-[0_8px_30px_rgb(15,23,42,0.4)] hover:scale-105 active:scale-95 transition-all">
+                <span class="material-symbols-outlined text-2xl">account_balance_wallet</span>
+            </button>
+        </div>
+    <div class="absolute inset-x-4 z-20 pointer-events-auto bottom-40">
+  <div class="bg-surface-container-lowest rounded-2xl p-6 shadow-2xl border border-outline-variant/30">
+  <!-- Header with-->
+  <div class="mb-6">
+    <div class="flex justify-between items-center mb-4">
+      <div class="flex items-center gap-2">
+        <span class="bg-primary text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest">2 Pedidos</span>
+        <span class="text-outline text-[10px] font-bold uppercase tracking-widest">#ORD-8829</span>
+      </div>
+      <div class="flex items-center gap-1.5 text-error">
+        <span class="material-symbols-outlined text-sm">timer</span>
+        <span class="text-xs font-bold">24s</span>
+      </div>
+    </div>
+    
+    <!-- High Visibility Timer Bar -->
+    <div class="h-1.5 w-full bg-outline-variant/20 rounded-full overflow-hidden mb-4">
+      <div class="h-full bg-error w-[80%] transition-all"></div>
+    </div>
+
+    <!-- Primary Metrics: Total Distance and Time -->
+    <div class="flex justify-between items-center p-4 bg-surface-container-low rounded-xl border border-outline-variant/30">
+      <div>
+        <p class="text-outline text-[10px] uppercase font-bold tracking-widest">Ganhos Estimados</p>
+        <h3 class="text-on-surface font-bold text-2xl tracking-tight">R$ 28,90</h3>
+      </div>
+      <div class="text-right">
+        <p class="text-primary font-bold text-lg">6.8 km • 25 min</p>
+        <p class="text-outline text-[10px] uppercase tracking-widest">Total Estimado</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scrollable Orders Area -->
+  <div class="mb-6 overflow-y-auto pr-1 max-h-[450px] space-y-8">
+    <!-- Order 1 -->
+    <div class="relative">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-bold text-on-surface">Ana Beatriz S. • #ORD-8829</span>
+        </div>
+        <span class="text-[10px] font-bold text-secondary uppercase">4.2 km • 17 min</span>
+      </div>
+      <div class="relative space-y-4">
+        <div class="absolute left-[9px] top-5 bottom-5 w-[1px] bg-outline-variant/30"></div>
+        <!-- Pickup -->
+        <div class="flex gap-4 relative z-10">
+          <div class="size-5 rounded-full bg-secondary flex items-center justify-center">
+            <div class="size-1.5 rounded-full bg-white"></div>
+          </div>
+          <div class="flex-1">
+            <div class="flex justify-between">
+              <p class="text-[10px] text-secondary uppercase font-bold tracking-widest">Retirada</p>
+            </div>
+            <p class="text-sm font-semibold text-on-surface">Restaurante Sabor Real</p>
+          </div>
+        </div>
+        <!-- Delivery -->
+        <div class="flex gap-4 relative z-10">
+          <div class="size-5 rounded-full bg-error flex items-center justify-center">
+            <span class="material-symbols-outlined text-white text-xs">location_on</span>
+          </div>
+          <div class="flex-1">
+            <div class="flex justify-between">
+              <p class="text-[10px] text-error uppercase font-bold tracking-widest">Entrega</p>
+            </div>
+            <p class="text-sm font-semibold text-on-surface">Rua das Flores, 123 - Apt 42</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="h-[1px] bg-outline-variant/10 w-full"></div>
+
+    <!-- Order 2 -->
+    <div class="relative">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-bold text-on-surface">Marcos Oliveira • #ORD-8830</span>
+        </div>
+        <span class="text-[10px] font-bold text-secondary uppercase">2.6 km • 11 min</span>
+      </div>
+      <div class="relative space-y-4">
+        <div class="absolute left-[9px] top-5 bottom-5 w-[1px] bg-outline-variant/30"></div>
+        <!-- Pickup -->
+        <div class="flex gap-4 relative z-10">
+          <div class="size-5 rounded-full bg-secondary flex items-center justify-center">
+            <div class="size-1.5 rounded-full bg-white"></div>
+          </div>
+          <div class="flex-1">
+            <div class="flex justify-between">
+              <p class="text-[10px] text-secondary uppercase font-bold tracking-widest">Retirada</p>
+            </div>
+            <p class="text-sm font-semibold text-on-surface">Burger House Premium</p>
+          </div>
+        </div>
+        <!-- Delivery -->
+        <div class="flex gap-4 relative z-10">
+          <div class="size-5 rounded-full bg-error flex items-center justify-center">
+            <span class="material-symbols-outlined text-white text-xs">location_on</span>
+          </div>
+          <div class="flex-1">
+            <div class="flex justify-between">
+              <p class="text-[10px] text-error uppercase font-bold tracking-widest">Entrega</p>
+            </div>
+            <p class="text-sm font-semibold text-on-surface">Al. Santos, 450 - Bloco B</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="flex gap-3">
+    <button class="flex-1 py-4 rounded-xl border-2 border-outline-variant text-on-surface font-bold text-sm active:scale-95 transition-all">Recusar</button>
+    <button class="flex-[2.5] py-4 rounded-xl bg-primary text-white font-bold text-sm shadow-lg active:scale-[0.98] transition-all">Aceitar Pedidos</button>
+  </div>
+</div>
+</div></div>
+
+    <!-- Bottom Navigation Bar -->
+    <nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-2 pb-safe-area h-14 bg-surface shadow-lg rounded-t-xl border-t border-outline-variant"><a class="flex flex-1 flex-col items-center justify-center gap-1 text-primary" href="#"><div class="flex h-7 items-center justify-center"><span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">home</span></div><p class="text-[11px] font-semibold leading-normal tracking-wide">Início</p></a><a class="flex flex-1 flex-col items-center justify-center gap-1 text-outline hover:text-primary transition-colors" href="#"><div class="flex h-7 items-center justify-center"><span class="material-symbols-outlined">local_shipping</span></div><p class="text-[11px] font-medium leading-normal tracking-wide">Entregas</p></a><a class="flex flex-1 flex-col items-center justify-center gap-1 text-outline hover:text-primary transition-colors" href="#"><div class="flex h-7 items-center justify-center"><span class="material-symbols-outlined">calendar_month</span></div><p class="text-[11px] font-medium leading-normal tracking-wide">Escala</p></a><a class="flex flex-1 flex-col items-center justify-center gap-1 text-outline hover:text-primary transition-colors" href="#"><div class="flex h-7 items-center justify-center"><span class="material-symbols-outlined">person</span></div><p class="text-[11px] font-medium leading-normal tracking-wide">Perfil</p></a></nav></div>
+
+
+
+
+
+
+
+</body></html>

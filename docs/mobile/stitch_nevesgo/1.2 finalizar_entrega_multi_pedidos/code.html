@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+
+<html class="light" lang="pt-BR" style="width: 390px; height: 883px; overflow: hidden; position: relative;"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
+<title>RapidCourier - Finalizar Entrega</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Geist:wght@600&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">tailwind.config = {darkMode: "class", theme: {extend: {colors: {"surface-variant": "#e0e3e5", "surface-dim": "#d8dadc", "on-error-container": "#93000a", "on-secondary-container": "#fffbff", "inverse-on-surface": "#eff1f3", tertiary: "#000000", "outline-variant": "#cfc4c5", outline: "#7e7576", "on-tertiary-fixed": "#2a1700", error: "#ba1a1a", primary: "#000000", "error-container": "#ffdad6", "on-primary-fixed": "#1b1b1b", "surface-tint": "#5e5e5e", "surface-bright": "#f7f9fb", "on-error": "#ffffff", "on-secondary-fixed-variant": "#93000c", "inverse-primary": "#c6c6c6", "on-tertiary": "#ffffff", "secondary-fixed": "#ffdad6", "on-background": "#191c1e", "inverse-surface": "#2d3133", "on-primary": "#ffffff", "on-surface": "#191c1e", "primary-fixed": "#e2e2e2", "on-tertiary-container": "#b87500", "tertiary-container": "#2a1700", "surface-container-highest": "#e0e3e5", "secondary-fixed-dim": "#ffb4ab", secondary: "#b71519", "secondary-container": "#db332f", surface: "#f7f9fb", "primary-container": "#1b1b1b", "on-primary-fixed-variant": "#474747", "surface-container-low": "#f2f4f6", "surface-container-lowest": "#ffffff", "tertiary-fixed-dim": "#ffb95f", "on-surface-variant": "#4c4546", "primary-fixed-dim": "#c6c6c6", "surface-container-high": "#e6e8ea", "on-tertiary-fixed-variant": "#653e00", "on-secondary-fixed": "#410002", "on-secondary": "#ffffff", "on-primary-container": "#848484", background: "#f7f9fb", "surface-container": "#eceef0", "tertiary-fixed": "#ffddb8"}, borderRadius: {DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px"}, spacing: {gutter: "16px", "stack-gap": "12px", "container-padding": "16px", "touch-target-min": "48px", base: "4px"}, fontFamily: {"label-lg": ["Inter"], "body-md": ["Inter"], "headline-lg": ["Inter"], "body-lg": ["Inter"], "headline-md": ["Inter"], "data-mono": ["Geist"], "label-sm": ["Inter"], headline: ["Inter"], display: ["Inter"], body: ["Inter"], label: ["Inter"]}, fontSize: {"label-lg": ["14px", {lineHeight: "20px", letterSpacing: "0.01em", fontWeight: "600"}], "body-md": ["16px", {lineHeight: "24px", fontWeight: "400"}], "headline-lg": ["24px", {lineHeight: "32px", letterSpacing: "-0.02em", fontWeight: "700"}], "body-lg": ["18px", {lineHeight: "26px", fontWeight: "500"}], "headline-md": ["20px", {lineHeight: "28px", letterSpacing: "-0.01em", fontWeight: "600"}], "data-mono": ["16px", {lineHeight: "24px", fontWeight: "600"}], "label-sm": ["12px", {lineHeight: "16px", letterSpacing: "0.02em", fontWeight: "500"}]}}}};</script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(8px);
+        }
+        .map-container {
+            height: calc(100vh - 56px);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body-md overflow-hidden">
+<!-- Top Status Component (Matches SCREEN_11 context) -->
+<div class="absolute top-4 left-4 right-4 z-50">
+<div class="flex items-center justify-between rounded-2xl px-5 py-4 shadow-xl bg-white border border-outline-variant/30">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center border border-primary/5 overflow-hidden">
+<img class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCGn2Uwkys7RhJ0-XDMNdYzTZnKbOIVHoPMwNQ2VzzzYCgbgFwbSS8BjIlSNOuKeKsjD3CplcWbkY8yQQWlxFG-_0wvUtOaQRG4gWMuwQvJ9wZDNXgHrmpK6dcofp5S-jGgaxnXGFn_-xh333mLvrCsycfLiaKBzUNGzGxZxlCtpYZAWAgk8FGKt_J2AnUzyzRcBMPCdDqraljVlsEjVZrqmbJnnoInVvdOBX7k_nFVKkDbtRh01NBlDw"/>
+</div>
+<div class="flex flex-col">
+<span class="text-on-surface font-bold text-base leading-tight">Ricardo Oliveira</span>
+<span class="text-secondary text-[10px] font-bold uppercase tracking-widest">ONLINE E DISPONÍVEL</span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox" value=""/>
+<div class="w-11 h-6 bg-outline-variant/30 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-secondary"></div>
+</label>
+</div>
+</div>
+</div>
+<!-- Map Background -->
+<main class="relative w-full h-screen">
+<div class="absolute inset-0 z-0 map-container">
+<div class="w-full h-full bg-cover bg-center" data-alt="A clean, high-contrast digital map of a modern urban residential neighborhood in São Paulo. The map uses a minimalist professional palette of grays and off-whites, with a prominent green delivery route line. A glowing blue pulsing dot represents the courier's current location at a specific street corner near modern apartment buildings." data-location="São Paulo, Brazil" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCLeUJxWGmOaMEHuRFTOegR0l_THx2txhQQTPEhNaUOZkynTdudaySq_dtzoSZxVW4VHJbkuVore3eFy0aDIS90tpzWh5PEGOoJzSv-_VqTMWywj111S5onWgvdxhzH7pzF4TB3zFgU4DX-o-aVaDCmWnqVvoX0cfeMumz6mqFaw4vb-awOIXLEmDX7H4rSZxhha-LFomscdsp4U_vBWARNeCy6Z9lr6Eqiz1NzkUKq5XEDLJxtlZfdPQ')"></div>
+</div>
+<!-- Floating Wallet Button -->
+<button class="fixed bottom-20 right-4 w-14 h-14 bg-primary text-on-primary rounded-full shadow-xl flex items-center justify-center z-50 active:scale-90 transition-all">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+</button>
+<!-- Delivery Completion Card -->
+<div class="absolute left-gutter right-gutter z-20 space-y-3 bottom-40">
+<div class="rounded-xl shadow-xl overflow-hidden border border-outline-variant/50 animate-in slide-in-from-bottom-10 duration-500 bg-white">
+<!-- Card Header -->
+<div class="px-6 py-4 bg-surface-container-low flex justify-between items-center border-b border-outline-variant/30">
+<div>
+<h2 class="font-headline-md text-headline-md text-primary">Finalizar Entrega</h2>
+<p class="font-label-sm text-on-surface-variant uppercase tracking-wider">Ganhos Estimados</p>
+</div>
+<div class="text-right">
+<p class="font-headline-md text-headline-md text-secondary font-bold">R$ 18,50</p>
+</div>
+</div>
+<!-- Delivery Sequence -->
+<div class="px-6 py-4">
+<div class="flex items-start gap-4">
+<div class="flex flex-col items-center pt-1">
+<div class="w-2 h-2 rounded-full bg-outline"></div>
+<div class="w-0.5 h-8 bg-outline-variant"></div>
+<div class="w-6 h-6 rounded-full bg-secondary flex items-center justify-center ring-4 ring-secondary-container">
+<span class="material-symbols-outlined text-[14px] text-white" style="font-variation-settings: 'FILL' 1;">location_on</span>
+</div>
+</div>
+<div class="flex-1 space-y-4"><!-- Previous Stop (Restaurante) -->
+<div class="opacity-50">
+<p class="font-label-sm text-on-surface-variant">Ponto de Coleta</p>
+<p class="font-body-md text-on-surface truncate">Restaurante Sabor Urbano</p>
+</div>
+<!-- Order 1: Current Destination -->
+<div class="space-y-2">
+<div class="inline-block bg-secondary-container px-2 py-0.5 rounded">
+<span class="text-[10px] font-bold text-on-secondary-container uppercase">Destino Atual</span>
+</div>
+<div class="flex justify-between items-start">
+<div>
+<h3 class="font-headline-md text-headline-md-mobile text-primary">Ana Silva</h3>
+<p class="font-data-mono text-secondary">#F8921</p>
+</div>
+<button class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-primary active:bg-surface-variant">
+<span class="material-symbols-outlined">call</span>
+</button>
+</div>
+<p class="font-body-md text-on-surface-variant leading-snug">
+        Rua das Palmeiras, 1420 - Apt 82B<br/>
+        Jardins, São Paulo - SP
+    </p>
+</div>
+<!-- Divider -->
+<div class="border-t border-outline-variant/30 my-2"></div>
+<!-- Order 2: Next Destination -->
+<div class="space-y-2">
+<div class="flex justify-between items-start">
+<div>
+<h3 class="font-headline-md text-headline-md-mobile text-primary">Carlos Mendes</h3>
+<p class="font-data-mono text-secondary">#F8922</p>
+</div>
+<button class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-primary active:bg-surface-variant">
+<span class="material-symbols-outlined">call</span>
+</button>
+</div>
+<p class="font-body-md text-on-surface-variant leading-snug">
+        Av. Paulista, 2000 - Conj 41<br/>
+        Bela Vista, São Paulo - SP
+    </p>
+</div></div>
+</div>
+</div>
+<!-- Primary Action -->
+<div class="p-6 pt-2">
+<button class="w-full h-14 bg-secondary text-white font-label-lg rounded-xl flex items-center justify-center gap-2 active:scale-[0.98] transition-all shadow-md"><span class="material-symbols-outlined">check_circle</span>Confirmar Entrega</button>
+</div>
+</div>
+</div>
+</main>
+<!-- Bottom Navigation Bar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-2 pb-safe-area h-14 bg-surface shadow-lg rounded-t-xl border-t border-outline-variant"><a class="flex flex-1 flex-col items-center justify-center gap-1 text-outline hover:text-primary transition-colors" href="#">
+<div class="flex h-7 items-center justify-center">
+<span class="material-symbols-outlined">home</span>
+</div>
+<p class="text-[11px] font-medium leading-normal tracking-wide">Início</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-primary" href="#">
+<div class="flex h-7 items-center justify-center">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">local_shipping</span>
+</div>
+<p class="text-[11px] font-semibold leading-normal tracking-wide">Entregas</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-outline hover:text-primary transition-colors" href="#">
+<div class="flex h-7 items-center justify-center">
+<span class="material-symbols-outlined">calendar_month</span>
+</div>
+<p class="text-[11px] font-medium leading-normal tracking-wide">Escala</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-outline hover:text-primary transition-colors" href="#">
+<div class="flex h-7 items-center justify-center">
+<span class="material-symbols-outlined">person</span>
+</div>
+<p class="text-[11px] font-medium leading-normal tracking-wide">Perfil</p>
+</a></nav>
+<script>
+        // Micro-interaction for the status toggle
+        const toggleBtn = document.getElementById('statusToggle');
+        let isOnline = true;
+
+        toggleBtn.parentElement.addEventListener('click', () => {
+            isOnline = !isOnline;
+            if (isOnline) {
+                toggleBtn.classList.remove('translate-x-12', 'bg-outline');
+                toggleBtn.classList.add('translate-x-0', 'bg-secondary');
+                toggleBtn.parentElement.classList.remove('bg-error-container');
+                toggleBtn.parentElement.classList.add('bg-surface-container-high');
+                toggleBtn.nextElementSibling.textContent = 'Sair';
+            } else {
+                toggleBtn.classList.add('translate-x-12', 'bg-outline');
+                toggleBtn.classList.remove('translate-x-0', 'bg-secondary');
+                toggleBtn.parentElement.classList.add('bg-error-container');
+                toggleBtn.parentElement.classList.remove('bg-surface-container-high');
+                toggleBtn.nextElementSibling.textContent = 'Offline';
+            }
+        });
+
+        // Feedback for the primary button
+        const confirmBtn = document.querySelector('button.bg-secondary');
+        confirmBtn.addEventListener('click', function() {
+            this.innerHTML = '<span class="material-symbols-outlined animate-spin">refresh</span> Processando...';
+            setTimeout(() => {
+                this.innerHTML = '<span class="material-symbols-outlined">done_all</span> Entrega Finalizada!';
+                this.classList.replace('bg-secondary', 'bg-primary');
+            }, 1200);
+        });
+    </script>
+<div aria-hidden="true" data-snapdom-sandbox="true" id="snapdom-sandbox" style="position: absolute; left: -9999px; top: -9999px; width: 0px; height: 0px; overflow: hidden;"></div></body></html>

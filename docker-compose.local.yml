@@ -11,14 +11,14 @@ services:
 
   django:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
     command: >
       bash -c "python manage.py migrate &&
                python manage.py warmup_denylist &&
                gunicorn --bind 0.0.0.0:8000 --workers 3 config.wsgi:application"
     volumes:
-      - .:/app
+      - ./backend:/app
       - static_volume:/app/static
     environment:
       - DJANGO_DEBUG=False
@@ -30,10 +30,10 @@ services:
 
   fastapi:
     build:
-      context: .
+      context: ./backend
       dockerfile: fast_lane/Dockerfile
     volumes:
-      - .:/app
+      - ./backend:/app
     environment:
       - REDIS_URL=redis://redis:6379/1
     depends_on:
@@ -41,11 +41,11 @@ services:
 
   celery_worker:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
     command: celery -A config worker -l info --concurrency=2
     volumes:
-      - .:/app
+      - ./backend:/app
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379/1
@@ -56,11 +56,11 @@ services:
 
   celery_beat:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
     command: celery -A config beat -l info
     volumes:
-      - .:/app
+      - ./backend:/app
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379/1
@@ -83,10 +83,10 @@ services:
 
   frontend:
     build:
-      context: ./Novo_FrontEnd
+      context: ./frontend
       dockerfile: Dockerfile
     volumes:
-      - ./Novo_FrontEnd:/app
+      - ./frontend:/app
       - /app/node_modules
     environment:
       - NODE_ENV=production

@@ -1,0 +1,202 @@
+<!DOCTYPE html><html lang="pt-BR" style="width: 390px; height: 883px; overflow: hidden; position: relative;"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=Geist:wght@400;600&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&amp;display=swap" rel="stylesheet">
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .safe-bottom {
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        /* Custom slide-to-action animation */
+        @keyframes pulse-right {
+            0%, 100% { transform: translateX(0); }
+            50% { transform: translateX(8px); }
+        }
+        .animate-pulse-right {
+            animation: pulse-right 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+<script id="tailwind-config">tailwind.config = {darkMode: "class", theme: {extend: {colors: {"tertiary-fixed-dim": "#ffb95f", surface: "#f7f9fb", "surface-container-highest": "#e0e3e5", "on-primary-fixed-variant": "#474747", "on-primary-fixed": "#1b1b1b", "surface-container-low": "#f2f4f6", outline: "#7e7576", "surface-container-high": "#e6e8ea", "inverse-on-surface": "#eff1f3", "on-secondary-container": "#fffbff", "surface-container": "#eceef0", "on-primary-container": "#848484", "on-primary": "#ffffff", "on-background": "#191c1e", "inverse-surface": "#2d3133", "on-error-container": "#93000a", "error-container": "#ffdad6", "surface-tint": "#5e5e5e", "on-surface-variant": "#4c4546", background: "#f7f9fb", "surface-container-lowest": "#ffffff", "on-tertiary-fixed": "#2a1700", "on-secondary-fixed": "#410002", "surface-dim": "#d8dadc", "tertiary-fixed": "#ffddb8", primary: "#000000", "surface-bright": "#f7f9fb", "primary-fixed-dim": "#c6c6c6", "tertiary-container": "#2a1700", "surface-variant": "#e0e3e5", "secondary-container": "#db332f", "outline-variant": "#cfc4c5", "on-tertiary": "#ffffff", "secondary-fixed-dim": "#ffb4ab", "on-error": "#ffffff", "on-tertiary-fixed-variant": "#653e00", error: "#ba1a1a", secondary: "#b71519", "on-secondary": "#ffffff", "primary-container": "#1b1b1b", "on-secondary-fixed-variant": "#93000c", "inverse-primary": "#c6c6c6", "secondary-fixed": "#ffdad6", tertiary: "#000000", "primary-fixed": "#e2e2e2", "on-surface": "#191c1e", "on-tertiary-container": "#b87500"}, borderRadius: {DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px"}, spacing: {"touch-target-min": "48px", base: "4px", "stack-gap": "12px", gutter: "16px", "container-padding": "16px"}, fontFamily: {"label-sm": ["Inter"], "headline-lg": ["Inter"], "body-lg": ["Inter"], "data-mono": ["Geist"], "body-md": ["Inter"], "headline-md": ["Inter"], "label-lg": ["Inter"], headline: ["Inter"], display: ["Inter"], body: ["Inter"], label: ["Inter"]}, fontSize: {"label-sm": ["12px", {lineHeight: "16px", letterSpacing: "0.02em", fontWeight: "500"}], "headline-lg": ["24px", {lineHeight: "32px", letterSpacing: "-0.02em", fontWeight: "700"}], "body-lg": ["18px", {lineHeight: "26px", fontWeight: "500"}], "data-mono": ["16px", {lineHeight: "24px", fontWeight: "600"}], "body-md": ["16px", {lineHeight: "24px", fontWeight: "400"}], "headline-md": ["20px", {lineHeight: "28px", letterSpacing: "-0.01em", fontWeight: "600"}], "label-lg": ["14px", {lineHeight: "20px", letterSpacing: "0.01em", fontWeight: "600"}]}}}};</script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface font-body-md overflow-hidden">
+<!-- TopAppBar -->
+<div class="absolute top-4 left-4 right-4 z-50">
+<div class="flex items-center justify-between rounded-2xl px-5 py-4 shadow-xl bg-white border border-outline-variant/30">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center border border-primary/5 overflow-hidden">
+<img class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCGn2Uwkys7RhJ0-XDMNdYzTZnKbOIVHoPMwNQ2VzzzYCgbgFwbSS8BjIlSNOuKeKsjD3CplcWbkY8yQQWlxFG-_0wvUtOaQRG4gWMuwQvJ9wZDNXgHrmpK6dcofp5S-jGgaxnXGFn_-xh333mLvrCsycfLiaKBzUNGzGxZxlCtpYZAWAgk8FGKt_J2AnUzyzRcBMPCdDqraljVlsEjVZrqmbJnnoInVvdOBX7k_nFVKkDbtRh01NBlDw">
+</div>
+<div class="flex flex-col">
+<span class="text-on-surface font-bold text-base leading-tight">Ricardo Oliveira</span>
+<span class="text-secondary text-[10px] font-bold uppercase tracking-widest">ONLINE E DISPONÍVEL</span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox" value="">
+<div class="w-11 h-6 bg-outline-variant/30 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-secondary"></div>
+</label>
+</div>
+</div>
+</div>
+<!-- Map Canvas (Main Content) -->
+<main class="relative h-screen w-full pt-14 pb-14">
+<!-- Background Map Component -->
+<div class="absolute inset-0 z-0">
+<div class="w-full h-full bg-surface-container" data-alt="A detailed, clean, and professional digital map view of Sao Paulo city streets, specifically showing the area near Rua Augusta. The map style is minimalist with a light gray and white color palette, punctuated by a bright green route line showing the path from a starting point to a destination. Navigation markers are visible but subtle, maintaining a high-end technological precision feel." data-location="Sao Paulo, Brazil" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAzTlqUH1JI8vtBmZVkIYi7mEXeiH0iOLN7TE3JgXuuxMblnnMI3zGm5nSDJbZLletFy-wSSO3iqV9jpSkbJEaQLiE7qgazwcghh5B2JfeQe2iSKJBwJmokhcF1_JbSEZPuHeP7k0hzKlBP792cTzou4sq4GrYea4XQgZ_jRcwxQs-qZUQruBArVMV9LRdH062ABEK8I_1PCo-ZB9AAvpu1zP8Ppri0yhR0ggPnGkw-1lyf_pP-kARIcw')"></div>
+<!-- Map Overlay UI Elements -->
+<div class="absolute top-4 right-4 flex flex-col gap-2 z-10">
+<button class="w-12 h-12 glass-panel rounded-xl shadow-lg flex items-center justify-center text-primary active:scale-90 transition-all">
+<span class="material-symbols-outlined">my_location</span>
+</button>
+<button class="w-12 h-12 glass-panel rounded-xl shadow-lg flex items-center justify-center text-primary active:scale-90 transition-all">
+<span class="material-symbols-outlined">layers</span>
+</button>
+</div>
+</div>
+<!-- Floating Delivery Info Card (Bento Style) -->
+<div class="absolute left-gutter right-gutter z-20 space-y-3 bottom-40">
+<!-- Main Delivery Card -->
+<div class="bg-surface-container-lowest rounded-xl shadow-lg p-6 border border-outline-variant/30"><div class="flex justify-between items-start mb-6">
+<div>
+<h2 class="font-headline-md text-headline-md text-on-surface mb-1">Entregas Atuais</h2>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">local_shipping</span>
+<span class="font-label-lg text-label-lg">2 Pedidos Pendentes</span>
+</div>
+</div>
+<div class="text-right">
+<span class="text-[20px] font-bold text-secondary block leading-tight">R$ 18,50</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant opacity-80">Ganhos Estimados</span>
+</div>
+</div>
+<div class="space-y-6 pt-6 border-t border-outline-variant/50">
+<!-- Stop 1: Collection -->
+<div class="flex items-start gap-3">
+<div class="flex flex-col items-center">
+<span class="material-symbols-outlined text-secondary text-[20px]">trip_origin</span>
+<div class="w-0.5 h-12 bg-outline-variant my-1"></div>
+</div>
+<div class="flex-1">
+<p class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">COLETA</p>
+<p class="font-body-md text-body-md font-bold">Central Gourmet - Unidade Centro</p>
+<p class="text-sm text-on-surface-variant">Rua Augusta, 1200</p>
+</div>
+</div>
+<!-- Stop 2: Order 1 -->
+<div class="flex items-start gap-3">
+<div class="flex flex-col items-center">
+<span class="material-symbols-outlined text-primary text-[20px]">location_on</span>
+<div class="w-0.5 h-12 bg-outline-variant my-1"></div>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<div>
+<p class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">PEDIDO #F8921</p>
+<p class="font-body-md text-body-md font-bold">Ana Silva</p>
+<p class="text-sm text-on-surface-variant">Rua Augusta, 1500</p>
+</div>
+<div class="text-right">
+<p class="text-xs font-bold text-primary">2.5 km</p>
+<p class="text-[10px] text-on-surface-variant">12 min</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Stop 3: Order 2 -->
+<div class="flex items-start gap-3">
+<div class="flex flex-col items-center">
+<span class="material-symbols-outlined text-primary text-[20px]">location_on</span>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<div>
+<p class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">PEDIDO #G4432</p>
+<p class="font-body-md text-body-md font-bold">Marcos Souza</p>
+<p class="text-sm text-on-surface-variant">Rua Peixoto Gomide, 800</p>
+</div>
+<div class="text-right">
+<p class="text-xs font-bold text-primary">3.8 km</p>
+<p class="text-[10px] text-on-surface-variant">18 min</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="mt-8">
+<button class="w-full h-14 bg-secondary text-on-secondary rounded-xl flex items-center justify-between px-6 shadow-md active:scale-95 transition-all group overflow-hidden relative" id="start-btn">
+<span class="font-body-lg text-body-lg font-bold tracking-tight z-10">Iniciar Entrega</span>
+<div class="flex items-center gap-1 z-10">
+<span class="material-symbols-outlined animate-pulse-right">chevron_right</span>
+<span class="material-symbols-outlined">chevron_right</span>
+</div>
+<div class="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+</button>
+</div></div>
+</div>
+<button class="fixed bottom-20 right-4 w-14 h-14 bg-primary text-on-primary rounded-full shadow-xl flex items-center justify-center z-50 active:scale-90 transition-all">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+</button></main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-2 pb-safe-area h-14 bg-surface shadow-lg rounded-t-xl border-t border-outline-variant"><a class="flex flex-1 flex-col items-center justify-center gap-1 text-outline hover:text-primary transition-colors" href="#">
+<div class="flex h-7 items-center justify-center">
+<span class="material-symbols-outlined">home</span>
+</div>
+<p class="text-[11px] font-medium leading-normal tracking-wide">Início</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-primary" href="#">
+<div class="flex h-7 items-center justify-center">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">delivery_dining</span>
+</div>
+<p class="text-[11px] font-semibold leading-normal tracking-wide">Entregas</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-outline hover:text-primary transition-colors" href="#">
+<div class="flex h-7 items-center justify-center">
+<span class="material-symbols-outlined">event</span>
+</div>
+<p class="text-[11px] font-medium leading-normal tracking-wide">Escala</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-outline hover:text-primary transition-colors" href="#">
+<div class="flex h-7 items-center justify-center">
+<span class="material-symbols-outlined">person</span>
+</div>
+<p class="text-[11px] font-medium leading-normal tracking-wide">Perfil</p>
+</a></nav>
+<script>
+        document.getElementById('start-btn').addEventListener('click', function() {
+            // Simulated micro-interaction
+            const btn = this;
+            const originalContent = btn.innerHTML;
+            
+            btn.innerHTML = `
+                <div class="flex items-center justify-center w-full gap-3">
+                    <svg class="animate-spin h-5 w-5 text-on-secondary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span class="font-body-lg text-body-lg font-bold">Iniciando...</span>
+                </div>
+            `;
+            
+            setTimeout(() => {
+                btn.innerHTML = originalContent;
+                alert('Entrega Iniciada! Siga a rota no mapa.');
+            }, 1200);
+        });
+    </script>
+<div aria-hidden="true" data-snapdom-sandbox="true" id="snapdom-sandbox" style="position: absolute; left: -9999px; top: -9999px; width: 0px; height: 0px; overflow: hidden;"></div></body></html>

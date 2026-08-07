@@ -1,0 +1,158 @@
+<!DOCTYPE html><html class="light" lang="pt-BR" style="width: 390px; height: 883px; overflow: hidden; position: relative;"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=Geist:wght@400;600&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">tailwind.config = {darkMode: "class", theme: {extend: {colors: {"tertiary-fixed-dim": "#ffb95f", surface: "#f7f9fb", "surface-container-highest": "#e0e3e5", "on-primary-fixed-variant": "#474747", "on-primary-fixed": "#1b1b1b", "surface-container-low": "#f2f4f6", outline: "#7e7576", "surface-container-high": "#e6e8ea", "inverse-on-surface": "#eff1f3", "on-secondary-container": "#fffbff", "surface-container": "#eceef0", "on-primary-container": "#848484", "on-primary": "#ffffff", "on-background": "#191c1e", "inverse-surface": "#2d3133", "on-error-container": "#93000a", "error-container": "#ffdad6", "surface-tint": "#5e5e5e", "on-surface-variant": "#4c4546", background: "#f7f9fb", "surface-container-lowest": "#ffffff", "on-tertiary-fixed": "#2a1700", "on-secondary-fixed": "#410002", "surface-dim": "#d8dadc", "tertiary-fixed": "#ffddb8", primary: "#000000", "surface-bright": "#f7f9fb", "primary-fixed-dim": "#c6c6c6", "tertiary-container": "#2a1700", "surface-variant": "#e0e3e5", "secondary-container": "#db332f", "outline-variant": "#cfc4c5", "on-tertiary": "#ffffff", "secondary-fixed-dim": "#ffb4ab", "on-error": "#ffffff", "on-tertiary-fixed-variant": "#653e00", error: "#ba1a1a", secondary: "#b71519", "on-secondary": "#ffffff", "primary-container": "#1b1b1b", "on-secondary-fixed-variant": "#93000c", "inverse-primary": "#c6c6c6", "secondary-fixed": "#ffdad6", tertiary: "#000000", "primary-fixed": "#e2e2e2", "on-surface": "#191c1e", "on-tertiary-container": "#b87500"}, borderRadius: {DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px"}, spacing: {"touch-target-min": "48px", base: "4px", "stack-gap": "12px", gutter: "16px", "container-padding": "16px"}, fontFamily: {"label-sm": ["Inter"], "headline-lg": ["Inter"], "body-lg": ["Inter"], "data-mono": ["Geist"], "body-md": ["Inter"], "headline-md": ["Inter"], "label-lg": ["Inter"], headline: ["Inter"], display: ["Inter"], body: ["Inter"], label: ["Inter"]}, fontSize: {"label-sm": ["12px", {lineHeight: "16px", letterSpacing: "0.02em", fontWeight: "500"}], "headline-lg": ["24px", {lineHeight: "32px", letterSpacing: "-0.02em", fontWeight: "700"}], "body-lg": ["18px", {lineHeight: "26px", fontWeight: "500"}], "data-mono": ["16px", {lineHeight: "24px", fontWeight: "600"}], "body-md": ["16px", {lineHeight: "24px", fontWeight: "400"}], "headline-md": ["20px", {lineHeight: "28px", letterSpacing: "-0.01em", fontWeight: "600"}], "label-lg": ["14px", {lineHeight: "20px", letterSpacing: "0.01em", fontWeight: "600"}]}}}};</script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .success-bg-animate {
+            background: linear-gradient(135deg, #ffffff 0%, #f7f9fb 100%);
+            position: relative;
+            overflow: hidden;
+        }
+        .success-bg-animate::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(107, 255, 143, 0.05) 0%, transparent 70%);
+            animation: rotate 20s linear infinite;
+        }
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        @keyframes popIn {
+            0% { transform: scale(0.8); opacity: 0; }
+            70% { transform: scale(1.1); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pop-in {
+            animation: popIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface font-body-md antialiased min-h-screen flex flex-col">
+<!-- TopAppBar -->
+<!-- Main Canvas -->
+<main class="flex-grow px-gutter flex flex-col justify-center items-center success-bg-animate min-h-screen">
+<!-- Success Animation & Icon -->
+<div class="relative mb-8 animate-pop-in">
+<div class="w-32 h-32 rounded-full bg-secondary-container flex items-center justify-center shadow-lg">
+<span class="material-symbols-outlined text-on-secondary-container text-[64px]" style="font-variation-settings: &quot;wght&quot; 700;">check_circle</span>
+</div>
+<!-- Atmospheric micro-interaction elements -->
+<div class="absolute -top-4 -right-4 w-8 h-8 bg-tertiary-fixed-dim rounded-full opacity-20 blur-sm"></div>
+<div class="absolute -bottom-2 -left-6 w-12 h-12 bg-secondary-fixed-dim rounded-full opacity-20 blur-md"></div>
+</div>
+<!-- Success Text -->
+<div class="text-center space-y-2 mb-12">
+<h2 class="font-headline-lg text-headline-lg text-on-surface">Entrega Finalizada!</h2>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-[280px] mx-auto">
+                Excelente trabalho! Seu trajeto foi concluído com sucesso e o cliente recebeu o pedido.
+            </p>
+</div>
+<!-- Earnings Card (Bento-style Glassmorphism) -->
+<div class="w-full max-w-sm glass-card rounded-xl p-6 shadow-sm mb-12 animate-pop-in" style="animation-delay: 0.2s;">
+<div class="flex flex-col items-center gap-4">
+<span class="font-label-lg text-label-lg text-on-surface-variant uppercase tracking-widest">Valor Recebido</span>
+<div class="flex items-baseline gap-1">
+<span class="font-headline-md text-headline-md text-secondary font-bold">R$</span>
+<span class="text-[64px] leading-none font-extrabold tracking-tighter text-secondary">18,50</span>
+</div>
+<div class="flex items-center gap-2 bg-secondary-container px-3 py-1.5 rounded-full mt-2">
+<span class="material-symbols-outlined text-on-secondary-container text-sm" style="font-variation-settings: &quot;FILL&quot; 1;">account_balance_wallet</span>
+<span class="font-label-sm text-label-sm text-on-secondary-container">Adicionado à sua carteira</span>
+</div>
+</div>
+<!-- Asymmetric Delivery Details -->
+<div class="pt-6 border-t border-outline-variant/30 grid grid-cols-2 gap-4 mt-10">
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-on-surface-variant">Distância</span>
+<span class="font-data-mono text-data-mono text-on-surface">4.2 km</span>
+</div>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-on-surface-variant">Tempo</span>
+<span class="font-data-mono text-data-mono text-on-surface">18 min</span>
+</div>
+</div>
+</div>
+<!-- Action Button -->
+<button class="w-full max-w-sm h-14 bg-primary text-on-primary rounded-xl font-label-lg text-label-lg flex items-center justify-center gap-2 shadow-lg hover:bg-surface-container-highest hover:text-primary transition-all active:scale-95 mb-8">
+<span class="">Voltar ao Início</span>
+<span class="material-symbols-outlined">arrow_forward</span>
+</button>
+<div style="position: absolute; width: 3.35517px; height: 3.35517px; background-color: rgb(107, 255, 143); border-radius: 50%; opacity: 0.4; pointer-events: none; left: 299.438px; top: 883px;"></div><div style="position: absolute; width: 2.31315px; height: 2.31315px; background-color: rgb(107, 255, 143); border-radius: 50%; opacity: 0.4; pointer-events: none; left: 229.871px; top: 885px;"></div><div style="position: absolute; width: 5.04582px; height: 5.04582px; background-color: rgb(107, 255, 143); border-radius: 50%; opacity: 0.4; pointer-events: none; left: 80.0913px; top: 885px;"></div><div style="position: absolute; width: 4.60611px; height: 4.60611px; background-color: rgb(107, 255, 143); border-radius: 50%; opacity: 0.4; pointer-events: none; left: 328.126px; top: 885px;"></div><div style="position: absolute; width: 6.26872px; height: 6.26872px; background-color: rgb(107, 255, 143); border-radius: 50%; opacity: 0.4; pointer-events: none; left: 167.585px; top: 885px;"></div><div style="position: absolute; width: 2.55693px; height: 2.55693px; background-color: rgb(107, 255, 143); border-radius: 50%; opacity: 0.4; pointer-events: none; left: 52.6621px; top: 885px;"></div><div style="position: absolute; width: 3.60442px; height: 3.60442px; background-color: rgb(107, 255, 143); border-radius: 50%; opacity: 0.4; pointer-events: none; left: 321.665px; top: 885px;"></div><div style="position: absolute; width: 2.72869px; height: 2.72869px; background-color: rgb(107, 255, 143); border-radius: 50%; opacity: 0.4; pointer-events: none; left: 151.548px; top: 885px;"></div><div style="position: absolute; width: 2.48149px; height: 2.48149px; background-color: rgb(107, 255, 143); border-radius: 50%; opacity: 0.4; pointer-events: none; left: 36.5068px; top: 885px;"></div><div style="position: absolute; width: 2.81881px; height: 2.81881px; background-color: rgb(107, 255, 143); border-radius: 50%; opacity: 0.4; pointer-events: none; left: 178.532px; top: 888px;"></div><div style="position: absolute; width: 4.83163px; height: 4.83163px; background-color: rgb(107, 255, 143); border-radius: 50%; opacity: 0.4; pointer-events: none; left: 166.758px; top: 888px;"></div><div style="position: absolute; width: 3.22266px; height: 3.22266px; background-color: rgb(107, 255, 143); border-radius: 50%; opacity: 0.4; pointer-events: none; left: 310.534px; top: 888px;"></div><div style="position: absolute; width: 6.90379px; height: 6.90379px; background-color: rgb(107, 255, 143); border-radius: 50%; opacity: 0.4; pointer-events: none; left: 336.056px; top: 888px;"></div><div style="position: absolute; width: 7.20213px; height: 7.20213px; background-color: rgb(107, 255, 143); border-radius: 50%; opacity: 0.4; pointer-events: none; left: 34.0103px; top: 888px;"></div><div style="position: absolute; width: 6.2259px; height: 6.2259px; background-color: rgb(107, 255, 143); border-radius: 50%; opacity: 0.4; pointer-events: none; left: 176.928px; top: 888px;"></div></main>
+<!-- BottomNavBar -->
+<script>
+        // Micro-interaction for the button
+        document.querySelector('button').addEventListener('click', function() {
+            this.style.transform = 'scale(0.95)';
+            setTimeout(() => {
+                this.style.transform = 'scale(1)';
+            }, 150);
+        });
+
+        // Add a subtle particle effect for the success state
+        function createParticle() {
+            const particle = document.createElement('div');
+            const size = Math.random() * 6 + 2;
+            const container = document.querySelector('main');
+            
+            particle.style.position = 'absolute';
+            particle.style.width = `${size}px`;
+            particle.style.height = `${size}px`;
+            particle.style.backgroundColor = '#6bff8f';
+            particle.style.borderRadius = '50%';
+            particle.style.opacity = '0.4';
+            particle.style.pointerEvents = 'none';
+            
+            const startX = Math.random() * window.innerWidth;
+            const startY = window.innerHeight;
+            
+            particle.style.left = `${startX}px`;
+            particle.style.top = `${startY}px`;
+            
+            container.appendChild(particle);
+            
+            const duration = Math.random() * 3000 + 2000;
+            const destinationY = -100;
+            const drift = (Math.random() - 0.5) * 200;
+            
+            particle.animate([
+                { transform: `translate(0, 0)`, opacity: 0.4 },
+                { transform: `translate(${drift}px, ${destinationY - startY}px)`, opacity: 0 }
+            ], {
+                duration: duration,
+                easing: 'cubic-bezier(0,0,0.2,1)'
+            }).onfinish = () => particle.remove();
+        }
+
+        // Periodically create particles
+        setInterval(createParticle, 500);
+    </script>
+
+
+</body></html>

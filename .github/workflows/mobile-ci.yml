@@ -4,18 +4,18 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'nevesgo/**'
+      - 'mobile/**'
   pull_request:
     branches: [ main ]
     paths:
-      - 'nevesgo/**'
+      - 'mobile/**'
 
 jobs:
   build:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./nevesgo
+        working-directory: ./mobile
 
     steps:
       - uses: actions/checkout@v4
@@ -37,4 +37,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ExpressoNeves-Release-APK
-          path: nevesgo/app/build/outputs/apk/release/app-release-unsigned.apk
+          path: mobile/app/build/outputs/apk/release/app-release-unsigned.apk

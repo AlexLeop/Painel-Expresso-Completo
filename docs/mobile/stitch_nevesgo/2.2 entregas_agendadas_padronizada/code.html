@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+
+<html class="light" lang="pt-BR" style="width: 390px; height: 1195px; overflow: hidden; position: relative;"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
+<title>Entregas Agendadas - FlashLogistics</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Geist:wght@600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">tailwind.config = {darkMode: "class", theme: {extend: {colors: {"primary-fixed-dim": "#c6c6c6", "surface-dim": "#d8dadc", "on-secondary-fixed-variant": "#93000c", "secondary-fixed-dim": "#ffb4ab", "tertiary-fixed-dim": "#ffb95f", "on-primary-fixed-variant": "#474747", "on-primary-container": "#848484", "error-container": "#ffdad6", "secondary-container": "#db332f", "inverse-primary": "#c6c6c6", "primary-container": "#1b1b1b", "on-tertiary-container": "#b87500", "surface-bright": "#f7f9fb", "tertiary-container": "#2a1700", "on-secondary": "#ffffff", secondary: "#b71519", surface: "#f7f9fb", tertiary: "#000000", "on-background": "#191c1e", "on-secondary-container": "#fffbff", "on-surface": "#191c1e", primary: "#000000", "on-secondary-fixed": "#410002", "on-primary": "#ffffff", "surface-container": "#eceef0", "surface-container-low": "#f2f4f6", "on-tertiary": "#ffffff", "on-tertiary-fixed": "#2a1700", "on-tertiary-fixed-variant": "#653e00", "surface-variant": "#e0e3e5", "inverse-on-surface": "#eff1f3", "on-primary-fixed": "#1b1b1b", "primary-fixed": "#e2e2e2", "surface-container-lowest": "#ffffff", "on-error-container": "#93000a", "outline-variant": "#cfc4c5", "surface-container-highest": "#e0e3e5", error: "#ba1a1a", "surface-tint": "#5e5e5e", "on-surface-variant": "#4c4546", "inverse-surface": "#2d3133", outline: "#7e7576", "secondary-fixed": "#ffdad6", background: "#f7f9fb", "surface-container-high": "#e6e8ea", "on-error": "#ffffff", "tertiary-fixed": "#ffddb8"}, borderRadius: {DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px"}, spacing: {"touch-target-min": "48px", "container-padding": "16px", gutter: "16px", base: "4px", "stack-gap": "12px"}, fontFamily: {"body-md": ["Inter"], "headline-md": ["Inter"], "headline-lg": ["Inter"], "label-sm": ["Inter"], "label-lg": ["Inter"], "data-mono": ["Geist"], "body-lg": ["Inter"], headline: ["Inter"], display: ["Inter"], body: ["Inter"], label: ["Inter"]}, fontSize: {"body-md": ["16px", {lineHeight: "24px", fontWeight: "400"}], "headline-md": ["20px", {lineHeight: "28px", letterSpacing: "-0.01em", fontWeight: "600"}], "headline-lg": ["24px", {lineHeight: "32px", letterSpacing: "-0.02em", fontWeight: "700"}], "label-sm": ["12px", {lineHeight: "16px", letterSpacing: "0.02em", fontWeight: "500"}], "label-lg": ["14px", {lineHeight: "20px", letterSpacing: "0.01em", fontWeight: "600"}], "data-mono": ["16px", {lineHeight: "24px", fontWeight: "600"}], "body-lg": ["18px", {lineHeight: "26px", fontWeight: "500"}]}}}};</script>
+<style>
+        body { background-color: #F7F9FB; -webkit-tap-highlight-color: transparent; }
+        .safe-bottom { padding-bottom: calc(88px + env(safe-area-inset-bottom)); }
+        .active-tab { position: relative; color: #000000; }
+        .active-tab::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background-color: #000000;
+            border-radius: 3px 3px 0 0;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="font-body-md text-on-surface">
+<!-- TopAppBar -->
+<header class="w-full top-0 sticky bg-surface shadow-sm z-50 flex justify-between items-center px-gutter h-touch-target-min">
+<div class="flex items-center gap-4">
+<button class="w-10 h-10 flex items-center justify-center hover:bg-surface-container rounded-full transition-colors">
+<span class="material-symbols-outlined text-primary">arrow_back</span>
+</button>
+<h1 class="font-headline-md text-headline-md text-primary">Entregas</h1>
+</div>
+<div class="flex items-center gap-2">
+<button class="w-10 h-10 flex items-center justify-center hover:bg-surface-container rounded-full transition-colors">
+<span class="material-symbols-outlined text-primary">search</span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-outline-variant ml-1">
+<img alt="Profile" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDxy3kFhW0lcC1MVyMFpyWhnJItpe_QS4R7RHkQL_KLY51ZfCEQ2gA4GemfrB52QJEysw1V6dbe9VVanaaQvAt7ZPTfUQZRRADE5YpLqJwfBASQ23RhRfXtEGwAhzfXIu_tezGhldsko-HQtq7BNBgITfOTMgoQ8gaD-oYzmZlfg7dJBs-Bbf4jQfPjEwhLKLRHIcXtwxbvf8ZBB6A1KMy1EBiMFL0r161cUZ6vccnmA1SqiLfZqr0PIw"/>
+</div>
+</div>
+</header>
+<!-- Tab Navigation -->
+<nav class="bg-surface sticky top-[48px] z-40 border-b border-surface-variant flex">
+<button class="flex-1 py-4 font-label-lg text-label-lg text-on-surface-variant hover:bg-surface-container-low transition-colors">Em curso</button>
+<button class="flex-1 py-4 font-label-lg text-label-lg text-on-surface-variant hover:bg-surface-container-low transition-colors">Em espera</button>
+<button class="flex-1 py-4 font-label-lg text-label-lg active-tab font-bold">Agendadas</button>
+</nav>
+<main class="px-container-padding pt-6 safe-bottom">
+<!-- Section Header -->
+<div class="mb-6">
+<h2 class="font-headline-md text-headline-md text-primary mb-1">Entregas Agendadas</h2>
+<p class="font-label-lg text-on-surface-variant">Gerencie suas próximas rotas reservadas</p>
+</div>
+<!-- Scheduled Delivery List -->
+<div class="space-y-4">
+<!-- Delivery Card 1 -->
+<div class="bg-surface-container-lowest rounded-xl p-4 border border-outline-variant shadow-sm active:scale-[0.98] transition-transform">
+<div class="flex justify-between items-start mb-4">
+<div>
+<span class="font-data-mono text-data-mono text-primary">#9120</span>
+<div class="flex items-center gap-1 mt-1 text-secondary font-headline-md text-headline-md">
+<span class="material-symbols-outlined text-[20px]">event</span>
+<span class="">Hoje, 18:30</span>
+</div>
+</div>
+<div class="text-right">
+<span class="font-headline-md text-headline-md text-secondary bg-secondary-container/20 px-3 py-1 rounded-lg">R$ 42,50</span>
+<p class="text-label-sm font-label-sm text-on-surface-variant mt-1">Valor da Entrega</p>
+</div>
+</div>
+<div class="relative pl-6 space-y-4 mb-6">
+<!-- Vertical Line for Progress Stepper -->
+<div class="absolute left-[7px] top-2 bottom-2 w-[2px] bg-outline-variant"></div>
+<!-- Pickup -->
+<div class="relative">
+<div class="absolute -left-[23px] top-1 w-4 h-4 rounded-full bg-primary border-4 border-surface-container-lowest"></div>
+<p class="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider">Coleta</p>
+<p class="text-body-md font-body-md text-primary truncate">Restaurante Gourmet Central - Av. Paulista, 1000</p>
+</div>
+<!-- Drop-off -->
+<div class="relative">
+<div class="absolute -left-[23px] top-1 w-4 h-4 rounded-full bg-secondary border-4 border-surface-container-lowest"></div>
+<p class="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider">Entrega</p>
+<p class="text-body-md font-body-md text-primary truncate">Condomínio Sky View - R. Augusta, 2500</p>
+</div>
+</div>
+<div class="flex items-center gap-4 mb-6 text-on-surface-variant">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[18px]">route</span>
+<span class="text-label-lg font-label-lg">8.4 km total</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[18px]">package_2</span>
+<span class="text-label-lg font-label-lg">Médio (2 itens)</span>
+</div>
+</div>
+<div class="flex gap-3">
+<button class="flex-[2] h-touch-target-min rounded-xl bg-primary text-on-primary font-label-lg hover:opacity-90 transition-opacity">
+                    Ver Detalhes
+                </button>
+</div>
+</div>
+<!-- Delivery Card 2 -->
+<div class="bg-surface-container-lowest rounded-xl p-4 border border-outline-variant shadow-sm active:scale-[0.98] transition-transform">
+<div class="flex justify-between items-start mb-4">
+<div>
+<span class="font-data-mono text-data-mono text-primary">#9245</span>
+<div class="flex items-center gap-1 mt-1 text-on-surface-variant font-headline-md text-headline-md">
+<span class="material-symbols-outlined text-[20px]">event</span>
+<span class="">Amanhã, 09:00</span>
+</div>
+</div>
+<div class="text-right">
+<span class="font-headline-md text-headline-md text-secondary bg-secondary-container/20 px-3 py-1 rounded-lg">R$ 115,00</span>
+<p class="text-label-sm font-label-sm text-on-surface-variant mt-1">Valor da Entrega</p>
+</div>
+</div>
+<div class="relative pl-6 space-y-4 mb-6">
+<div class="absolute left-[7px] top-2 bottom-2 w-[2px] bg-outline-variant"></div>
+<div class="relative">
+<div class="absolute -left-[23px] top-1 w-4 h-4 rounded-full bg-primary border-4 border-surface-container-lowest"></div>
+<p class="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider">Coleta</p>
+<p class="text-body-md font-body-md text-primary truncate">Distribuidora LogiX - Via Anhanguera, KM 18</p>
+</div>
+<div class="relative">
+<div class="absolute -left-[23px] top-1 w-4 h-4 rounded-full bg-secondary border-4 border-surface-container-lowest"></div>
+<p class="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-wider">Entrega</p>
+<p class="text-body-md font-body-md text-primary truncate">Multi-pontos (4 paradas) - Setor Sul</p>
+</div>
+</div>
+<div class="flex items-center gap-4 mb-6 text-on-surface-variant">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[18px]">route</span>
+<span class="text-label-lg font-label-lg">32.1 km total</span>
+</div>
+<div class="flex items-center gap-1 text-secondary">
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">stars</span>
+<span class="text-label-lg font-label-lg">Alta Prioridade</span>
+</div>
+</div>
+<div class="flex gap-3">
+<button class="flex-[2] h-touch-target-min rounded-xl bg-primary text-on-primary font-label-lg hover:opacity-90 transition-opacity">
+                    Ver Detalhes
+                </button>
+</div>
+</div>
+<!-- Empty State Motivation -->
+<div class="py-12 text-center px-8 opacity-60">
+<span class="material-symbols-outlined text-[48px] text-outline-variant mb-4">calendar_add_on</span>
+<p class="font-body-md text-on-surface-variant">Não há mais agendamentos para esta semana. Explore as outras abas para garantir mais lucros!</p>
+</div>
+</div>
+</main>
+<!-- BottomNavBar -->
+<footer class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 py-2 pb-safe bg-surface shadow-[0_-4px_8px_rgba(0,0,0,0.05)] rounded-t-xl">
+<button class="flex flex-col items-center justify-center w-16 h-12 text-on-surface-variant hover:bg-surface-container-high rounded-xl transition-all duration-150">
+<span class="material-symbols-outlined">home</span>
+<span class="font-label-sm text-label-sm">Início</span>
+</button>
+<button class="flex flex-col items-center justify-center w-20 h-14 text-secondary bg-secondary-container/20 rounded-xl active:scale-95 transition-transform duration-150">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">local_shipping</span>
+<span class="font-label-sm text-label-sm font-bold">Entregas</span>
+</button>
+<button class="flex flex-col items-center justify-center w-16 h-12 text-on-surface-variant hover:bg-surface-container-high rounded-xl transition-all duration-150">
+<span class="material-symbols-outlined">calendar_today</span>
+<span class="font-label-sm text-label-sm">Escala</span>
+</button>
+<button class="flex flex-col items-center justify-center w-16 h-12 text-on-surface-variant hover:bg-surface-container-high rounded-xl transition-all duration-150">
+<span class="material-symbols-outlined">person</span>
+<span class="font-label-sm text-label-sm">Perfil</span>
+</button>
+</footer>
+<script>
+    document.querySelectorAll('button').forEach(button => {
+        button.addEventListener('touchstart', () => {
+            button.classList.add('opacity-70');
+        });
+        button.addEventListener('touchend', () => {
+            button.classList.remove('opacity-70');
+        });
+    });
+</script>
+<div aria-hidden="true" data-snapdom-sandbox="true" id="snapdom-sandbox" style="position: absolute; left: -9999px; top: -9999px; width: 0px; height: 0px; overflow: hidden;"></div></body></html>

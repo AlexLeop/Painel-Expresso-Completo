@@ -1,0 +1,280 @@
+<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Detalhes do Agendamento - Velocity Logistics</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=Geist:wght@400;600&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-container-highest": "#e0e3e5",
+                    "surface-dim": "#d8dadc",
+                    "primary-fixed": "#e2e2e2",
+                    "outline": "#7e7576",
+                    "surface-variant": "#e0e3e5",
+                    "outline-variant": "#cfc4c5",
+                    "on-error-container": "#93000a",
+                    "on-primary-container": "#848484",
+                    "on-secondary": "#ffffff",
+                    "on-surface-variant": "#4c4546",
+                    "inverse-on-surface": "#eff1f3",
+                    "on-primary-fixed-variant": "#474747",
+                    "primary-fixed-dim": "#c6c6c6",
+                    "primary": "#000000",
+                    "tertiary-fixed-dim": "#ffb95f",
+                    "on-background": "#191c1e",
+                    "secondary-fixed": "#ffdad6",
+                    "on-secondary-fixed": "#410002",
+                    "tertiary-fixed": "#ffddb8",
+                    "surface-container-low": "#f2f4f6",
+                    "on-secondary-fixed-variant": "#93000c",
+                    "surface-tint": "#5e5e5e",
+                    "surface-container-lowest": "#ffffff",
+                    "on-surface": "#191c1e",
+                    "on-error": "#ffffff",
+                    "error": "#ba1a1a",
+                    "on-secondary-container": "#fffbff",
+                    "on-primary": "#ffffff",
+                    "background": "#f7f9fb",
+                    "on-tertiary-container": "#b87500",
+                    "on-tertiary-fixed": "#2a1700",
+                    "on-tertiary": "#ffffff",
+                    "surface-container": "#eceef0",
+                    "surface-bright": "#f7f9fb",
+                    "inverse-surface": "#2d3133",
+                    "error-container": "#ffdad6",
+                    "on-primary-fixed": "#1b1b1b",
+                    "tertiary-container": "#2a1700",
+                    "secondary-container": "#db332f",
+                    "surface": "#f7f9fb",
+                    "inverse-primary": "#c6c6c6",
+                    "on-tertiary-fixed-variant": "#653e00",
+                    "tertiary": "#000000",
+                    "surface-container-high": "#e6e8ea",
+                    "secondary": "#b71519",
+                    "primary-container": "#1b1b1b",
+                    "secondary-fixed-dim": "#ffb4ab"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "container-padding": "16px",
+                    "touch-target-min": "48px",
+                    "gutter": "16px",
+                    "base": "4px",
+                    "stack-gap": "12px"
+            },
+            "fontFamily": {
+                    "headline-md": ["Inter"],
+                    "data-mono": ["Geist"],
+                    "label-sm": ["Inter"],
+                    "label-lg": ["Inter"],
+                    "headline-lg": ["Inter"],
+                    "body-md": ["Inter"],
+                    "body-lg": ["Inter"]
+            },
+            "fontSize": {
+                    "headline-md": ["20px", {"lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "data-mono": ["16px", {"lineHeight": "24px", "fontWeight": "600"}],
+                    "label-sm": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500"}],
+                    "label-lg": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600"}],
+                    "headline-lg": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "body-lg": ["18px", {"lineHeight": "26px", "fontWeight": "500"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        body {
+            background-color: #f7f9fb;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .route-line {
+            position: absolute;
+            left: 7px;
+            top: 24px;
+            bottom: -8px;
+            width: 2px;
+            background: repeating-linear-gradient(to bottom, #000 0, #000 4px, transparent 4px, transparent 8px);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="font-body-md text-on-surface mb-20">
+<!-- TopAppBar Shell -->
+<header class="w-full top-0 sticky z-40 bg-surface dark:bg-surface-container-high border-b border-outline-variant dark:border-outline flex items-center px-4 h-14">
+<button class="mr-4 p-2 rounded-full active:scale-95 duration-100 hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-primary dark:text-on-surface">arrow_back</span>
+</button>
+<h1 class="font-headline-md text-headline-md font-bold text-primary dark:text-on-surface">Detalhes do Agendamento</h1>
+</header>
+<main class="max-w-md mx-auto">
+<!-- Map Preview Section -->
+<section class="relative h-64 w-full overflow-hidden mb-gutter">
+<div class="w-full h-full bg-cover bg-center grayscale contrast-125" data-alt="A high-contrast topographic city map of Sao Paulo showing a precise delivery route marked with a bold black line between two points. The map style is minimalist and industrial, using a neutral gray and white palette with sharp vector graphics. High-velocity reliability is conveyed through clean lines and professional cartography, illuminated by bright daylight." data-location="Sao Paulo, Brazil" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDZHZqRDMcD_9kmsl4XFspIyrUBLTKx2GI4bGJWIyAxR4AXo4SXDtMjGXdhgcs04rtpGrLKPqZ5wzv4ASFglQqtRIPHXcfnstCXk1wzMnSdQ-ARp7t0YO94TP6rhdFm_tEeMTUGZXrSpYbV7nqITR5XTKhHYpgq1c0L0EP2XCYaQFvO-ipbQ_-pp67J6rnCkY4jFIB7DEOPIoEMK6ZOMuJUU4ao5sPNCitkz_lweoeGmusVlxSA-1Qzqw')"></div>
+<div class="absolute bottom-4 right-4">
+<button class="bg-primary text-on-primary w-12 h-12 rounded-lg shadow-lg flex items-center justify-center active:scale-90 duration-200">
+<span class="material-symbols-outlined">my_location</span>
+</button>
+</div>
+</section>
+<div class="px-container-padding space-y-4">
+<!-- Status Card -->
+<div class="bg-surface-container-lowest p-4 rounded-xl shadow-sm border border-outline-variant flex items-center justify-between">
+<div>
+<p class="font-label-sm text-on-surface-variant uppercase tracking-wider">Pedido</p>
+<h2 class="font-headline-md text-headline-md text-primary">#9120</h2>
+</div>
+<div class="text-right">
+<span class="inline-flex items-center gap-1 bg-surface-container px-3 py-1 rounded-full text-primary font-label-lg mb-1">
+<span class="material-symbols-outlined text-[18px]">calendar_today</span>
+                        Hoje, 18:30
+                    </span>
+<p class="font-label-sm text-secondary font-bold">AGENDADO</p>
+</div>
+</div>
+<!-- Financial Summary -->
+<div class="bg-primary-container text-on-primary p-5 rounded-xl flex items-center justify-between shadow-lg">
+<div class="flex items-center gap-3">
+<div class="bg-on-primary-fixed-variant p-2 rounded-lg">
+<span class="material-symbols-outlined text-white">payments</span>
+</div>
+<span class="font-body-lg text-body-lg">Valor da Entrega</span>
+</div>
+<span class="font-headline-md text-headline-md text-white">R$ 42,50</span>
+</div>
+<!-- Route Details -->
+<div class="bg-surface-container-low p-5 rounded-xl space-y-6">
+<div class="relative flex gap-4">
+<div class="flex flex-col items-center">
+<span class="material-symbols-outlined text-primary z-10 bg-surface-container-low">radio_button_checked</span>
+<div class="route-line"></div>
+</div>
+<div>
+<p class="font-label-sm text-on-surface-variant uppercase">Retirada</p>
+<p class="font-headline-md text-headline-md text-primary">Restaurante Gourmet Central</p>
+<p class="font-body-md text-on-surface-variant">Av. Paulista, 1000</p>
+</div>
+</div>
+<div class="flex gap-4">
+<div class="flex flex-col items-center">
+<span class="material-symbols-outlined text-secondary z-10 bg-surface-container-low">location_on</span>
+</div>
+<div>
+<p class="font-label-sm text-on-surface-variant uppercase">Entrega</p>
+<p class="font-headline-md text-headline-md text-primary">Condominio Sky View</p>
+<p class="font-body-md text-on-surface-variant">R. Augusta, 2500</p>
+</div>
+</div>
+<!-- Distance/Time Stats -->
+<div class="grid grid-cols-2 gap-4 pt-2 border-t border-outline-variant">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-on-surface-variant">route</span>
+<div>
+<p class="font-label-sm text-on-surface-variant">Distância</p>
+<p class="font-label-lg text-label-lg">8.4 km total</p>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-on-surface-variant">schedule</span>
+<div>
+<p class="font-label-sm text-on-surface-variant">Tempo Est.</p>
+<p class="font-label-lg text-label-lg">25 min</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Package & Requirements Bento Grid -->
+<div class="grid grid-cols-2 gap-3">
+<div class="bg-surface-container-highest p-4 rounded-xl flex flex-col gap-1">
+<span class="material-symbols-outlined text-primary mb-1">inventory_2</span>
+<p class="font-label-sm text-on-surface-variant">Volume</p>
+<p class="font-label-lg text-label-lg">Médio • 2 itens</p>
+</div>
+<div class="bg-surface-container-highest p-4 rounded-xl flex flex-col gap-1">
+<span class="material-symbols-outlined text-primary mb-1">weight</span>
+<p class="font-label-sm text-on-surface-variant">Peso</p>
+<p class="font-label-lg text-label-lg">3kg (aprox.)</p>
+</div>
+</div>
+<div class="bg-error-container text-on-error-container p-4 rounded-xl space-y-2 border border-secondary-fixed">
+<p class="font-label-lg flex items-center gap-2">
+<span class="material-symbols-outlined">warning</span>
+                    Requisitos da Entrega
+                </p>
+<ul class="space-y-1">
+<li class="flex items-center gap-2 text-label-lg font-medium">
+<span class="material-symbols-outlined text-[16px]">check_circle</span>
+                        Necessário baú térmico
+                    </li>
+<li class="flex items-center gap-2 text-label-lg font-medium">
+<span class="material-symbols-outlined text-[16px]">check_circle</span>
+                        Identificação na portaria
+                    </li>
+</ul>
+</div>
+<!-- Action Area -->
+<div class="py-6 flex flex-col gap-3">
+<button class="bg-secondary text-on-secondary w-full h-[56px] rounded-xl font-headline-md flex items-center justify-center gap-2 active:scale-95 transition-all shadow-md">
+<span class="material-symbols-outlined">map</span>
+                    Ver no Mapa
+                </button>
+<button class="bg-surface-container-low text-primary w-full h-[56px] rounded-xl font-label-lg flex items-center justify-center active:scale-95 transition-all border border-outline-variant">
+                    Voltar
+                </button>
+</div>
+</div>
+</main>
+<!-- BottomNavBar Shell -->
+<nav class="fixed bottom-0 left-0 w-full flex justify-around items-center px-container-padding bg-surface dark:bg-inverse-surface z-50 h-16 shadow-[0_-2px_10px_rgba(0,0,0,0.1)]">
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline-variant hover:bg-surface-container-low transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined">home</span>
+<span class="font-label-sm text-label-sm">Início</span>
+</a>
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed-dim font-bold hover:bg-surface-container-low transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">local_shipping</span>
+<span class="font-label-sm text-label-sm">Entregas</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline-variant hover:bg-surface-container-low transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined">payments</span>
+<span class="font-label-sm text-label-sm">Ganhos</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline-variant hover:bg-surface-container-low transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined">person</span>
+<span class="font-label-sm text-label-sm">Perfil</span>
+</a>
+</nav>
+<script>
+        // Simple ripple-like effect on buttons
+        document.querySelectorAll('button').forEach(button => {
+            button.addEventListener('click', function(e) {
+                let ripple = document.createElement('span');
+                ripple.classList.add('ripple');
+                this.appendChild(ripple);
+                setTimeout(() => {
+                    ripple.remove();
+                }, 600);
+            });
+        });
+    </script>
+</body></html>

@@ -12,14 +12,14 @@ build/
 .ruff_cache/
 
 # Android / Kotlin
-nevesgo/android_sdk/
-nevesgo/.gradle/
-nevesgo/build/
-nevesgo/local.properties
-nevesgo/gradle-*/
-nevesgo/jdk-*/
-nevesgo/*.zip
-nevesgo/*.jks
+mobile/android_sdk/
+mobile/.gradle/
+mobile/build/
+mobile/local.properties
+mobile/gradle-*/
+mobile/jdk-*/
+mobile/*.zip
+mobile/*.jks
 
 # Ignorar pastas de agentes AI
 .pai/

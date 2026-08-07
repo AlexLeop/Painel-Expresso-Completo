@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+
+<html lang="pt-BR"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Gerenciamento de Entregas</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">tailwind.config = {darkMode: "class", theme: {extend: {colors: {"on-primary-fixed-variant": "#474747", "on-error": "#ffffff", "surface-container-low": "#f2f4f6", "on-secondary": "#ffffff", "surface-bright": "#f7f9fb", "tertiary-container": "#2a1700", "inverse-on-surface": "#eff1f3", "on-surface-variant": "#4c4546", "on-tertiary": "#ffffff", "on-tertiary-fixed": "#2a1700", background: "#f7f9fb", "secondary-container": "#db332f", "on-surface": "#191c1e", "primary-container": "#1b1b1b", "on-primary-container": "#848484", "secondary-fixed": "#ffdad6", "on-secondary-fixed": "#410002", "tertiary-fixed-dim": "#ffb95f", outline: "#7e7576", tertiary: "#000000", surface: "#f7f9fb", "surface-container-lowest": "#ffffff", "on-secondary-container": "#fffbff", "surface-dim": "#d8dadc", "outline-variant": "#cfc4c5", "surface-container-highest": "#e0e3e5", "tertiary-fixed": "#ffddb8", "on-tertiary-container": "#b87500", "on-primary-fixed": "#1b1b1b", "on-background": "#191c1e", "on-error-container": "#93000a", "inverse-primary": "#c6c6c6", "on-tertiary-fixed-variant": "#653e00", "inverse-surface": "#2d3133", "surface-container-high": "#e6e8ea", "error-container": "#ffdad6", "surface-container": "#eceef0", "primary-fixed-dim": "#c6c6c6", error: "#ba1a1a", "secondary-fixed-dim": "#ffb4ab", "surface-variant": "#e0e3e5", "surface-tint": "#5e5e5e", "on-secondary-fixed-variant": "#93000c", primary: "#000000", secondary: "#b71519", "on-primary": "#ffffff", "primary-fixed": "#e2e2e2"}, borderRadius: {DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px"}, fontFamily: {headline: ["Inter"], display: ["Inter"], body: ["Inter"], label: ["Inter"]}, fontSize: {}}}};</script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .active-tab {
+            border-bottom: 3px solid #111318;
+            color: #111318 !important;
+        }
+        .hide-scroll::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scroll {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface font-['Inter']">
+<div class="relative flex min-h-screen w-full flex-col bg-background overflow-x-hidden">
+<!-- Shared Header Area -->
+<div class="sticky top-0 z-50 bg-surface shadow-sm">
+<div class="flex items-center p-4 justify-between">
+<div class="text-[#111318] flex size-12 shrink-0 items-center" data-icon="CaretLeft" data-size="24px" data-weight="regular">
+<span class="material-symbols-outlined">chevron_left</span>
+</div>
+<h2 class="text-[#111318] text-lg font-bold leading-tight tracking-[-0.015em] flex-1">Entregas</h2>
+<div class="flex w-12 items-center justify-end">
+<button class="flex max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-12 bg-transparent text-[#111318] gap-2 text-base font-bold leading-normal tracking-[0.015em] min-w-0 p-0">
+<div class="text-[#111318]" data-icon="MagnifyingGlass" data-size="24px" data-weight="regular">
+<span class="material-symbols-outlined">search</span>
+</div>
+</button>
+</div>
+</div>
+<!-- Tabs Navigation -->
+<div class="pb-0">
+<div class="flex border-b border-outline-variant px-4 justify-between">
+<button class="flex flex-col items-center justify-center active-tab text-on-surface-variant pb-[13px] pt-4 flex-1 transition-all" id="tab-em-curso" onclick="switchTab('em-curso')">
+<p class="text-sm font-bold leading-normal tracking-[0.015em]">Em curso</p>
+</button>
+<button class="flex flex-col items-center justify-center border-b-[3px] border-b-transparent text-on-surface-variant pb-[13px] pt-4 flex-1 transition-all" id="tab-em-espera" onclick="switchTab('em-espera')">
+<p class="text-sm font-bold leading-normal tracking-[0.015em]">Em espera</p>
+</button>
+<button class="flex flex-col items-center justify-center border-b-[3px] border-b-transparent text-on-surface-variant pb-[13px] pt-4 flex-1 transition-all" id="tab-agendadas" onclick="switchTab('agendadas')">
+<p class="text-sm font-bold leading-normal tracking-[0.015em]">Agendadas</p>
+</button>
+</div>
+</div>
+</div>
+<!-- Main Content Scroll Area -->
+<main class="flex-1 pb-24">
+<!-- Tab: Em Curso -->
+<section class="tab-content block" id="content-em-curso">
+<h4 class="text-on-surface-variant text-sm font-bold leading-normal tracking-[0.015em] px-4 py-4 uppercase">Entrega Atual</h4>
+<div class="px-4 mb-6"><div class="space-y-4">
+<!-- Order 1 -->
+<div class="flex flex-col gap-4 rounded-xl bg-surface-container-lowest p-5 shadow-sm border border-outline-variant/30">
+<div class="flex justify-between items-start">
+<div class="flex flex-col gap-1">
+<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-secondary-container text-on-secondary-container w-fit">
+          Entregando
+        </span>
+<p class="text-on-surface text-xl font-bold mt-2">Pedido #8842</p>
+<div class="flex items-center gap-2 text-on-surface-variant mt-1">
+<span class="material-symbols-outlined text-sm">location_on</span>
+<p class="text-sm font-normal">Rua das Flores, 123 - Centro</p>
+</div>
+</div>
+<div class="flex flex-col items-end justify-center gap-1">
+<p class="text-xl font-bold text-secondary">R$ 18,50</p>
+<div class="flex items-center gap-1 text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">distance</span>
+<p class="text-xs font-medium">5.2 km</p>
+</div>
+</div>
+</div>
+<div class="h-[1px] bg-outline-variant/20 w-full my-1"></div>
+<div class="flex items-center justify-between">
+<div class="flex flex-col">
+<p class="text-xs text-on-surface-variant">Estimativa de chegada</p>
+<p class="text-base font-bold text-on-surface">14:45 (8 min)</p>
+</div>
+<button class="flex min-w-[120px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 bg-primary text-on-primary text-sm font-bold transition-transform active:scale-95">
+        Ver Rota
+      </button>
+</div>
+</div>
+<!-- Order 2 -->
+<div class="flex flex-col gap-4 rounded-xl bg-surface-container-lowest p-5 shadow-sm border border-outline-variant/30">
+<div class="flex justify-between items-start">
+<div class="flex flex-col gap-1">
+<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-secondary-container text-on-secondary-container w-fit">
+          Entregando
+        </span>
+<p class="text-on-surface text-xl font-bold mt-2">Pedido #8843</p>
+<div class="flex items-center gap-2 text-on-surface-variant mt-1">
+<span class="material-symbols-outlined text-sm">location_on</span>
+<p class="text-sm font-normal">Av. Paulista, 1500 - Bela Vista</p>
+</div>
+</div>
+<div class="flex flex-col items-end justify-center gap-1">
+<p class="text-xl font-bold text-secondary">R$ 12,20</p>
+<div class="flex items-center gap-1 text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">distance</span>
+<p class="text-xs font-medium">2.8 km</p>
+</div>
+</div>
+</div>
+<div class="h-[1px] bg-outline-variant/20 w-full my-1"></div>
+<div class="flex items-center justify-between">
+<div class="flex flex-col">
+<p class="text-xs text-on-surface-variant">Estimativa de chegada</p>
+<p class="text-base font-bold text-on-surface">15:10 (25 min)</p>
+</div>
+<button class="flex min-w-[120px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 bg-primary text-on-primary text-sm font-bold transition-transform active:scale-95">
+        Ver Rota
+      </button>
+</div>
+</div>
+</div></div>
+<h4 class="text-on-surface-variant text-sm font-bold leading-normal tracking-[0.015em] px-4 py-2 uppercase">Histórico Recente</h4>
+<div class="px-4 space-y-3">
+<!-- Historical Item 1 -->
+<div class="flex items-center gap-4 p-4 rounded-lg bg-surface-container-low border border-outline-variant/20">
+<div class="size-10 rounded-full bg-surface-container-highest flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface-variant">check_circle</span>
+</div>
+<div class="flex-1">
+<p class="text-sm font-bold">Pedido #8839</p>
+<p class="text-xs text-on-surface-variant">Entregue há 25 min</p>
+</div>
+<p class="text-sm font-bold text-secondary">R$ 12,50</p>
+</div>
+</div>
+</section>
+<!-- Tab: Em Espera -->
+<section class="tab-content hidden" id="content-em-espera">
+<div class="p-4 flex flex-col gap-4">
+<div class="bg-surface-container-highest/30 p-4 rounded-xl border-2 border-dashed border-outline-variant flex flex-col items-center text-center gap-2 mb-2">
+<span class="material-symbols-outlined text-primary text-3xl">radar</span>
+<p class="font-bold">Buscando novas ofertas...</p>
+<p class="text-sm text-on-surface-variant">Fique nesta tela para receber pedidos prioritários na sua região.</p>
+</div>
+<!-- Pending Order Card 1 -->
+<div class="flex flex-col gap-3 rounded-lg bg-surface-container-lowest p-4 shadow-sm border border-outline-variant/50">
+<div class="flex justify-between items-center">
+<div class="flex flex-col">
+<p class="text-sm font-bold text-on-surface">Pedido Disponível #8850</p>
+<p class="text-xs text-on-surface-variant">Restaurante Sabor &amp; Arte</p>
+</div>
+<p class="text-lg font-bold text-secondary">R$ 18,90</p>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">distance</span>
+<p class="text-xs">Distância total: 3.2 km</p>
+</div>
+<div class="flex gap-2 mt-2">
+<button class="flex-1 h-10 rounded-lg bg-secondary-container text-on-secondary-container text-sm font-bold transition-all hover:brightness-95">Aceitar</button>
+<button class="flex-1 h-10 rounded-lg bg-surface-container-high text-on-surface-variant text-sm font-bold">Recusar</button>
+</div>
+</div>
+<!-- Pending Order Card 2 -->
+<div class="flex flex-col gap-3 rounded-lg bg-surface-container-lowest p-4 shadow-sm border border-outline-variant/50 opacity-80">
+<div class="flex justify-between items-center">
+<div class="flex flex-col">
+<p class="text-sm font-bold text-on-surface">Pedido Disponível #8851</p>
+<p class="text-xs text-on-surface-variant">Farmácia Central</p>
+</div>
+<p class="text-lg font-bold text-secondary">R$ 9,00</p>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">distance</span>
+<p class="text-xs">Distância total: 1.5 km</p>
+</div>
+<div class="flex gap-2 mt-2">
+<button class="flex-1 h-10 rounded-lg bg-secondary-container text-on-secondary-container text-sm font-bold">Aceitar</button>
+<button class="flex-1 h-10 rounded-lg bg-surface-container-high text-on-surface-variant text-sm font-bold">Recusar</button>
+</div>
+</div>
+</div>
+</section>
+<!-- Tab: Agendadas -->
+<section class="tab-content hidden" id="content-agendadas">
+<div class="p-4 space-y-6">
+<div>
+<h4 class="text-on-surface-variant text-sm font-bold leading-normal tracking-[0.015em] mb-3 uppercase">Próximos Turnos</h4>
+<div class="space-y-3">
+<!-- Shift 1 -->
+<div class="bg-surface-container-lowest p-4 rounded-xl border border-outline-variant flex items-center gap-4">
+<div class="bg-primary-container text-on-primary-container size-12 rounded-lg flex flex-col items-center justify-center shrink-0">
+<span class="text-xs font-bold uppercase leading-none">Amanhã</span>
+<span class="text-lg font-bold leading-tight">24</span>
+</div>
+<div class="flex-1">
+<p class="font-bold">Turno Almoço</p>
+<p class="text-sm text-on-surface-variant">11:00 - 15:00 • Região Centro</p>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant">event_available</span>
+</div>
+<!-- Shift 2 -->
+<div class="bg-surface-container-lowest p-4 rounded-xl border border-outline-variant flex items-center gap-4">
+<div class="bg-surface-container-high text-on-surface-variant size-12 rounded-lg flex flex-col items-center justify-center shrink-0">
+<span class="text-xs font-bold uppercase leading-none">Qui</span>
+<span class="text-lg font-bold leading-tight">26</span>
+</div>
+<div class="flex-1">
+<p class="font-bold">Turno Jantar</p>
+<p class="text-sm text-on-surface-variant">18:00 - 22:00 • Região Jardins</p>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant">event_available</span>
+</div>
+</div>
+</div>
+<div>
+<h4 class="text-on-surface-variant text-sm font-bold leading-normal tracking-[0.015em] mb-3 uppercase">Entregas Agendadas</h4>
+<div class="p-8 border-2 border-dashed border-outline-variant rounded-xl flex flex-col items-center text-center gap-3">
+<div class="size-16 bg-surface-container-high rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface-variant text-3xl">calendar_today</span>
+</div>
+<div>
+<p class="font-bold">Nenhuma entrega agendada</p>
+<p class="text-sm text-on-surface-variant mt-1">Quando você agendar coletas futuras com parceiros fixos, elas aparecerão aqui.</p>
+</div>
+<button class="mt-2 text-primary font-bold text-sm">Explorar parcerias</button>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Shared Bottom Navigation -->
+<nav class="fixed bottom-0 left-0 right-0 z-50 bg-surface border-t border-outline-variant">
+<div class="flex gap-2 px-4 pb-3 pt-2">
+<a class="flex flex-1 flex-col items-center justify-end gap-1 text-[#5d6a89]" href="#">
+<div class="flex h-8 items-center justify-center" data-icon="House" data-size="24px" data-weight="regular">
+<span class="material-symbols-outlined">home</span>
+</div>
+<p class="text-xs font-medium leading-normal tracking-[0.015em]">Início</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-end gap-1 text-[#111318]" href="#">
+<div class="flex h-8 items-center justify-center" data-icon="Truck" data-size="24px" data-weight="fill">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">local_shipping</span>
+</div>
+<p class="text-xs font-medium leading-normal tracking-[0.015em]">Entregas</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-end gap-1 text-[#5d6a89]" href="#">
+<div class="flex h-8 items-center justify-center" data-icon="CurrencyDollar" data-size="24px" data-weight="regular">
+<span class="material-symbols-outlined">payments</span>
+</div>
+<p class="text-xs font-medium leading-normal tracking-[0.015em]">Ganhos</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-end gap-1 text-[#5d6a89]" href="#">
+<div class="flex h-8 items-center justify-center" data-icon="User" data-size="24px" data-weight="regular">
+<span class="material-symbols-outlined">person</span>
+</div>
+<p class="text-xs font-medium leading-normal tracking-[0.015em]">Perfil</p>
+</a>
+</div>
+</nav>
+</div>
+<script>
+        function switchTab(tabId) {
+            // Update Tab Buttons
+            document.querySelectorAll('button[id^="tab-"]').forEach(btn => {
+                btn.classList.remove('active-tab');
+                btn.classList.add('border-b-transparent');
+                btn.classList.add('text-on-surface-variant');
+            });
+            const activeBtn = document.getElementById('tab-' + tabId);
+            activeBtn.classList.add('active-tab');
+            activeBtn.classList.remove('border-b-transparent');
+
+            // Update Content Visibility
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+                content.classList.remove('block');
+            });
+            const activeContent = document.getElementById('content-' + tabId);
+            activeContent.classList.remove('hidden');
+            activeContent.classList.add('block');
+
+            // Scroll to top of content
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    </script>
+</body></html>

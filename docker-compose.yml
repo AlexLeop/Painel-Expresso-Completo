@@ -7,7 +7,7 @@ services:
 
   django:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
     command: >
       bash -c "python manage.py migrate &&
@@ -51,7 +51,7 @@ services:
 
   fastapi:
     build:
-      context: .
+      context: ./backend
       dockerfile: fast_lane/Dockerfile
     environment:
       - SUPABASE_URL=${SUPABASE_URL:-https://xxxx.supabase.co}
@@ -67,7 +67,7 @@ services:
 
   celery_worker:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
     command: celery -A config worker -l info --concurrency=2
     environment:
@@ -98,7 +98,7 @@ services:
 
   celery_beat:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile
     command: celery -A config beat -l info
     environment:
@@ -141,7 +141,7 @@ services:
 
   frontend:
     build:
-      context: ./Novo_FrontEnd
+      context: ./frontend
       dockerfile: Dockerfile
     environment:
       # Frontend (Vite/React)

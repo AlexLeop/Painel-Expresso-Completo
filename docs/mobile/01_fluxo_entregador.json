@@ -1,0 +1,427 @@
+﻿{
+  "app": "NevesGo — App do Entregador",
+  "versao": "1.0",
+  "descricao": "Mapa mental completo do fluxo do aplicativo do ponto de vista do entregador",
+  "nodes": [
+    {
+      "id": "root",
+      "label": "NevesGo",
+      "tipo": "raiz",
+      "filhos": ["autenticacao", "home", "entregas", "escalas", "ganhos", "perfil", "comunicacao"]
+    },
+    {
+      "id": "autenticacao",
+      "label": "Autenticacao",
+      "tipo": "modulo",
+      "descricao": "Fluxo de acesso ao aplicativo",
+      "filhos": ["splash", "login", "cadastro"]
+    },
+    {
+      "id": "splash",
+      "label": "Tela de Splash",
+      "tipo": "tela",
+      "descricao": "Valida token JWT existente via POST /accounts/auth/login. Se valido navega para Home, senao para Login.",
+      "acoes": ["Verificar sessao salva", "Navegar para Home ou Login"],
+      "api_calls": ["POST /accounts/auth/login"]
+    },
+    {
+      "id": "login",
+      "label": "Tela de Login",
+      "tipo": "tela",
+      "descricao": "Formulario de login com e-mail e senha. Autenticacao via JWT (Supabase).",
+      "acoes": ["Inserir e-mail", "Inserir senha", "Entrar", "Navegar para Cadastro"],
+      "armazenamento": ["JWT Token salvo em SecureStorage (EncryptedSharedPreferences)"]
+    },
+    {
+      "id": "cadastro",
+      "label": "Tela de Cadastro",
+      "tipo": "tela",
+      "descricao": "Formulario de registro de novo entregador.",
+      "acoes": ["Preencher dados pessoais", "Enviar cadastro", "Voltar para Login"]
+    },
+    {
+      "id": "home",
+      "label": "Home (Mapa)",
+      "tipo": "modulo_principal",
+      "descricao": "Tela principal com mapa OSM, painel cockpit na base e cabecalho com status.",
+      "componentes": [
+        {
+          "nome": "Mapa OSMDroid",
+          "descricao": "Mapa interativo com geolocalizacao em tempo real. Fallback para Sao Paulo (-23.5505, -46.6333) se sem localizacao."
+        },
+        {
+          "nome": "Cabecalho Flutuante",
+          "descricao": "Exibe nome do entregador, status ONLINE/OFFLINE."
+        },
+        {
+          "nome": "Botao de Localizacao",
+          "descricao": "Centraliza o mapa na posicao atual do entregador."
+        },
+        {
+          "nome": "Painel Cockpit (Base)",
+          "descricao": "Resumo de ganhos, entregas, meta diaria (progresso %), saldo da carteira, pedidos ativos/limite, documentos pendentes."
+        },
+        {
+          "nome": "Banner de Pedidos Pendentes",
+          "descricao": "Banner animado visivel apenas quando online e ha pedidos OFFERED. Navega para Entregas."
+        },
+        {
+          "nome": "Status Online/Offline",
+          "descricao": "Botao FICAR ONLINE (verde) quando offline. Botao Offline discreto quando online.",
+          "acoes": [
+            "Ficar Online: POST /driver/status {status: ONLINE}",
+            "Ficar Offline: POST /driver/status {status: OFFLINE}"
+          ]
+        },
+        {
+          "nome": "Alerta de Nova Corrida",
+          "descricao": "Modal bottom-sheet com countdown de 10s. Exibe valor, preco por km, distancia, origem e destino.",
+          "bug": "Numero de paradas exibido como '1 parada' hardcoded, independente do real numero de stops.",
+          "acoes": [
+            "ACEITAR CORRIDA (swipe) aceita e navega para Corrida Aceita",
+            "RECUSAR (countdown) descarta o alerta sem API call"
+          ]
+        }
+      ],
+      "api_calls": ["GET /driver/cockpit", "POST /driver/status"]
+    },
+    {
+      "id": "entregas",
+      "label": "Entregas",
+      "tipo": "modulo",
+      "descricao": "Lista de todas as entregas organizadas por abas com filtros de status.",
+      "abas": [
+        {
+          "nome": "Pendentes",
+          "status_filtro": ["OFFERED"],
+          "exibe": ["ID do pedido", "Distancia km", "Nome da origem", "Endereco destino", "Valor R$"],
+          "acoes": ["ACEITAR CORRIDA navega para corrida_aceita/{orderId}"]
+        },
+        {
+          "nome": "Em Andamento",
+          "status_filtro": ["ACCEPTED", "STARTED", "ARRIVED", "CANCELED_IN_TRANSIT", "RETURNING_TO_STORE"],
+          "exibe": ["Badge de status", "ID do pedido", "Endereco destino", "Valor"],
+          "acoes": ["CONTINUAR ROTA navega para navigation_screen/{orderId}"]
+        },
+        {
+          "nome": "Todas",
+          "status_filtro": ["todos"],
+          "bug": "Horario de conclusao exibe texto hardcoded 'Finalizado hoje, 14:32'",
+          "exibe": ["Status COMPLETED com icone check", "Nome origem", "ID", "Valor"]
+        }
+      ],
+      "api_calls": ["GET /driver/orders (via Room DB sync)"],
+      "filhos": ["corrida_aceita", "navigation_screen"]
+    },
+    {
+      "id": "corrida_aceita",
+      "label": "Corrida Aceita",
+      "tipo": "tela",
+      "descricao": "Tela de confirmacao apos aceitar o pedido. Exibe detalhes e permite iniciar ou devolver.",
+      "dados_exibidos": ["Valor da corrida", "Local de coleta (loja)", "Destino final (endereco via geocoding)"],
+      "acoes": [
+        "INICIAR CORRIDA: POST /driver/orders/{order_id}/start, navega para navigation_screen/{orderId}",
+        "Devolver corrida para operacao: POST /driver/orders/{order_id}/release"
+      ],
+      "api_calls": ["GET /driver/orders/{order_id}", "POST /driver/orders/{order_id}/start", "POST /driver/orders/{order_id}/release"]
+    },
+    {
+      "id": "navigation_screen",
+      "label": "Navegacao em Rota",
+      "tipo": "tela",
+      "descricao": "Tela de navegacao com mapa OSM e rota calculada via OSRM. Exibe instrucao da proxima parada.",
+      "componentes": [
+        {
+          "nome": "Mapa OSMDroid",
+          "descricao": "Rota desenhada em azul via OSRM publico. Fallback: linha reta vermelha se OSRM falhar."
+        },
+        {
+          "nome": "Card Superior",
+          "descricao": "Instrucao de navegacao e resumo de distancia + tipo de parada."
+        },
+        {
+          "nome": "Card Inferior",
+          "descricao": "Status da parada atual, botao de navegacao externa (Waze/Google Maps), e swipe para confirmar chegada."
+        }
+      ],
+      "acoes": [
+        "Navegar (Waze/Google Maps): geo intent com coordenadas da proxima parada",
+        "CHEGUEI A PROXIMA PARADA (swipe): navega para confirm_delivery/{orderId}",
+        "IR PARA TURNOS (quando sem turno ativo): navega para escalas"
+      ],
+      "api_calls": ["GET /driver/orders/{order_id}", "GET /driver/cockpit"],
+      "filhos": ["confirm_delivery"]
+    },
+    {
+      "id": "confirm_delivery",
+      "label": "Confirmar Entrega",
+      "tipo": "tela",
+      "descricao": "Tela de conclusao de parada com PIN de 4 digitos.",
+      "componentes": [
+        {
+          "nome": "Seletor de Parada",
+          "descricao": "Chips horizontais para selecionar qual parada concluir. Filtra apenas stops nao concluidos e nao PICKUP."
+        },
+        {
+          "nome": "Teclado PIN",
+          "descricao": "Teclado numerico customizado de 4 digitos com backspace.",
+          "bug": "Tecla virgula no teclado nao tem funcao definida."
+        },
+        {
+          "nome": "Comprovante de Entrega",
+          "descricao": "Botao desabilitado (hardcoded enabled=false). Camera NAO implementada nesta tela.",
+          "bug": "Botao de camera completamente nao funcional - desabilitado em codigo."
+        }
+      ],
+      "acoes": [
+        "Inserir PIN de 4 digitos ativa botao OK",
+        "OK: POST /driver/stops/{stop_id}/delivery-proof + POST /driver/stops/complete-batch, navega para entrega_finalizada/{fareCents}",
+        "Ir: volta para navigation_screen",
+        "Icone Problema: navega para reportar_problema/{orderId}/{stopId}"
+      ],
+      "api_calls": [
+        "POST /driver/stops/{stop_id}/delivery-proof (multipart form-data)",
+        "POST /driver/stops/complete-batch"
+      ],
+      "filhos": ["entrega_finalizada", "reportar_problema"]
+    },
+    {
+      "id": "entrega_finalizada",
+      "label": "Entrega Finalizada",
+      "tipo": "tela",
+      "descricao": "Tela de celebracao com valor recebido.",
+      "dados_exibidos": ["Icone check verde", "Texto Missao Cumprida!", "Valor recebido R$"],
+      "acoes": ["VOLTAR PARA HOME limpa backstack e navega para home"]
+    },
+    {
+      "id": "reportar_problema",
+      "label": "Relatar Problema",
+      "tipo": "tela",
+      "descricao": "Tela para relatar incidentes durante a entrega.",
+      "categorias_disponiveis": [
+        "Nao encontrei o cliente",
+        "Endereco incorreto ou fechado",
+        "Problema com o veiculo",
+        "Outros"
+      ],
+      "acoes": [
+        "Selecionar categoria",
+        "Descrever detalhes adicionais (opcional)",
+        "Enviar Relato: POST /driver/incidents, volta para tela anterior",
+        "Cancelar Relato: volta sem enviar"
+      ],
+      "api_calls": ["POST /driver/incidents"]
+    },
+    {
+      "id": "escalas",
+      "label": "Escalas (Turnos)",
+      "tipo": "modulo",
+      "descricao": "Gerenciamento de turnos: escalas disponiveis, reservas e check-in/out.",
+      "regras_de_negocio": [
+        "Apenas 1 turno pode estar aberto por vez",
+        "Check-in inicia automaticamente o TrackingService (geolocalizacao em background)",
+        "Check-out para automaticamente o TrackingService",
+        "Nao e possivel fazer check-in em novo turno com jornada aberta"
+      ],
+      "abas": [
+        {"nome": "Disponiveis", "filtro": "kind=SCHEDULE"},
+        {"nome": "Reservas", "filtro": "kind=RESERVATION e status diferente de CANCELED"},
+        {"nome": "Canceladas", "filtro": "kind=RESERVATION e status=CANCELED"}
+      ],
+      "acoes_por_estado_do_card": {
+        "turno_ativo_deste_item": "FAZER CHECK-OUT",
+        "reserva_sem_turno_aberto": "FAZER CHECK-IN",
+        "schedule_sem_turno_aberto": "RESERVAR TURNO e/ou FAZER CHECK-IN",
+        "ja_existe_jornada_aberta_em_outro_turno": "Mensagem bloqueante informativa"
+      },
+      "api_calls": [
+        "GET /driver/shifts/calendar?start_date={today}",
+        "GET /driver/cockpit (valida sessao de turno)",
+        "POST /driver/shifts/reservations",
+        "POST /driver/shifts/check-in",
+        "POST /driver/shifts/check-out"
+      ],
+      "filhos": ["escala_detalhes"]
+    },
+    {
+      "id": "escala_detalhes",
+      "label": "Detalhe da Escala",
+      "tipo": "tela",
+      "descricao": "Detalhes de um turno especifico com opcoes contextuais de acao.",
+      "dados_exibidos": ["Data", "Tipo SCHEDULE ou RESERVATION", "Status", "Nome do turno", "Loja vinculada", "Store ID", "Jornada atual se ativa"],
+      "acoes_contextuais": [
+        "FAZER CHECK-OUT quando este e o turno ativo",
+        "FAZER CHECK-IN quando reserva e sem turno aberto",
+        "RESERVAR TURNO quando SCHEDULE e sem turno aberto",
+        "JA EXISTE JORNADA ABERTA quando outro turno esta ativo"
+      ]
+    },
+    {
+      "id": "ganhos",
+      "label": "Ganhos (Financeiro)",
+      "tipo": "modulo",
+      "descricao": "Dashboard financeiro com saldo, breakdown, saque via PIX e historico de transacoes.",
+      "componentes": [
+        {
+          "nome": "Card Saldo",
+          "descricao": "Saldo atual da carteira digital com data/hora da ultima atualizacao."
+        },
+        {
+          "nome": "Breakdown Financeiro",
+          "descricao": "Entradas (creditos) vs saidas (debitos) com saldo total calculado localmente."
+        },
+        {
+          "nome": "Card de Saque PIX",
+          "descricao": "Campo para chave PIX e valor do saque.",
+          "acoes": ["Inserir chave PIX", "Inserir valor", "Solicitar saque: POST /finance/wallet/withdraw"]
+        },
+        {
+          "nome": "Historico de Transacoes",
+          "descricao": "Lista paginada de ate 50 itens.",
+          "categorias": {
+            "PAYOUT": "saida",
+            "PENALTY": "saida",
+            "BONUS": "entrada",
+            "outros": "entrada"
+          }
+        }
+      ],
+      "api_calls": [
+        "GET /finance/wallet/balance",
+        "GET /finance/transactions?limit=50&offset=0",
+        "POST /finance/wallet/withdraw"
+      ]
+    },
+    {
+      "id": "perfil",
+      "label": "Perfil e Configuracoes",
+      "tipo": "modulo",
+      "descricao": "Tela de configuracoes e atalhos do entregador.",
+      "secoes": [
+        {
+          "nome": "PERFIL",
+          "itens": ["Meus Dados: sem funcionalidade implementada"]
+        },
+        {
+          "nome": "ATALHOS",
+          "itens": ["Notificacoes", "Escalas", "Pagamentos", "Jornada Ativa"]
+        },
+        {
+          "nome": "GERAIS",
+          "bugs": [
+            "Idioma: exibe Portugues mas nao tem funcionalidade de troca",
+            "Tema Escuro: switch existe mas nao persiste nem aplica tema"
+          ]
+        },
+        {
+          "nome": "SAIDA",
+          "acao": "Para TrackingService, limpa token JWT, navega para Login limpando backstack"
+        }
+      ]
+    },
+    {
+      "id": "comunicacao",
+      "label": "Comunicacao",
+      "tipo": "modulo",
+      "descricao": "Sistema de mensagens entre entregador e operacao/lojas via threads.",
+      "filhos": ["notificacoes", "chat"]
+    },
+    {
+      "id": "notificacoes",
+      "label": "Notificacoes e Threads",
+      "tipo": "tela",
+      "descricao": "Lista de todas as threads de comunicacao ativas.",
+      "dados_exibidos": ["Icone por tipo: loja, pedido ou geral", "Assunto ou ID da ordem", "sourceType", "Status", "Data/hora ultima atualizacao"],
+      "acoes": ["Tocar na thread navega para chat/{threadId}"],
+      "api_calls": ["GET /driver/communications/threads"]
+    },
+    {
+      "id": "chat",
+      "label": "Chat por Thread",
+      "tipo": "tela",
+      "descricao": "Conversa dentro de uma thread especifica.",
+      "componentes": [
+        {
+          "nome": "Lista de Mensagens",
+          "descricao": "Bolhas de chat: entregador vermelho direita, operacao/loja cinza esquerda."
+        },
+        {
+          "nome": "Campo de Digitacao",
+          "descricao": "TextField com botao enviar circular vermelho."
+        }
+      ],
+      "acoes": [
+        "Digitar mensagem",
+        "Enviar: POST /driver/communications/threads/{thread_id}/messages, recarrega lista"
+      ],
+      "api_calls": [
+        "GET /driver/communications/threads",
+        "GET /driver/communications/threads/{thread_id}/messages",
+        "POST /driver/communications/threads/{thread_id}/messages"
+      ],
+      "limitacoes": [
+        "Sem auto-refresh ou polling automatico",
+        "Sem notificacao push para novas mensagens enquanto chat esta aberto"
+      ]
+    },
+    {
+      "id": "tracking_service",
+      "label": "Servico de Rastreamento Background",
+      "tipo": "servico_android",
+      "descricao": "Foreground service GPS que envia localizacao a cada 10s para porta alternativa 8001/telemetry.",
+      "ciclo_de_vida": [
+        "Iniciado no check-in do turno",
+        "Iniciado ao carregar cockpit se driver.online=true OU shift.sessionId != null",
+        "Parado no check-out",
+        "Parado ao fazer logout"
+      ],
+      "recursos": [
+        "Deteccao de GPS Spoofing via LocationCompat.isMock(): reporta incidente GPS_SPOOFING automaticamente",
+        "Cache offline: salva pontos no Room DB (tabela telemetry) e reenvia ao reconectar",
+        "Autenticacao via header X-Device-Token"
+      ],
+      "frequencia_gps": "10 segundos (minimo 5 segundos)"
+    },
+    {
+      "id": "fcm_service",
+      "label": "Firebase Cloud Messaging",
+      "tipo": "servico_android",
+      "descricao": "Recebe pushes do backend. Qualquer push aciona syncOrders().",
+      "acoes": [
+        "onNewToken: POST /driver/fcm-token registra token no backend",
+        "onMessageReceived: syncOrders() sincroniza pedidos no Room DB"
+      ],
+      "bug": "Usa GlobalScope.launch (anti-pattern) em vez de escopo controlado pelo ciclo de vida."
+    },
+    {
+      "id": "barra_navegacao_inferior",
+      "label": "Barra de Navegacao Inferior",
+      "tipo": "componente_global",
+      "descricao": "Visivel apenas nas 4 telas principais.",
+      "tabs": [
+        {"icone": "Map", "label": "Home", "rota": "home"},
+        {"icone": "ListAlt", "label": "Entregas", "rota": "deliveries"},
+        {"icone": "AttachMoney", "label": "Ganhos", "rota": "earnings"},
+        {"icone": "Person", "label": "Perfil", "rota": "profile"}
+      ]
+    }
+  ],
+  "infraestrutura_offline": {
+    "telemetria": "Room DB armazena pontos GPS offline e sincroniza ao reconectar",
+    "pedidos": "Room DB com syncStatus: SYNCED, PENDING_ACCEPT, PENDING_COMPLETE_BATCH",
+    "http_cache": "OfflineInterceptor: cache GET de 7 dias quando sem rede",
+    "retry": "RetryInterceptor: 3 tentativas com backoff exponencial 1s, 2s, 4s"
+  },
+  "seguranca": {
+    "token_storage": "EncryptedSharedPreferences via AndroidX Security Crypto",
+    "interceptors": [
+      "AuthInterceptor: Bearer token em todas requisicoes",
+      "TokenAuthenticator: refresh automatico via Supabase em caso de 401",
+      "IdempotencyInterceptor: UUID como Idempotency-Key em POST/PUT/PATCH/DELETE",
+      "RetryInterceptor: 3 tentativas com backoff",
+      "OfflineInterceptor: cache-first quando sem rede"
+    ],
+    "anti_fraude": "Mock GPS detectado automaticamente e reportado como incidente GPS_SPOOFING",
+    "bug_critico": "TokenAuthenticator tem supabaseUrl e supabaseKey vazios em codigo. Refresh de token nao funciona."
+  }
+}

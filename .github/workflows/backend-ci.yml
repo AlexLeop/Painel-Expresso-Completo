@@ -28,6 +28,10 @@ jobs:
         ports:
           - 6379:6379
 
+    defaults:
+      run:
+        working-directory: ./backend
+
     steps:
       - uses: actions/checkout@v4
 
