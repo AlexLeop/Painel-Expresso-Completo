@@ -158,8 +158,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const { session, logout, changeTenant, globalSearch, setGlobalSearch } =
     useAuth();
   const user = session?.user;
-  const rawRole = user?.role || "lojista";
-  const role = rawRole === "administrador" ? "admin" : rawRole;
+  const rawRole = (user?.role || "lojista").toLowerCase();
+  // Map backend RoleType enum values to frontend navigation roles
+  const ROLE_MAP: Record<string, string> = {
+    admin: "admin",
+    administrador: "admin",
+    manager: "admin",
+    operator_role: "lojista",
+    viewer: "lojista",
+  };
+  const role = ROLE_MAP[rawRole] || rawRole;
   const isSupervisor = SUPERVISOR_ROLES.includes(role);
   const isMobileOpen = sidebarOpen;
 
