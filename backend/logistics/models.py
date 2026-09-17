@@ -52,10 +52,24 @@ class ClientPortalUser(TimeStampedTenantModel):
     supabase_uid = models.UUIDField(unique=True, help_text="Vínculo com Auth Seguro.")
     name = models.CharField(max_length=255)
     email = models.CharField(max_length=255)
+    passwordHash = models.CharField(
+        max_length=255, null=True, blank=True, db_column="passwordHash", help_text="Hash PBKDF2 da senha de acesso."
+    )
 
     class Meta:
         db_table = "ClientPortalUser"
         managed = False
+
+    def __str__(self):
+        return f"{self.name} ({self.email})"
+
+    def set_password(self, raw_password: str):
+        from accounts.security import hash_password
+        self.passwordHash = hash_password(raw_password)
+
+    def check_password(self, raw_password: str) -> bool:
+        from accounts.security import verify_password
+        return verify_password(raw_password, self.passwordHash)
 
 
 class Store(TimeStampedTenantModel):
