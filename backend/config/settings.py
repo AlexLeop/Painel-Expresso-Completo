@@ -87,8 +87,12 @@ WSGI_APPLICATION = "config.wsgi.application"
 import sys
 from urllib.parse import urlparse, unquote
 
-# Usa DATABASE_URL para conexão normal
-db_url = os.environ.get("DATABASE_URL")
+# Usa DATABASE_URL, URL_INTERNA ou URL_EXTERNA para conexão com PostgreSQL Standalone (VPS)
+db_url = (
+    os.environ.get("DATABASE_URL")
+    or os.environ.get("URL_INTERNA")
+    or os.environ.get("URL_EXTERNA")
+)
 if db_url:
     url = urlparse(db_url)
     # Remove o slash inicial do path
@@ -114,20 +118,17 @@ else:
         from django.core.exceptions import ImproperlyConfigured
         raise ImproperlyConfigured("DATABASE_URL environment variable is missing in production!")
 
-    # Fallback para ambiente de desenvolvimento local (ex: Supabase CLI)
+    # Fallback para ambiente de desenvolvimento local
     DATABASES = {
         "default": {
             "ENGINE": os.environ.get(
-                "SUPABASE_DB_ENGINE", "django.contrib.gis.db.backends.postgis"
+                "POSTGRES_DB_ENGINE", "django.contrib.gis.db.backends.postgis"
             ),
-            "NAME": os.environ.get("SUPABASE_DB_NAME", "postgres"),
-            "USER": os.environ.get("SUPABASE_DB_USER", "postgres"),
-            "PASSWORD": os.environ.get("SUPABASE_DB_PASSWORD", "postgres"),
-            "HOST": os.environ.get("SUPABASE_DB_HOST", "127.0.0.1"),
-            "PORT": os.environ.get("SUPABASE_DB_PORT", "54322"),
-            "OPTIONS": {
-                "sslmode": "require",
-            },
+            "NAME": os.environ.get("POSTGRES_DB_NAME", os.environ.get("DB", "expresso_neves")),
+            "USER": os.environ.get("POSTGRES_DB_USER", os.environ.get("USUARIO", "postgres")),
+            "PASSWORD": os.environ.get("POSTGRES_DB_PASSWORD", os.environ.get("SENHA", "postgres")),
+            "HOST": os.environ.get("POSTGRES_DB_HOST", os.environ.get("HOST", "127.0.0.1")),
+            "PORT": os.environ.get("POSTGRES_DB_PORT", os.environ.get("PORT", "5432")),
         }
     }
 
