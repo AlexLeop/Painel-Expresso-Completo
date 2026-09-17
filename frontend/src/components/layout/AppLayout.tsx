@@ -28,21 +28,28 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "../../lib/utils";
 import { useAuth } from "../../contexts/AuthContext";
 
-// ─── Roles (matching old frontend) ────────────────────────────
-// admin      → acessa tudo
-// lojista    → acessa tudo EXCETO: motoboys, empresas, sync, usuarios, snapshots
-// supervisor → acessa APENAS: /escala
-// coordinator→ acessa APENAS: /escala
+// ─── 3-Tier Access Control Hierarchy ─────────────────────────
+// superadmin      → SuperAdmin Master (Plataforma). Acesso total, incluindo /operadores, /gerencial, /snapshots, /sync, /usuarios
+// operador_admin  → Gerente/Admin do Operador Logístico. Acesso a /corridas, /motoboys, /empresas, /escala, /lancamentos, /financeiro, /saques, /relatorios, /historico, /usuarios, /configuracoes
+// operador_staff  → Despachante/Operacional do Operador. Acesso a /, /corridas, /escala, /relatorios, /historico
+// lojista         → Cliente / Lojista. Acesso a /, /corridas (lançar/rastrear), /lancamentos (extrato da loja), /relatorios (sua loja), /historico, /configuracoes (perfil)
+// supervisor      → Acesso restrito a /escala
 
-const ADMIN_ONLY_ROUTES = [
+const SUPERADMIN_ONLY_ROUTES = [
+  "/operadores",
+  "/gerencial",
+  "/snapshots",
+  "/sync",
+];
+
+const OPERATOR_ONLY_ROUTES = [
   "/motoboys",
   "/empresas",
-  "/sync",
-  "/usuarios",
-  "/snapshots",
   "/financeiro",
   "/saques",
+  "/escala",
 ];
+
 const SUPERVISOR_ONLY_ROUTE = "/escala";
 const SUPERVISOR_ROLES = ["supervisor", "coordinator"];
 
@@ -54,28 +61,43 @@ const navigationGroups = [
         name: "Dashboard",
         href: "/",
         icon: LayoutDashboard,
-        roles: ["admin", "lojista"],
+        roles: ["superadmin", "operador_admin", "operador_staff", "lojista"],
       },
       {
         name: "Corridas",
         href: "/corridas",
         icon: MapPin,
-        roles: ["admin", "lojista"],
+        roles: ["superadmin", "operador_admin", "operador_staff", "lojista"],
       },
       {
         name: "Escala",
         href: "/escala",
         icon: CalendarDays,
-        roles: ["admin", "supervisor", "coordinator"],
+        roles: ["superadmin", "operador_admin", "operador_staff", "supervisor", "coordinator"],
       },
     ],
   },
   {
     title: "Gestão",
     items: [
-      { name: "Motoboys", href: "/motoboys", icon: Bike, roles: ["admin"] },
-      { name: "Empresas", href: "/empresas", icon: Store, roles: ["admin"] },
-      { name: "Usuários", href: "/usuarios", icon: Users, roles: ["admin"] },
+      {
+        name: "Motoboys",
+        href: "/motoboys",
+        icon: Bike,
+        roles: ["superadmin", "operador_admin"],
+      },
+      {
+        name: "Empresas",
+        href: "/empresas",
+        icon: Store,
+        roles: ["superadmin", "operador_admin"],
+      },
+      {
+        name: "Usuários",
+        href: "/usuarios",
+        icon: Users,
+        roles: ["superadmin", "operador_admin"],
+      },
     ],
   },
   {
@@ -85,43 +107,43 @@ const navigationGroups = [
         name: "Lançamentos",
         href: "/lancamentos",
         icon: FileSpreadsheet,
-        roles: ["admin", "lojista"],
+        roles: ["superadmin", "operador_admin", "lojista"],
       },
       {
         name: "Financeiro",
         href: "/financeiro",
         icon: Wallet,
-        roles: ["admin"],
+        roles: ["superadmin", "operador_admin"],
       },
       {
         name: "Saques (PIX)",
         href: "/saques",
         icon: ArrowDownToLine,
-        roles: ["admin"],
+        roles: ["superadmin", "operador_admin"],
       },
       {
         name: "Relatórios",
         href: "/relatorios",
         icon: BarChart3,
-        roles: ["admin", "lojista"],
+        roles: ["superadmin", "operador_admin", "operador_staff", "lojista"],
       },
       {
         name: "Histórico",
         href: "/historico",
         icon: History,
-        roles: ["admin", "lojista"],
+        roles: ["superadmin", "operador_admin", "operador_staff", "lojista"],
       },
       {
         name: "Gerencial",
         href: "/gerencial",
         icon: Activity,
-        roles: ["admin"],
+        roles: ["superadmin"],
       },
       {
         name: "Operadores",
         href: "/operadores",
         icon: Activity,
-        roles: ["admin"],
+        roles: ["superadmin"],
       },
     ],
   },
@@ -132,10 +154,20 @@ const navigationGroups = [
         name: "Configurações",
         href: "/configuracoes",
         icon: Settings,
-        roles: ["admin", "lojista"],
+        roles: ["superadmin", "operador_admin", "lojista"],
       },
-      { name: "Snapshots", href: "/snapshots", icon: Camera, roles: ["admin"] },
-      { name: "Sync", href: "/sync", icon: RefreshCcw, roles: ["admin"] },
+      {
+        name: "Snapshots",
+        href: "/snapshots",
+        icon: Camera,
+        roles: ["superadmin"],
+      },
+      {
+        name: "Sync",
+        href: "/sync",
+        icon: RefreshCcw,
+        roles: ["superadmin"],
+      },
     ],
   },
 ];
@@ -158,16 +190,38 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const { session, logout, changeTenant, globalSearch, setGlobalSearch } =
     useAuth();
   const user = session?.user;
-  const rawRole = (user?.role || "lojista").toLowerCase();
-  // Map backend RoleType enum values to frontend navigation roles
-  const ROLE_MAP: Record<string, string> = {
-    admin: "admin",
-    administrador: "admin",
-    manager: "admin",
-    operator_role: "lojista",
-    viewer: "lojista",
-  };
-  const role = ROLE_MAP[rawRole] || rawRole;
+  const isPlatformAdmin = Boolean(user?.is_platform_admin);
+  const rawRole = (user?.role || "").toLowerCase();
+
+  // Normalize to 3-tier role
+  let role = "lojista";
+  if (
+    isPlatformAdmin ||
+    rawRole === "superadmin" ||
+    (rawRole === "admin" && isPlatformAdmin)
+  ) {
+    role = "superadmin";
+  } else if (
+    rawRole === "operador_admin" ||
+    rawRole === "admin" ||
+    rawRole === "manager" ||
+    rawRole === "gestor" ||
+    rawRole === "administrador"
+  ) {
+    role = "operador_admin";
+  } else if (
+    rawRole === "operador_staff" ||
+    rawRole === "operator_role" ||
+    rawRole === "operador" ||
+    rawRole === "despachante"
+  ) {
+    role = "operador_staff";
+  } else if (rawRole === "lojista" || rawRole === "cliente") {
+    role = "lojista";
+  } else if (SUPERVISOR_ROLES.includes(rawRole)) {
+    role = rawRole;
+  }
+
   const isSupervisor = SUPERVISOR_ROLES.includes(role);
   const isMobileOpen = sidebarOpen;
 
@@ -218,7 +272,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [userDropdownOpen]);
 
-  // Route guard — mirrors old frontend AppContext.tsx
+  // Route guard — 3-Tier Security
   useEffect(() => {
     if (!role) return;
     // Supervisors can only access /escala
@@ -226,11 +280,25 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       navigate(SUPERVISOR_ONLY_ROUTE, { replace: true });
       return;
     }
-    // Lojistas cannot access admin-only routes
-    if (role === "lojista" && ADMIN_ONLY_ROUTES.includes(location.pathname)) {
+    // Only superadmin can access platform-level routes
+    if (
+      role !== "superadmin" &&
+      SUPERADMIN_ONLY_ROUTES.includes(location.pathname)
+    ) {
       navigate("/", { replace: true });
+      return;
+    }
+    // Lojistas cannot access operator-only routes
+    if (
+      role === "lojista" &&
+      (OPERATOR_ONLY_ROUTES.includes(location.pathname) ||
+        SUPERADMIN_ONLY_ROUTES.includes(location.pathname))
+    ) {
+      navigate("/", { replace: true });
+      return;
     }
   }, [location.pathname, role, isSupervisor, navigate]);
+
 
   // Supervisors get a minimal layout (just the page, no sidebar)
   if (isSupervisor) {
@@ -438,8 +506,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   <p className="text-[13px] font-semibold text-zinc-100 truncate group-hover:text-white transition-colors">
                     {user?.name || "Usuário"}
                   </p>
-                  <p className="text-[11px] text-zinc-500 truncate mt-0.5 capitalize">
-                    {user?.role || "Lojista"}
+                  <p className="text-[11px] text-zinc-400 font-medium truncate mt-0.5">
+                    {role === "superadmin"
+                      ? "SuperAdmin Master"
+                      : role === "operador_admin"
+                        ? "Operador (Admin)"
+                        : role === "operador_staff"
+                          ? "Operador (Despacho)"
+                          : role === "lojista"
+                            ? "Cliente / Lojista"
+                            : user?.role || "Usuário"}
                   </p>
                 </div>
                 <ChevronDown
