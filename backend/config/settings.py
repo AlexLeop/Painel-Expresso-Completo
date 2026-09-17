@@ -57,7 +57,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     # Middleware de Isolamento RLS nativo
-    "config.middleware.SupabaseRLSMiddleware",
+    "config.middleware.NativeAuthRLSMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
