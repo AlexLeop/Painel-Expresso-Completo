@@ -176,6 +176,7 @@ class StaffMember(TimeStampedTenantModel):
     active = models.BooleanField(
         default=True, help_text="Define se o acesso está ativo ou revogado."
     )
+    is_platform_admin: bool = False
 
     class Meta:
         db_table = "StaffMember"

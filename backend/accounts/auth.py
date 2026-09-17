@@ -19,7 +19,7 @@ class NativeJWTAuth(HttpBearer):
     def authenticate(self, request: HttpRequest, token: str) -> Optional[Any]:
         try:
             claims = decode_token(token)
-            request.auth = claims
+            setattr(request, "auth", claims)
             return claims
         except SecurityError as e:
             logger.warning(f"Falha na validação do token JWT: {e}")
@@ -35,29 +35,39 @@ SupabaseJWTAuth = NativeJWTAuth
 
 def get_staff_member(request: HttpRequest) -> Optional[StaffMember]:
     """Retorna o StaffMember a partir do JWT nativo extraído no request."""
-    if not hasattr(request, "auth") or not request.auth:
+    auth = getattr(request, "auth", None)
+    if not auth:
         return None
 
     # Superadmin Sovereignty: Se for PlatformAdmin, cria representação soberana com bypass
-    if request.auth.get("is_platform_admin"):
-        uid = request.auth.get("sub")
-        admin = PlatformAdmin.objects.filter(id=uid).first()
-        if not admin and "email" in request.auth:
-            admin = PlatformAdmin.objects.filter(email=request.auth["email"]).first()
+    if auth.get("is_platform_admin"):
+        from accounts.models import Operator
 
-        target_operator_id = request.headers.get("X-Operator-Id") or request.auth.get("operator_id")
+        uid = auth.get("sub")
+        admin = PlatformAdmin.objects.filter(id=uid).first()
+        if not admin and "email" in auth:
+            admin = PlatformAdmin.objects.filter(email=auth["email"]).first()
+
+        target_operator_id = request.headers.get("X-Operator-Id") or auth.get("operator_id")
+        op = None
+        if target_operator_id:
+            op = Operator.objects.filter(id=target_operator_id).first()
+        if not op:
+            op = Operator.objects.first()
+
         staff = StaffMember(
             id=admin.id if admin else uid,
             name=admin.name if admin else "Platform Admin",
-            email=admin.email if admin else request.auth.get("email", ""),
+            email=admin.email if admin else auth.get("email", ""),
             role=StaffMember.RoleType.ADMIN,
-            operator_id=target_operator_id,
+            operator=op,
+            operator_id=op.id if op else target_operator_id,
             active=True,
         )
         staff.is_platform_admin = True
         return staff
 
-    uid = request.auth.get("sub")
+    uid = auth.get("sub")
     try:
         return StaffMember.objects.select_related("operator").get(id=uid, active=True)
     except (StaffMember.DoesNotExist, ValueError):
@@ -73,13 +83,12 @@ def require_role(roles: List[str]):
     Superadmin (is_platform_admin=True) possui soberania total e bypassa restrições de papel.
     """
 
-    def dependency(request: HttpRequest):
-        if hasattr(request, "auth") and request.auth and request.auth.get("is_platform_admin"):
-            return get_staff_member(request)
-
+    def dependency(request: HttpRequest) -> StaffMember:
         staff = get_staff_member(request)
         if not staff:
             raise HttpError(401, "Não autenticado ou Staff não encontrado.")
+        if getattr(staff, "is_platform_admin", False):
+            return staff
         if staff.role not in roles:
             raise HttpError(403, f"Acesso negado. Requer um dos roles: {roles}")
         return staff

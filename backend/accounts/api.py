@@ -47,6 +47,8 @@ def create_operator(request, payload: OperatorCreatePayload):
 @router.post("/operator/drivers", response=DriverResponse)
 def register_driver(request, payload: DriverRegistrationPayload):
     staff = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE"])(request)
+    if not staff or not staff.operator:
+        raise HttpError(400, "Operador não vinculado ao usuário.")
 
     import re
 
@@ -75,6 +77,8 @@ def register_driver(request, payload: DriverRegistrationPayload):
 @router.post("/operator/drivers/biometrics", response=DriverBiometricResponse)
 async def verify_biometrics(request, payload: DriverBiometricPayload):
     staff = await sync_to_async(require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE"]))(request)
+    if not staff or not staff.operator:
+        raise HttpError(400, "Operador não vinculado ao usuário.")
     
     try:
         driver = await Driver.objects.aget(id=payload.driver_id, operator=staff.operator)
@@ -128,6 +132,8 @@ def biometrics_webhook(request, payload: BiometricWebhookPayload, x_signature: s
 @router.post("/operator/security/deny-list", response=DenyListResponse)
 def add_to_deny_list(request, payload: DenyListPayload):
     staff = require_role(["ADMIN", "MANAGER"])(request)
+    if not staff or not staff.operator:
+        raise HttpError(400, "Operador não vinculado ao usuário.")
 
     with transaction.atomic():
         deny_entry = SecurityDenylist.objects.create(
