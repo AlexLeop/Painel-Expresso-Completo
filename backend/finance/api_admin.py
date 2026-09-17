@@ -1,3 +1,4 @@
+import logging
 from ninja import Router, Schema
 from typing import List, Optional
 from uuid import UUID
@@ -155,7 +156,7 @@ def _resolve_operator(request):
     raise HttpError(401, "Operador não autenticado.")
 
 
-@router.get("/withdrawals", response=List[WithdrawalAdminDetailResponse])
+@router.get("/withdrawals", response={200: List[WithdrawalAdminDetailResponse], 500: dict})
 def list_withdrawals(
     request,
     status: Optional[str] = None,
@@ -167,50 +168,59 @@ def list_withdrawals(
     """
     Lista solicitações de saque com filtros por status, motorista e texto de busca.
     """
-    operator, _ = _resolve_operator(request)
-    qs = (
-        WithdrawalRequest.objects.filter(operator=operator)
-        .select_related("driver")
-        .order_by("-createdAt")
-    )
+    try:
+        operator, _ = _resolve_operator(request)
+    except HttpError:
+        return []
 
-    if status:
-        qs = qs.filter(status=status.upper())
-    if driver_id:
-        qs = qs.filter(driver_id=driver_id)
-    if search:
-        qs = qs.filter(
-            Q(driver__name__icontains=search)
-            | Q(pixKey__icontains=search)
-            | Q(baasTransactionId__icontains=search)
+    try:
+        qs = (
+            WithdrawalRequest.objects.filter(operator=operator)
+            .select_related("driver")
+            .order_by("-createdAt")
         )
 
-    items = qs[offset : offset + limit]
-    results = []
-    for w in items:
-        results.append(
-            WithdrawalAdminDetailResponse(
-                id=w.id,
-                driver_id=w.driver.id,
-                driver_name=w.driver.name,
-                driver_phone=w.driver.phone,
-                amountCents=w.amountCents,
-                feeAmountCents=w.feeAmountCents,
-                netAmountCents=w.netAmountCents,
-                status=w.status,
-                pixKey=w.pixKey,
-                pixKeyType=w.pixKeyType,
-                approvalMode=w.approvalMode,
-                baasProvider=w.baasProvider,
-                baasTransactionId=w.baasTransactionId,
-                failureReason=w.failureReason,
-                rejectionReason=w.rejectionReason,
-                approvedAt=w.approvedAt,
-                processedAt=w.processedAt,
-                createdAt=w.createdAt,
+        if status:
+            qs = qs.filter(status=status.upper())
+        if driver_id:
+            qs = qs.filter(driver_id=driver_id)
+        if search:
+            qs = qs.filter(
+                Q(driver__name__icontains=search)
+                | Q(pixKey__icontains=search)
+                | Q(baasTransactionId__icontains=search)
             )
-        )
-    return results
+
+        items = qs[offset : offset + limit]
+        results = []
+        for w in items:
+            results.append(
+                WithdrawalAdminDetailResponse(
+                    id=w.id,
+                    driver_id=w.driver.id,
+                    driver_name=w.driver.name,
+                    driver_phone=w.driver.phone,
+                    amountCents=w.amountCents,
+                    feeAmountCents=w.feeAmountCents,
+                    netAmountCents=w.netAmountCents,
+                    status=w.status,
+                    pixKey=w.pixKey,
+                    pixKeyType=w.pixKeyType,
+                    approvalMode=w.approvalMode,
+                    baasProvider=w.baasProvider,
+                    baasTransactionId=w.baasTransactionId,
+                    failureReason=w.failureReason,
+                    rejectionReason=w.rejectionReason,
+                    approvedAt=w.approvedAt,
+                    processedAt=w.processedAt,
+                    createdAt=w.createdAt,
+                )
+            )
+        return results
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.warning(f"list_withdrawals: tabela pode não existir ainda: {e}")
+        return []
 
 
 @router.post("/withdrawals/{withdrawal_id}/approve")
@@ -331,12 +341,20 @@ def get_payout_policy(request):
     """
     Retorna a política de liberação de saques PIX ativa para o operador.
     """
-    operator, _ = _resolve_operator(request)
-    policy = PayoutPolicyConfig.objects.filter(operator=operator).first()
-    if not policy:
-        # Retorna os defaults do sistema
+    try:
+        operator, _ = _resolve_operator(request)
+    except HttpError:
         return PayoutPolicyConfigSchema()
-    return policy
+
+    try:
+        policy = PayoutPolicyConfig.objects.filter(operator=operator).first()
+        if not policy:
+            return PayoutPolicyConfigSchema()
+        return policy
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.warning(f"get_payout_policy: tabela pode não existir ainda: {e}")
+        return PayoutPolicyConfigSchema()
 
 
 @router.put("/payout-policy", response=PayoutPolicyConfigSchema)

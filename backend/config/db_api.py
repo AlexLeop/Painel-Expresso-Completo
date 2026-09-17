@@ -456,16 +456,29 @@ def create_company_store(request, payload: StoreCreateSchema):
     import uuid
 
     operator = None
-    if payload.companyId and payload.companyId != "global":
+    # 1. Tentar resolver via JWT auth (operator_id do token ou staff logado)
+    auth = getattr(request, "auth", None)
+    if auth:
+        op_id = auth.get("operator_id")
+        if op_id:
+            try:
+                operator = Operator.objects.filter(id=op_id).first()
+            except (ValidationError, ValueError):
+                pass
+
+    # 2. Tentar via companyId no payload
+    if not operator and payload.companyId and payload.companyId != "global":
         try:
             operator = Operator.objects.filter(id=payload.companyId).first()
         except (ValidationError, ValueError):
             operator = None
+
+    # 3. Fallback: primeiro operador do sistema
     if not operator:
         operator = Operator.objects.first()
 
     if not operator:
-        return {"success": False, "error": "Nenhum operador logístico cadastrado para vincular a empresa."}
+        return {"success": False, "error": "Nenhum operador logístico cadastrado. Cadastre um operador antes de criar empresas."}
 
     name = payload.name
     if not name:

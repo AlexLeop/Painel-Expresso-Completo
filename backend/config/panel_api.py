@@ -1,11 +1,21 @@
-from ninja import NinjaAPI, Router
+from ninja import NinjaAPI, Router, Schema
 from typing import Optional
 from logistics.models import Driver, Order
 from accounts.models import Operator, StaffMember, PlatformAdmin
 from accounts.auth import NativeJWTAuth
 from accounts.api import handle_login, handle_me, handle_refresh, handle_logout, LoginPayload, RefreshPayload
 
+
+class OperatorCreateSchema(Schema):
+    name: str
+    cnpj: str = ""
+    managerName: str
+    managerEmail: str
+    managerPassword: str = "123456"
+
+
 panel_api = NinjaAPI(urls_namespace="panel_api", auth=NativeJWTAuth())
+
 auth_bearer = NativeJWTAuth()
 
 @panel_api.post("/auth/login", auth=None, tags=["Native Auth Panel"])
@@ -436,10 +446,9 @@ def get_operators(request):
     return res
 
 @panel_api.post("/admin/operators", auth=auth_bearer)
-def create_operator(request, payload: dict):
+def create_operator(request, payload: OperatorCreateSchema):
     """
     Cria um novo Operador Logístico e o seu primeiro Gerente (Owner) de forma 100% nativa.
-    Payload: name, cnpj, managerName, managerEmail, managerPassword
     """
     import uuid
     
@@ -448,21 +457,15 @@ def create_operator(request, payload: dict):
     if not is_admin and not PlatformAdmin.objects.filter(id=uid).exists():
         return panel_api.create_response(request, {"error": "Acesso Negado: requer privilégios de Superadmin."}, status=403)
         
-    name = payload.get("name")
-    cnpj = payload.get("cnpj", "")
-    manager_name = payload.get("managerName")
-    manager_email = payload.get("managerEmail", "").strip().lower()
-    manager_pwd = payload.get("managerPassword", "123456")
-    
-    if not name or not manager_name or not manager_email:
+    if not payload.name or not payload.managerName or not payload.managerEmail:
         return panel_api.create_response(request, {"error": "Dados obrigatórios faltando"}, status=400)
         
     try:
         # 1. Create Operator
         operator = Operator.objects.create(
             id=uuid.uuid4(),
-            name=name,
-            cnpj=cnpj,
+            name=payload.name,
+            cnpj=payload.cnpj,
             status=Operator.OperatorStatus.ACTIVE
         )
         
@@ -470,17 +473,18 @@ def create_operator(request, payload: dict):
         staff = StaffMember(
             id=uuid.uuid4(),
             operator=operator,
-            name=manager_name,
-            email=manager_email,
+            name=payload.managerName,
+            email=payload.managerEmail.strip().lower(),
             role=StaffMember.RoleType.ADMIN,
             active=True
         )
-        staff.set_password(manager_pwd)
+        staff.set_password(payload.managerPassword)
         staff.save()
         
         return {"success": True, "operatorId": str(operator.id), "staffId": str(staff.id)}
     except Exception as e:
         return panel_api.create_response(request, {"success": False, "error": str(e)}, status=500)
+
 
 
 
