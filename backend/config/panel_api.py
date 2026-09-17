@@ -432,20 +432,20 @@ def get_operators(request):
 @panel_api.post("/admin/operators", auth=auth_bearer)
 def create_operator(request, payload: dict):
     """
-    Cria um novo Operador Logístico e o seu primeiro Gerente (Owner).
+    Cria um novo Operador Logístico e o seu primeiro Gerente (Owner) de forma 100% nativa.
     Payload: name, cnpj, managerName, managerEmail, managerPassword
     """
-    from config.supabase_client import get_supabase_admin
     import uuid
     
+    is_admin = request.auth.get("is_platform_admin", False)
     uid = request.auth.get("sub")
-    if not PlatformAdmin.objects.filter(supabase_uid=uid).exists():
-        return panel_api.create_response(request, {"error": "Acesso Negado"}, status=403)
+    if not is_admin and not PlatformAdmin.objects.filter(id=uid).exists():
+        return panel_api.create_response(request, {"error": "Acesso Negado: requer privilégios de Superadmin."}, status=403)
         
     name = payload.get("name")
     cnpj = payload.get("cnpj", "")
     manager_name = payload.get("managerName")
-    manager_email = payload.get("managerEmail")
+    manager_email = payload.get("managerEmail", "").strip().lower()
     manager_pwd = payload.get("managerPassword", "123456")
     
     if not name or not manager_name or not manager_email:
@@ -454,31 +454,25 @@ def create_operator(request, payload: dict):
     try:
         # 1. Create Operator
         operator = Operator.objects.create(
+            id=uuid.uuid4(),
             name=name,
             cnpj=cnpj,
             status=Operator.OperatorStatus.ACTIVE
         )
         
-        # 2. Create Auth User for Manager in Supabase
-        supabase_admin = get_supabase_admin()
-        user_res = supabase_admin.auth.admin.create_user({
-            "email": manager_email,
-            "password": manager_pwd,
-            "email_confirm": True,
-            "user_metadata": {"name": manager_name, "role": "operator_owner"}
-        })
-        
-        # 3. Create StaffMember
-        StaffMember.objects.create(
+        # 2. Create StaffMember natively with hashed password
+        staff = StaffMember(
+            id=uuid.uuid4(),
             operator=operator,
-            supabase_uid=user_res.user.id,
             name=manager_name,
             email=manager_email,
             role=StaffMember.RoleType.ADMIN,
             active=True
         )
+        staff.set_password(manager_pwd)
+        staff.save()
         
-        return {"success": True, "operatorId": str(operator.id)}
+        return {"success": True, "operatorId": str(operator.id), "staffId": str(staff.id)}
     except Exception as e:
         return panel_api.create_response(request, {"success": False, "error": str(e)}, status=500)
 

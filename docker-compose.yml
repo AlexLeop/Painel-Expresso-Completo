@@ -17,12 +17,10 @@ services:
     volumes:
       - static_volume:/app/static
     environment:
-      # Geral e Supabase
-      - SUPABASE_URL=${SUPABASE_URL:-https://xxxx.supabase.co}
-      - SUPABASE_KEY=${SUPABASE_KEY:-sua-chave-anon}
-      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:senha@pooler.supabase.com:6543/postgres?pgbouncer=true}
-      - DIRECT_URL=${DIRECT_URL:-postgresql://postgres:senha@pooler.supabase.com:5432/postgres}
+      # Standalone PostgreSQL 17 + PostGIS & Auth Nativo
+      - DATABASE_URL=${DATABASE_URL:-postgresql://expresso_admin:senha@191.101.235.244:5433/expresso_neves}
+      - DIRECT_URL=${DIRECT_URL:-postgresql://expresso_admin:senha@191.101.235.244:5433/expresso_neves}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-super-secret-jwt-token-with-at-least-32-characters-long}
       
       # Backend (Django & Celery)
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-sua-chave-secreta-aqui}
@@ -54,13 +52,10 @@ services:
       context: ./backend
       dockerfile: fast_lane/Dockerfile
     environment:
-      - SUPABASE_URL=${SUPABASE_URL:-https://xxxx.supabase.co}
-      - SUPABASE_KEY=${SUPABASE_KEY:-sua-chave-anon}
-      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://expresso_admin:senha@191.101.235.244:5433/expresso_neves}
+      - DIRECT_URL=${DIRECT_URL:-postgresql://expresso_admin:senha@191.101.235.244:5433/expresso_neves}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-super-secret-jwt-token-with-at-least-32-characters-long}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/1}
-      # A FastAPI pode precisar das integrações se tiver endpoints que as usem
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:senha@pooler.supabase.com:6543/postgres?pgbouncer=true}
-      - DIRECT_URL=${DIRECT_URL:-postgresql://postgres:senha@pooler.supabase.com:5432/postgres}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-sua-chave-gemini}
     depends_on:
       - redis
@@ -71,12 +66,10 @@ services:
       dockerfile: Dockerfile
     command: celery -A config worker -l info --concurrency=2
     environment:
-      # Copia do Django para os tasks do Celery terem acesso a tudo
-      - SUPABASE_URL=${SUPABASE_URL:-https://xxxx.supabase.co}
-      - SUPABASE_KEY=${SUPABASE_KEY:-sua-chave-anon}
-      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:senha@pooler.supabase.com:6543/postgres?pgbouncer=true}
-      - DIRECT_URL=${DIRECT_URL:-postgresql://postgres:senha@pooler.supabase.com:5432/postgres}
+      # Standalone PostgreSQL 17 + PostGIS & Auth Nativo
+      - DATABASE_URL=${DATABASE_URL:-postgresql://expresso_admin:senha@191.101.235.244:5433/expresso_neves}
+      - DIRECT_URL=${DIRECT_URL:-postgresql://expresso_admin:senha@191.101.235.244:5433/expresso_neves}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-super-secret-jwt-token-with-at-least-32-characters-long}
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-sua-chave-secreta-aqui}
       - DJANGO_DEBUG=${DJANGO_DEBUG:-False}
       - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-seu-dominio.com,localhost}
@@ -103,11 +96,9 @@ services:
     command: celery -A config beat -l info
     environment:
       # Idem ao worker
-      - SUPABASE_URL=${SUPABASE_URL:-https://xxxx.supabase.co}
-      - SUPABASE_KEY=${SUPABASE_KEY:-sua-chave-anon}
-      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:senha@pooler.supabase.com:6543/postgres?pgbouncer=true}
-      - DIRECT_URL=${DIRECT_URL:-postgresql://postgres:senha@pooler.supabase.com:5432/postgres}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://expresso_admin:senha@191.101.235.244:5433/expresso_neves}
+      - DIRECT_URL=${DIRECT_URL:-postgresql://expresso_admin:senha@191.101.235.244:5433/expresso_neves}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-super-secret-jwt-token-with-at-least-32-characters-long}
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-sua-chave-secreta-aqui}
       - DJANGO_DEBUG=${DJANGO_DEBUG:-False}
       - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-seu-dominio.com,localhost}
@@ -145,8 +136,6 @@ services:
       dockerfile: Dockerfile
     environment:
       # Frontend (Vite/React)
-      - VITE_SUPABASE_URL=${VITE_SUPABASE_URL:-https://xxxx.supabase.co}
-      - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY:-eyJh...}
       - VITE_API_URL=${VITE_API_URL:-https://api.seu-dominio.com}
       - PORT=${PORT:-5173}
       - NODE_ENV=${NODE_ENV:-production}

@@ -12,6 +12,7 @@ class NativeAuthRLSMiddleware:
     extrai o payload e, em conexões PostgreSQL, injeta os claims na sessão.
     Garante que o ORM do Django e o RLS do banco reflitam a identidade do usuário.
     """
+    ALLOWED_ROLES = {"authenticated", "service_role", "anon"}
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -54,6 +55,7 @@ class NativeAuthRLSMiddleware:
                         )
                     return self.get_response(request)
 
+        # Requests sem auth rodam sem claims ou com SET LOCAL ROLE anon no Postgres
         return self.get_response(request)
 
 

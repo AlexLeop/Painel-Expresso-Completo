@@ -48,53 +48,25 @@ def create_operator(request, payload: OperatorCreatePayload):
 def register_driver(request, payload: DriverRegistrationPayload):
     staff = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE"])(request)
 
-    from config.supabase_client import supabase
     import re
 
     clean_cpf = re.sub(r"[^\d]", "", payload.cpf)
     if len(clean_cpf) != 11:
         return 400, {"error": "CPF inválido."}
 
-    # Check if Driver with this CPF already exists (assuming CPF maps to pixKey for now or is stored in metadata)
+    # Check if Driver with this CPF already exists
     if Driver.objects.filter(operator=staff.operator, phone=payload.phone).exists():
         return 409, {"error": "Motorista com este telefone já registrado."}
 
     with transaction.atomic():
-        auth_uid = str(uuid4())  # Fallback to mock if supabase is not available
-        if supabase is not None:
-            try:
-                clean_phone = "".join(filter(str.isdigit, payload.phone))
-                if not clean_phone.startswith("55"):
-                    clean_phone = f"55{clean_phone}"
-
-                logger.info(f"Registrando motorista com Phone Auth OTP: +{clean_phone}")
-
-                resp = supabase.auth.admin.create_user(
-                    {
-                        "phone": f"+{clean_phone}",
-                        "phone_confirm": True,
-                        "user_metadata": {
-                            "name": payload.name,
-                            "role": "driver",
-                            "operator_id": str(staff.operator.id),
-                        },
-                    }
-                )
-                auth_uid = resp.user.id
-            except Exception as e:
-                logger.error(f"Falha ao criar usuário no Supabase Auth: {e}")
-                return 500, {
-                    "error": "Falha na integração com provedor de autenticação."
-                }
-
         driver = Driver.objects.create(
             id=uuid4(),
             operator=staff.operator,
-            supabase_uid=auth_uid,
+            supabase_uid=str(uuid4()),
             name=payload.name,
             phone=payload.phone,
-            pixKey=payload.cpf,  # Storing CPF as pixKey temporarily if not strictly defined
-            pixKeyType="CPF",  # Default
+            pixKey=payload.cpf,  # Storing CPF as pixKey
+            pixKeyType="CPF",
             active=True,
         )
         return driver
