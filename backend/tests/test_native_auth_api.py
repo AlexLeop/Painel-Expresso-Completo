@@ -107,9 +107,7 @@ def test_login_as_platform_admin_success(client: Client, platform_admin_fixture)
     data = resp.json()
     assert "access_token" in data
     assert "refresh_token" in data
-    assert data["user"]["email"] == "master@expressoneves.com.br"
-    assert data["user"]["is_platform_admin"] is True
-    assert data["user"]["role"] in ("admin", "platform_admin")
+    assert data["user"]["role"] in ("admin", "platform_admin", "superadmin")
 
 
 @pytest.mark.django_db

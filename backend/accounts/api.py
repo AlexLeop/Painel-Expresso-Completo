@@ -229,7 +229,8 @@ def handle_login(request, payload: LoginPayload):
         token_payload = {
             "sub": str(admin.id),
             "email": admin.email,
-            "role": "admin",
+            "role": "superadmin",
+            "user_type": "platform_admin",
             "is_platform_admin": True,
             "operator_id": None,
         }
@@ -249,9 +250,11 @@ def handle_login(request, payload: LoginPayload):
                 "id": str(admin.id),
                 "email": admin.email,
                 "name": admin.name,
-                "role": "admin",
+                "role": "superadmin",
+                "user_type": "platform_admin",
                 "is_platform_admin": True,
                 "company_id": "global",
+                "machine_empresa_id": "global",
                 "operator_id": None,
                 "companies": companies_list,
             },
@@ -260,10 +263,13 @@ def handle_login(request, payload: LoginPayload):
     # 2. Checa StaffMember (Equipe interna do Operador)
     staff = StaffMember.objects.filter(email__iexact=email, active=True).select_related("operator").first()
     if staff and staff.check_password(raw_password):
+        assigned_role = "operador_admin" if staff.role in ["ADMIN", "MANAGER"] else "operador_staff"
         token_payload = {
             "sub": str(staff.id),
             "email": staff.email,
-            "role": staff.role,
+            "role": assigned_role,
+            "staff_role": staff.role,
+            "user_type": "operator_staff",
             "is_platform_admin": False,
             "operator_id": str(staff.operator_id),
         }
@@ -288,13 +294,60 @@ def handle_login(request, payload: LoginPayload):
                 "id": str(staff.id),
                 "email": staff.email,
                 "name": staff.name,
-                "role": staff.role,
+                "role": assigned_role,
+                "staff_role": staff.role,
+                "user_type": "operator_staff",
                 "is_platform_admin": False,
                 "operator_id": str(staff.operator_id),
                 "company_id": str(staff.operator_id),
+                "machine_empresa_id": str(staff.operator_id),
                 "companies": companies_list,
             },
         }
+
+    # 3. Checa ClientPortalUser (Cliente / Lojista)
+    try:
+        from logistics.models import ClientPortalUser
+        client_user = ClientPortalUser.objects.filter(email__iexact=email).select_related("client", "operator").first()
+        if client_user and client_user.check_password(raw_password):
+            token_payload = {
+                "sub": str(client_user.id),
+                "email": client_user.email,
+                "role": "lojista",
+                "user_type": "client_portal_user",
+                "is_platform_admin": False,
+                "operator_id": str(client_user.operator_id),
+                "client_id": str(client_user.client_id),
+            }
+            access_token = create_access_token(token_payload)
+            refresh_token = create_refresh_token({"sub": str(client_user.id), "type": "refresh"})
+
+            try:
+                stores = list(Store.objects.filter(client_id=client_user.client_id).values("id", "name"))
+                companies_list = [{"id": str(s["id"]), "nome": s["name"]} for s in stores]
+            except Exception:
+                companies_list = []
+
+            return 200, {
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "token_type": "bearer",
+                "user": {
+                    "id": str(client_user.id),
+                    "email": client_user.email,
+                    "name": client_user.name,
+                    "role": "lojista",
+                    "user_type": "client_portal_user",
+                    "is_platform_admin": False,
+                    "operator_id": str(client_user.operator_id),
+                    "client_id": str(client_user.client_id),
+                    "company_id": str(client_user.client_id),
+                    "machine_empresa_id": str(client_user.client_id),
+                    "companies": companies_list,
+                },
+            }
+    except Exception as e:
+        logger.warning(f"Erro ao verificar ClientPortalUser: {e}")
 
     raise HttpError(401, "Credenciais inválidas.")
 
@@ -306,6 +359,7 @@ def handle_me(request):
     uid = request.auth.get("sub")
     is_admin = request.auth.get("is_platform_admin", False)
 
+    # 1. SuperAdmin Master
     if is_admin:
         admin = PlatformAdmin.objects.filter(id=uid).first()
         if not admin and "email" in request.auth:
@@ -322,21 +376,56 @@ def handle_me(request):
                 "id": str(admin.id) if admin else uid,
                 "email": admin.email if admin else request.auth.get("email", ""),
                 "name": admin.name if admin else "Platform Admin",
-                "role": "admin",
+                "role": "superadmin",
+                "user_type": "platform_admin",
                 "is_platform_admin": True,
                 "company_id": "global",
                 "machine_empresa_id": "global",
+                "operator_id": None,
                 "companies": companies_list,
             },
         }
 
-    staff = StaffMember.objects.filter(id=uid, active=True).first()
+    # 2. ClientPortalUser (Lojista)
+    if request.auth.get("user_type") == "client_portal_user" or request.auth.get("client_id"):
+        from logistics.models import ClientPortalUser
+        client_user = ClientPortalUser.objects.filter(id=uid).select_related("client", "operator").first()
+        if not client_user and "email" in request.auth:
+            client_user = ClientPortalUser.objects.filter(email=request.auth["email"]).select_related("client", "operator").first()
+
+        if client_user:
+            try:
+                stores = list(Store.objects.filter(client_id=client_user.client_id).values("id", "name"))
+                companies_list = [{"id": str(s["id"]), "nome": s["name"]} for s in stores]
+            except Exception:
+                companies_list = []
+
+            return {
+                "authenticated": True,
+                "user": {
+                    "id": str(client_user.id),
+                    "email": client_user.email,
+                    "name": client_user.name,
+                    "role": "lojista",
+                    "user_type": "client_portal_user",
+                    "is_platform_admin": False,
+                    "operator_id": str(client_user.operator_id),
+                    "client_id": str(client_user.client_id),
+                    "company_id": str(client_user.client_id),
+                    "machine_empresa_id": str(client_user.client_id),
+                    "companies": companies_list,
+                },
+            }
+
+    # 3. StaffMember (Operador Logístico)
+    staff = StaffMember.objects.filter(id=uid, active=True).select_related("operator").first()
     if not staff and "email" in request.auth:
-        staff = StaffMember.objects.filter(email=request.auth["email"], active=True).first()
+        staff = StaffMember.objects.filter(email=request.auth["email"], active=True).select_related("operator").first()
 
     if not staff:
         raise HttpError(401, "Usuário não encontrado.")
 
+    assigned_role = "operador_admin" if staff.role in ["ADMIN", "MANAGER"] else "operador_staff"
     try:
         stores = list(Store.objects.filter(operator_id=staff.operator_id).values("id", "name"))
         companies_list = [{"id": str(s["id"]), "nome": s["name"]} for s in stores]
@@ -353,7 +442,9 @@ def handle_me(request):
             "id": str(staff.id),
             "email": staff.email,
             "name": staff.name,
-            "role": staff.role,
+            "role": assigned_role,
+            "staff_role": staff.role,
+            "user_type": "operator_staff",
             "is_platform_admin": False,
             "operator_id": str(staff.operator_id),
             "company_id": str(staff.operator_id),
@@ -361,6 +452,7 @@ def handle_me(request):
             "companies": companies_list,
         },
     }
+
 
 
 def handle_refresh(request, payload: RefreshPayload):
