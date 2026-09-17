@@ -921,15 +921,29 @@ def get_orders(
             except Exception:
                 pass
                 
+            store_name = "Expresso Neves"
+            try:
+                if o.store_id and hasattr(o, 'store') and o.store:
+                    store_name = o.store.name
+            except Exception:
+                pass
+                
+            formatted_date = o.requestedAt.strftime("%Y-%m-%d %H:%M:%S") if getattr(o, 'requestedAt', None) and hasattr(o.requestedAt, 'strftime') else str(getattr(o, 'requestedAt', ''))
+                
             res.append({
                 "id": str(o.id),
                 "driver_id": str(o.driver_id) if o.driver_id else None,
                 "motorista": drv_name,
+                "motoboy": drv_name,
+                "empresa": store_name,
+                "loja": store_name,
+                "store_id": str(o.store_id) if o.store_id else "",
                 "status": o.status,
                 "price": (o.fareValueCents or 0) / 100.0 if hasattr(o, 'fareValueCents') else 0,
                 "valor_total": (o.fareValueCents or 0) / 100.0 if hasattr(o, 'fareValueCents') else 0,
                 "distance": (o.distanceMeters or 0) / 1000.0 if hasattr(o, 'distanceMeters') else 0,
-                "data": o.requestedAt.strftime("%Y-%m-%d %H:%M:%S") if getattr(o, 'requestedAt', None) and hasattr(o.requestedAt, 'strftime') else str(getattr(o, 'requestedAt', ''))
+                "data": formatted_date,
+                "data_hora_solicitacao": formatted_date,
             })
         except Exception:
             continue
@@ -1970,6 +1984,242 @@ def create_client_customer(request, payload: CreateCustomerPayload):
             "last_order_at": timezone.now().isoformat(),
         }
     }
+
+
+@router.get("/dashboard-stats")
+def get_dashboard_stats(
+    request,
+    range: Optional[str] = None,
+    period: Optional[str] = None,
+    company_id: Optional[str] = None
+):
+    """
+    Consolidated Dashboard KPIs & Metrics:
+    - Faturamento total do período
+    - Faturamento por dia (gráfico de área)
+    - Total de entregas
+    - Entregas concluídas
+    - Entregas em andamento
+    - Entregas canceladas
+    - Taxa de conclusão (%)
+    - Ticket médio (R$)
+    - Lojas parceiras ativas / total
+    - Motoboys ativos / total
+    - Ranking de Lojas Parceiras (Top lojas por receita e volume de corridas)
+    - Radar de entregas recentes
+    """
+    from django.utils import timezone
+    from datetime import timedelta
+    from django.db.models import Sum
+    from logistics.models import Order, Store, Driver
+    from finance.models import ManualEntry
+    
+    auth = getattr(request, "auth", None) or {}
+    is_admin = auth.get("is_platform_admin", False)
+    auth_op_id = auth.get("operator_id")
+    client_id = auth.get("client_id")
+    
+    selected_range = range or period or "last7"
+    
+    # Calculate date range
+    now = timezone.now()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    if selected_range == "today":
+        start_date = today_start
+        end_date = now
+        days_count = 1
+    elif selected_range == "month":
+        start_date = today_start.replace(day=1)
+        end_date = now
+        days_count = (now - start_date).days + 1
+    elif selected_range == "all":
+        start_date = today_start - timedelta(days=90)
+        end_date = now
+        days_count = 90
+    else:  # "last7" default
+        start_date = today_start - timedelta(days=6)
+        end_date = now
+        days_count = 7
+        
+    # Scoping for Orders & related models
+    orders_qs = Order.objects.select_related("store", "driver").all()
+    stores_qs = Store.objects.all()
+    drivers_qs = Driver.objects.all()
+    entries_qs = ManualEntry.objects.all()
+    
+    if client_id:
+        orders_qs = orders_qs.filter(store__client_id=client_id)
+        stores_qs = stores_qs.filter(client_id=client_id)
+        drivers_qs = drivers_qs.none()
+        entries_qs = entries_qs.none()
+    elif not is_admin and auth_op_id:
+        orders_qs = orders_qs.filter(operator_id=auth_op_id)
+        stores_qs = stores_qs.filter(operator_id=auth_op_id)
+        drivers_qs = drivers_qs.filter(operator_id=auth_op_id)
+        entries_qs = entries_qs.filter(operator_id=auth_op_id)
+    elif company_id and company_id != "global":
+        try:
+            orders_qs = orders_qs.filter(operator_id=company_id)
+            stores_qs = stores_qs.filter(operator_id=company_id)
+            drivers_qs = drivers_qs.filter(operator_id=company_id)
+            entries_qs = entries_qs.filter(operator_id=company_id)
+        except Exception:
+            pass
+    elif not is_admin:
+        orders_qs = orders_qs.none()
+        stores_qs = stores_qs.none()
+        drivers_qs = drivers_qs.none()
+        entries_qs = entries_qs.none()
+
+    # Filter period orders
+    period_orders = orders_qs.filter(requestedAt__gte=start_date, requestedAt__lte=end_date)
+    period_entries = entries_qs.filter(createdAt__gte=start_date, createdAt__lte=end_date)
+    
+    # Active orders (in progress right now)
+    active_statuses = [
+        Order.OrderStatus.STARTED,
+        Order.OrderStatus.ACCEPTED,
+        Order.OrderStatus.OFFERED,
+        Order.OrderStatus.READY_FOR_DISPATCH,
+        Order.OrderStatus.PREPARING,
+        Order.OrderStatus.ARRIVED,
+    ]
+    active_orders_count = orders_qs.filter(status__in=active_statuses).count()
+    
+    # Period order statistics
+    total_orders = period_orders.count()
+    completed_orders = period_orders.filter(status=Order.OrderStatus.COMPLETED).count()
+    canceled_orders = period_orders.filter(status__in=[
+        Order.OrderStatus.CANCELED,
+        Order.OrderStatus.CANCELED_IN_TRANSIT,
+        Order.OrderStatus.RETURNED
+    ]).count()
+    
+    completion_rate = 0.0
+    if (completed_orders + canceled_orders) > 0:
+        completion_rate = round((completed_orders / (completed_orders + canceled_orders)) * 100.0, 1)
+    elif completed_orders > 0:
+        completion_rate = 100.0
+        
+    # Revenue calculations
+    orders_rev_cents = period_orders.filter(status=Order.OrderStatus.COMPLETED).aggregate(s=Sum("fareValueCents"))["s"] or 0
+    orders_revenue = orders_rev_cents / 100.0
+    
+    entries_cents = period_entries.aggregate(s=Sum("amountCents"))["s"] or 0
+    entries_net = entries_cents / 100.0
+        
+    faturamento_total = orders_revenue if orders_revenue > 0 else max(entries_net, 0.0)
+    average_ticket = round(faturamento_total / completed_orders, 2) if completed_orders > 0 else 0.0
+    
+    active_stores = stores_qs.filter(operational=True).count()
+    total_stores = stores_qs.count()
+    active_drivers = drivers_qs.filter(active=True).count()
+    total_drivers = drivers_qs.count()
+    
+    # Daily timeline
+    import builtins
+    daily_data = []
+    for day_idx in builtins.range(days_count):
+        d_start = (start_date + timedelta(days=day_idx)).replace(hour=0, minute=0, second=0, microsecond=0)
+        d_end = d_start + timedelta(days=1)
+        day_label = d_start.strftime("%d/%m")
+        day_iso = d_start.strftime("%Y-%m-%d")
+        
+        day_completed = period_orders.filter(
+            requestedAt__gte=d_start,
+            requestedAt__lt=d_end,
+            status=Order.OrderStatus.COMPLETED
+        )
+        day_rev_cents = day_completed.aggregate(s=Sum("fareValueCents"))["s"] or 0
+        day_rev = day_rev_cents / 100.0
+        day_rides = day_completed.count()
+        
+        daily_data.append({
+            "date": day_iso,
+            "time": day_label,
+            "faturamento": day_rev,
+            "corridas": day_rides,
+        })
+        
+    # Ranking of Top Partner Stores
+    top_stores = []
+    store_map = {}
+    for ord in period_orders:
+        s_id = str(ord.store_id) if ord.store_id else "unknown"
+        s_name = ord.store.name if (ord.store and ord.store.name) else "Expresso Neves"
+        if s_id not in store_map:
+            store_map[s_id] = {"id": s_id, "nome": s_name, "corridas": 0, "faturamento": 0.0}
+        store_map[s_id]["corridas"] += 1
+        if ord.status == Order.OrderStatus.COMPLETED:
+            store_map[s_id]["faturamento"] += (ord.fareValueCents or 0) / 100.0
+            
+    sorted_stores = sorted(store_map.values(), key=lambda x: (x["faturamento"], x["corridas"]), reverse=True)
+    max_rides = max([s["corridas"] for s in sorted_stores], default=1) or 1
+    for s in sorted_stores[:8]:
+        s["percentual"] = round((s["corridas"] / max_rides) * 100, 1)
+        s["ticket_medio"] = round(s["faturamento"] / s["corridas"], 2) if s["corridas"] > 0 else 0.0
+        top_stores.append(s)
+        
+    # Recent / Active Orders for Real-Time Radar
+    recent_qs = orders_qs.order_by("-requestedAt")[:12]
+    recent_orders = []
+    for o in recent_qs:
+        drv_name = "Aguardando condutor"
+        try:
+            if o.driver_id and hasattr(o, "driver") and o.driver:
+                drv_name = o.driver.name
+        except Exception:
+            pass
+        st_name = "Expresso Neves"
+        try:
+            if o.store_id and hasattr(o, "store") and o.store:
+                st_name = o.store.name
+        except Exception:
+            pass
+            
+        status_label = "Em andamento"
+        if o.status == Order.OrderStatus.COMPLETED:
+            status_label = "Finalizada"
+        elif o.status in [Order.OrderStatus.STARTED, Order.OrderStatus.ARRIVED]:
+            status_label = "Em trânsito"
+        elif o.status == Order.OrderStatus.ACCEPTED:
+            status_label = "Aceita"
+        elif o.status == Order.OrderStatus.OFFERED:
+            status_label = "Ofertada"
+        elif o.status in [Order.OrderStatus.CANCELED, Order.OrderStatus.CANCELED_IN_TRANSIT]:
+            status_label = "Cancelada"
+            
+        recent_orders.append({
+            "id": f"#{str(o.id)[:8]}",
+            "motoboy": drv_name,
+            "empresa": st_name,
+            "loja": st_name,
+            "status": o.status,
+            "status_label": status_label,
+            "valor": (o.fareValueCents or 0) / 100.0 if hasattr(o, "fareValueCents") else 0.0,
+            "time": o.requestedAt.strftime("%H:%M") if getattr(o, "requestedAt", None) and hasattr(o.requestedAt, "strftime") else "Agora",
+            "date": o.requestedAt.strftime("%d/%m") if getattr(o, "requestedAt", None) and hasattr(o.requestedAt, "strftime") else "",
+        })
+        
+    return {
+        "range": selected_range,
+        "faturamento_total": faturamento_total,
+        "total_orders": total_orders,
+        "completed_orders": completed_orders,
+        "active_orders": active_orders_count,
+        "canceled_orders": canceled_orders,
+        "completion_rate": completion_rate,
+        "average_ticket": average_ticket,
+        "active_stores": active_stores,
+        "total_stores": total_stores,
+        "active_drivers": active_drivers,
+        "total_drivers": total_drivers,
+        "chart_data": daily_data,
+        "top_stores": top_stores,
+        "recent_orders": recent_orders,
+    }
+
 
 
 

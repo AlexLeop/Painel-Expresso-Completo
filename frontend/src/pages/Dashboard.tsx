@@ -1,21 +1,27 @@
-import { useMemo, useState, useEffect } from "react";
-import { getSession } from "../lib/api";
-import { useApiQuery } from "../lib/useApiQuery";
+import React, { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
-  Users,
-  Truck,
-  ArrowUpRight,
-  ArrowDownRight,
-  Clock,
-  MapPin,
-  Activity,
   LayoutDashboard,
-  Loader2,
+  TrendingUp,
+  DollarSign,
+  Truck,
+  Bike,
+  Store,
+  Activity,
   RefreshCw,
   Info,
   CalendarDays,
   FileSpreadsheet,
-  ChevronDown,
+  Wallet,
+  CheckCircle2,
+  ArrowUpRight,
+  MapPin,
+  Receipt,
+  Award,
+  Zap,
+  ChevronRight,
+  BarChart3,
+  Clock,
 } from "lucide-react";
 import {
   AreaChart,
@@ -25,62 +31,26 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  BarChart,
+  Bar,
 } from "recharts";
 import { formatCurrency, cn } from "../lib/utils";
 import { motion } from "framer-motion";
+import { useAuth } from "../contexts/AuthContext";
+import { useApiQuery } from "../lib/useApiQuery";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { Skeleton } from "../components/ui/Skeleton";
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.1 },
-  },
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0 },
-};
-
-type RangeKey = "today" | "last7" | "month";
-type LayoutMode = "v2" | "classic";
-
-function formatDateISO(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function addDaysISO(dateISO: string, delta: number) {
-  const [y, m, d] = dateISO.split("-").map(Number);
-  const dt = new Date(y, (m || 1) - 1, d || 1);
-  dt.setDate(dt.getDate() + delta);
-  return formatDateISO(dt);
-}
-
-function buildISODateRange(startISO: string, endISO: string) {
-  const out: string[] = [];
-  let cur = startISO;
-  while (cur <= endISO) {
-    out.push(cur);
-    cur = addDaysISO(cur, 1);
-    if (out.length > 400) break;
-  }
-  return out;
-}
+type RangeKey = "today" | "last7" | "month" | "all";
+type ChartView = "revenue" | "rides";
 
 function TooltipBadge({ label }: { label: string }) {
   return (
     <span
-      className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-zinc-100 text-zinc-500 hover:text-zinc-800 hover:bg-zinc-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E55C00]"
-      tabIndex={0}
-      role="img"
-      aria-label={label}
+      className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-zinc-100 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-200 transition-colors cursor-help"
       title={label}
     >
-      <Info className="h-3.5 w-3.5" />
+      <Info className="h-3 w-3" />
     </span>
   );
 }
@@ -96,10 +66,11 @@ function SegmentedControl({
     { key: "today", label: "Hoje" },
     { key: "last7", label: "7 dias" },
     { key: "month", label: "Mês" },
+    { key: "all", label: "Geral" },
   ];
   return (
     <div
-      className="inline-flex items-center bg-white border border-zinc-200/80 rounded-xl p-1 shadow-sm"
+      className="inline-flex items-center bg-zinc-100/80 p-1 rounded-xl border border-zinc-200/80 shadow-inner"
       role="group"
       aria-label="Filtro de período"
     >
@@ -111,10 +82,10 @@ function SegmentedControl({
             type="button"
             onClick={() => onChange(it.key)}
             className={cn(
-              "h-9 px-3 rounded-lg text-[11px] font-extrabold uppercase tracking-widest transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E55C00]",
+              "h-8 px-3 rounded-lg text-[11px] font-bold tracking-wide transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E55C00]",
               active
-                ? "bg-[#0a0a0a] text-white shadow-[0_8px_20px_-12px_rgba(0,0,0,0.45)]"
-                : "text-zinc-600 hover:bg-zinc-50",
+                ? "bg-white text-zinc-900 shadow-sm font-extrabold"
+                : "text-zinc-500 hover:text-zinc-800 hover:bg-white/50",
             )}
             aria-pressed={active}
           >
@@ -126,612 +97,915 @@ function SegmentedControl({
   );
 }
 
+interface StatCardProps {
+  title: string;
+  value: string | number;
+  sub?: string;
+  badge?: string;
+  badgeType?: "success" | "warning" | "info" | "neutral";
+  icon: React.ReactNode;
+  iconBg: string;
+  help?: string;
+  live?: boolean;
+}
+
+function StatCard({
+  title,
+  value,
+  sub,
+  badge,
+  badgeType = "neutral",
+  icon,
+  iconBg,
+  help,
+  live,
+}: StatCardProps) {
+  const badgeStyles = {
+    success: "bg-emerald-50 text-emerald-700 border-emerald-200/60",
+    warning: "bg-amber-50 text-amber-700 border-amber-200/60",
+    info: "bg-blue-50 text-blue-700 border-blue-200/60",
+    neutral: "bg-zinc-100 text-zinc-600 border-zinc-200/60",
+  };
+
+  return (
+    <div className="relative overflow-hidden bg-white border border-zinc-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-zinc-300 transition-all duration-300 flex flex-col justify-between group">
+      <div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider truncate">
+              {title}
+            </span>
+            {help && <TooltipBadge label={help} />}
+          </div>
+          <div
+            className={cn(
+              "h-9 w-9 rounded-xl flex items-center justify-center shadow-sm shrink-0 transition-transform group-hover:scale-105",
+              iconBg,
+            )}
+          >
+            {icon}
+          </div>
+        </div>
+
+        <div className="mt-3 flex items-baseline gap-2">
+          <span className="text-2xl sm:text-3xl font-black text-zinc-900 tracking-tight font-sans">
+            {value}
+          </span>
+          {live && (
+            <span className="relative flex h-2 w-2 mb-1">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 pt-3 border-t border-zinc-100 flex items-center justify-between gap-2">
+        <span className="text-xs text-zinc-500 font-medium truncate">
+          {sub || "Atualizado em tempo real"}
+        </span>
+        {badge && (
+          <span
+            className={cn(
+              "text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0",
+              badgeStyles[badgeType],
+            )}
+          >
+            {badge}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function Dashboard() {
+  const { session } = useAuth();
+  const user = session?.user;
   const [range, setRange] = useState<RangeKey>("last7");
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>(() => {
-    try {
-      const v = localStorage.getItem("nevesgo:dashboardLayout");
-      return v === "classic" ? "classic" : "v2";
-    } catch {
-      return "v2";
-    }
+  const [chartView, setChartView] = useState<ChartView>("revenue");
+
+  const companyId =
+    user?.machine_empresa_id || user?.company_id || "";
+
+  const role = user?.role || "superadmin";
+  const isSuperAdmin = role === "superadmin";
+  const isOperador = role === "operador_admin" || role === "operador_staff";
+  const isLojista = role === "lojista";
+
+  // ─── Query Principal do Dashboard (Back-end Consolidado) ──────────────────
+  const statsKey = `/api/v1/db/dashboard-stats?range=${range}${
+    companyId ? `&company_id=${companyId}` : ""
+  }`;
+
+  const {
+    data: statsData,
+    isLoading: loadingStats,
+    isValidating: validatingStats,
+    refresh: refreshStats,
+  } = useApiQuery<any>(statsKey, { refreshInterval: 20_000 });
+
+  // ─── Query de Apoio de Lojas e Drivers (para cache local) ─────────────────
+  const {
+    data: companiesData,
+    refresh: refreshCompanies,
+  } = useApiQuery<any[]>("/api/v1/db/companies", { refreshInterval: 60_000 });
+
+  const {
+    data: driversData,
+    refresh: refreshDrivers,
+  } = useApiQuery<any[]>("/api/v1/db/company-drivers?active_only=1", {
+    refreshInterval: 60_000,
   });
 
-  useEffect(() => {
-    try {
-      localStorage.setItem("nevesgo:dashboardLayout", layoutMode);
-    } catch {
-      return;
-    }
-  }, [layoutMode]);
+  const isLoading = loadingStats && !statsData;
+  const isRefreshing = validatingStats && !isLoading;
 
-  const session = getSession();
-  const companyId = session?.user?.machine_empresa_id || session?.user?.company_id || "";
-
-  const { startISO, endISO } = useMemo(() => {
-    const today = formatDateISO(new Date());
-    if (range === "today") return { startISO: today, endISO: today };
-    if (range === "month") {
-      const now = new Date();
-      return {
-        startISO: formatDateISO(new Date(now.getFullYear(), now.getMonth(), 1)),
-        endISO: today,
-      };
-    }
-    return { startISO: addDaysISO(today, -6), endISO: today };
-  }, [range]);
-
-  // ─── Queries SWR (com cache compartilhado entre páginas) ──────────────────
-  const entriesKey = companyId
-    ? `/api/v1/db/entries?company_id=${companyId}&start=${startISO}&end=${endISO}`
-    : null;
-  const driversKey = companyId
-    ? `/api/v1/db/company-drivers?company_id=${companyId}`
-    : null;
-  const ridesKey = companyId
-    ? `/api/v1/db/orders?empresa_id=${companyId}&limite=20&status_solicitacao=D`
-    : null;
-
-  const {
-    data: entriesRaw,
-    isLoading: loadingEntries,
-    isValidating: validatingEntries,
-    error: errorEntries,
-    refresh: refreshEntries,
-  } = useApiQuery<any[]>(entriesKey, { refreshInterval: 30_000 });
-  const {
-    data: driversRaw,
-    isLoading: loadingDrivers,
-    refresh: refreshDrivers,
-  } = useApiQuery<any[]>(driversKey, { refreshInterval: 60_000 });
-  const {
-    data: ridesRaw,
-    isLoading: loadingRides,
-    isValidating: validatingRides,
-    refresh: refreshRides,
-  } = useApiQuery<any>(ridesKey, { refreshInterval: 30_000 });
-
-  const isLoading = loadingEntries || loadingDrivers || loadingRides;
-  const isRefreshing = (validatingEntries || validatingRides) && !isLoading;
-  const error = errorEntries ?? null;
+  const handleRefresh = () => {
+    refreshStats();
+    refreshCompanies();
+    refreshDrivers();
+  };
 
   const lastUpdated = useMemo(() => {
-    if (isLoading) return "";
     return new Date().toLocaleTimeString("pt-BR", {
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, validatingEntries, validatingRides]);
+  }, [statsData]);
 
-  const handleRefresh = () => {
-    refreshEntries();
-    refreshDrivers();
-    refreshRides();
-  };
+  // ─── Métricas Consolidadas ───────────────────────────────────────────────
+  const metrics = useMemo(() => {
+    const totalOrders = statsData?.total_orders ?? 0;
+    const completedOrders = statsData?.completed_orders ?? 0;
+    const activeOrders = statsData?.active_orders ?? 0;
+    const faturamentoTotal = statsData?.faturamento_total ?? 0;
+    const averageTicket = statsData?.average_ticket ?? 0;
+    const completionRate = statsData?.completion_rate ?? (completedOrders > 0 ? 100 : 0);
 
-  // ─── Derivações dos dados ─────────────────────────────────────────────────
-  const entries: any[] = Array.isArray(entriesRaw) ? entriesRaw : [];
-  const drivers: any[] = Array.isArray(driversRaw) ? driversRaw : [];
+    const companiesList = Array.isArray(companiesData) ? companiesData : [];
+    const driversList = Array.isArray(driversData) ? driversData : [];
 
-  const machineRides: any[] = useMemo(() => {
-    if (!ridesRaw) return [];
-    if (ridesRaw.response && Array.isArray(ridesRaw.response))
-      return ridesRaw.response;
-    if (ridesRaw.rides && Array.isArray(ridesRaw.rides)) return ridesRaw.rides;
-    if (Array.isArray(ridesRaw)) return ridesRaw;
-    return [];
-  }, [ridesRaw]);
+    const activeStores =
+      statsData?.active_stores ??
+      companiesList.filter((c: any) => c.active !== false).length;
+    const totalStores = statsData?.total_stores ?? companiesList.length;
 
-  const data = useMemo(() => {
-    const dailyMap: Record<string, number> = {};
-    entries.forEach((e: any) => {
-      const day = e.date ? e.date.slice(0, 10) : "";
-      if (day) {
-        const val = Number(e.amount) || 0;
-        if (e.type === "diaria" || e.type === "extra") {
-          dailyMap[day] = (dailyMap[day] || 0) + val;
-        } else if (e.type === "adiantamento") {
-          dailyMap[day] = (dailyMap[day] || 0) - val;
-        }
-      }
-    });
-    const rangeDays = buildISODateRange(startISO, endISO);
-    return rangeDays.map((key) => ({
-      time: key.slice(5),
-      faturamento: dailyMap[key] || 0,
-    }));
-  }, [entries, startISO, endISO]);
+    const activeDrivers =
+      statsData?.active_drivers ??
+      driversList.filter((d: any) => d.ativo !== false && d.active !== false).length;
 
-  const stats = useMemo(() => {
-    const faturamento = entries.reduce((acc: number, e: any) => {
-      if (e.type === "diaria" || e.type === "extra")
-        return acc + (Number(e.amount) || 0);
-      if (e.type === "adiantamento") return acc - (Number(e.amount) || 0);
-      return acc;
-    }, 0);
     return {
-      corridasHoje: machineRides.length,
-      motoboysAtivos: drivers.filter(
-        (d: any) => d.ativo !== false && d.status !== "inativo",
-      ).length,
-      faturamento,
-      garantidas: entries.filter((e: any) => e.type === "diaria").length,
+      faturamentoTotal,
+      completedOrders,
+      activeOrders,
+      totalOrders,
+      averageTicket,
+      completionRate,
+      activeStores,
+      totalStores,
+      activeDrivers,
     };
-  }, [entries, drivers, machineRides]);
+  }, [statsData, companiesData, driversData]);
 
-  const recentRides = useMemo(() => {
-    if (machineRides.length > 0) {
-      return machineRides.slice(0, 8).map((r: any) => ({
-        id: `#${r.id?.toString() || "???"}`,
-        motoboy: r.motoboy?.nome || r.nome_condutor || "Aguardando condutor...",
-        empresa: r.endereco_partida || r.empresa || "Entrega Expressa",
-        status:
-          r.status === 1
-            ? "Em andamento"
-            : r.status === 2
-              ? "Finalizada"
-              : "Em trânsito",
-        time: r.data_hora_solicitacao
-          ? new Date(r.data_hora_solicitacao).toLocaleTimeString("pt-BR", {
-              hour: "2-digit",
-              minute: "2-digit",
-            })
-          : "Agora",
-      }));
+  // ─── Dados para o Gráfico ────────────────────────────────────────────────
+  const chartData = useMemo(() => {
+    if (statsData?.chart_data && Array.isArray(statsData.chart_data)) {
+      return statsData.chart_data;
     }
-    return entries.slice(0, 5).map((e: any) => ({
-      id: `#${e.id?.toString().slice(-6) || "???"}`,
-      motoboy: e.driverName || "Sem motorista",
-      empresa: e.description || "Lançamento",
-      status:
-        e.type === "diaria"
-          ? "Diária"
-          : e.type === "adiantamento"
-            ? "Adiantamento"
-            : e.type || "Lançamento",
-      time: e.date || "recente",
+    return [];
+  }, [statsData]);
+
+  // ─── Ranking de Lojas Parceiras ──────────────────────────────────────────
+  const topStores = useMemo(() => {
+    if (statsData?.top_stores && Array.isArray(statsData.top_stores) && statsData.top_stores.length > 0) {
+      return statsData.top_stores;
+    }
+    // Fallback derivado das empresas cadastradas
+    const list = Array.isArray(companiesData) ? companiesData : [];
+    return list.slice(0, 6).map((c: any) => ({
+      id: c.id,
+      nome: c.nome || c.name || "Loja Parceira",
+      corridas: 0,
+      faturamento: 0,
+      ticket_medio: 0,
+      percentual: 0,
     }));
-  }, [machineRides, entries]);
+  }, [statsData, companiesData]);
+
+  // ─── Radar de Entregas Recentes / Ativas ──────────────────────────────────
+  const recentOrders = useMemo(() => {
+    if (statsData?.recent_orders && Array.isArray(statsData.recent_orders)) {
+      return statsData.recent_orders;
+    }
+    return [];
+  }, [statsData]);
+
+  // Totais resumidos do gráfico
+  const chartSummary = useMemo(() => {
+    if (chartData.length === 0) return { totalVal: 0, maxVal: 0, avgVal: 0 };
+    const totalVal = chartData.reduce(
+      (acc: number, item: any) =>
+        acc + (chartView === "revenue" ? item.faturamento || 0 : item.corridas || 0),
+      0,
+    );
+    const maxVal = Math.max(
+      ...chartData.map((i: any) =>
+        chartView === "revenue" ? i.faturamento || 0 : i.corridas || 0,
+      ),
+      0,
+    );
+    const avgVal = chartData.length > 0 ? totalVal / chartData.length : 0;
+    return { totalVal, maxVal, avgVal };
+  }, [chartData, chartView]);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-4 border-b border-zinc-200/80">
+    <div className="flex-1 space-y-6 pb-12">
+      {/* ─── Header Principal ────────────────────────────────────────────── */}
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-zinc-200/80">
         <div>
-          <h1 className="text-xl font-bold text-zinc-900 tracking-tight flex items-center gap-2">
-            <LayoutDashboard className="h-5 w-5 text-[#E55C00]" />
-            Dashboard
-          </h1>
-          <p className="text-[13px] font-medium text-zinc-500 mt-1 max-w-xl">
-            Visão rápida da operação, desempenho e atalhos para ações do dia
-          </p>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <SegmentedControl value={range} onChange={setRange} />
-          <button
-            type="button"
-            onClick={() =>
-              setLayoutMode((v) => (v === "v2" ? "classic" : "v2"))
-            }
-            className="hidden sm:flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-zinc-600 bg-white hover:bg-zinc-50 px-3 py-2 rounded-xl border border-zinc-200/80 shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E55C00]"
-            aria-label="Alternar layout do dashboard"
-            title={
-              layoutMode === "v2"
-                ? "Usando Layout novo"
-                : "Usando Layout clássico"
-            }
-          >
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl font-black text-zinc-900 tracking-tight flex items-center gap-2">
+              <LayoutDashboard className="h-6 w-6 text-[#E55C00]" />
+              Dashboard
+            </h1>
             <span
               className={cn(
-                "inline-flex h-2 w-2 rounded-full",
-                layoutMode === "v2" ? "bg-[#E55C00]" : "bg-zinc-400",
+                "px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider border shadow-xs",
+                isSuperAdmin
+                  ? "bg-orange-50 text-[#E55C00] border-orange-200"
+                  : isOperador
+                    ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                    : "bg-emerald-50 text-emerald-700 border-emerald-200",
               )}
-            />
-            {layoutMode === "v2" ? "Layout novo" : "Clássico"}
-            <ChevronDown className="h-3.5 w-3.5 text-zinc-400" />
-          </button>
+            >
+              {isSuperAdmin
+                ? "SuperAdmin Master"
+                : isOperador
+                  ? "Operação Logística"
+                  : "Painel da Loja"}
+            </span>
+          </div>
+          <p className="text-[13px] font-medium text-zinc-500 mt-1">
+            Visão unificada em tempo real de faturamento, frotas, entregas e parceiros
+          </p>
+        </div>
+
+        {/* Controles de Período e Sincronização */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <SegmentedControl value={range} onChange={setRange} />
+
           <button
+            type="button"
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-zinc-600 bg-white hover:bg-zinc-50 px-3 py-2 rounded-xl border border-zinc-200/80 shadow-sm disabled:opacity-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E55C00]"
-            title="Sincronizar agora"
-            aria-label="Sincronizar agora"
+            className="flex items-center gap-1.5 text-xs font-bold text-zinc-700 bg-white hover:bg-zinc-50 px-3.5 py-2 rounded-xl border border-zinc-200/80 shadow-xs transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E55C00]"
+            title="Atualizar dados agora"
           >
             <RefreshCw
               className={cn(
                 "w-3.5 h-3.5 text-zinc-500",
-                isRefreshing && "animate-spin",
+                isRefreshing && "animate-spin text-[#E55C00]",
               )}
             />
-            {lastUpdated ? `Atualizado ${lastUpdated}` : "Sincronizando..."}
+            <span className="hidden sm:inline">
+              {lastUpdated ? `Atualizado ${lastUpdated}` : "Sincronizar"}
+            </span>
           </button>
         </div>
       </header>
 
-      {error && (
-        <div
-          className="bg-rose-50 border border-rose-200/70 rounded-2xl px-4 py-3 text-rose-700 text-[13px] font-semibold flex items-start gap-3"
-          role="alert"
-        >
-          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-rose-100 text-rose-700 font-black">
-            !
-          </span>
-          <div className="min-w-0">
-            <div className="font-extrabold">Falha ao sincronizar</div>
-            <div className="text-rose-700/80 font-medium truncate">{error}</div>
-          </div>
+      {/* ─── Grid de KPIs Principais ──────────────────────────────────────── */}
+      {isLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {Array.from({ length: 6 }).map((_, idx) => (
+            <Skeleton key={idx} className="h-32 rounded-2xl" />
+          ))}
         </div>
-      )}
-
-      {/* Stats Grid */}
-      <motion.div
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6"
-      >
-        <StatCard
-          title="Entregas Ativas"
-          value={isLoading ? "..." : stats.corridasHoje}
-          help="Quantidade de entregas com status 'D' na Machine (em andamento)."
-          change="Radar Machine"
-          trend="neutral"
-          icon={<Truck className="w-4 h-4 text-[#E55C00]" />}
-        />
-        <StatCard
-          title="Motoboys Ativos"
-          value={isLoading ? "..." : stats.motoboysAtivos}
-          help="Motoboys vinculados à empresa (ativos no cadastro)."
-          change="Cadastro"
-          trend="neutral"
-          icon={<Users className="w-4 h-4 text-[#E55C00]" />}
-        />
-        <StatCard
-          title={
-            range === "today"
-              ? "Movimento do Dia"
-              : range === "last7"
-                ? "Movimento (7 dias)"
-                : "Movimento do Mês"
-          }
-          value={isLoading ? "..." : formatCurrency(stats.faturamento)}
-          help="Saldo calculado por lançamentos: diária + extra - adiantamento."
-          change="Financeiro"
-          trend="neutral"
-          icon={<ArrowUpRight className="w-4 h-4 text-[#E55C00]" />}
-        />
-        <StatCard
-          title="Diárias / Garantidos"
-          value={isLoading ? "..." : stats.garantidas}
-          help="Quantidade de lançamentos do tipo 'diária' no período."
-          change="Lançamentos"
-          trend="neutral"
-          icon={<Clock className="w-4 h-4 text-[#E55C00]" />}
-        />
-      </motion.div>
-
-      {layoutMode === "v2" && (
+      ) : (
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-          className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6"
+          transition={{ duration: 0.2 }}
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4"
         >
-          <a
-            href="/corridas"
-            className="group bg-white border border-zinc-200/80 rounded-2xl shadow-sm p-5 hover:border-zinc-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E55C00]"
-            aria-label="Ir para Corridas"
-          >
-            <div className="flex items-center justify-between">
-              <div className="text-[11px] font-extrabold uppercase tracking-widest text-zinc-500">
-                Ação rápida
-              </div>
-              <div className="h-9 w-9 rounded-xl bg-[#0a0a0a] text-white flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
-                <MapPin className="h-4 w-4 text-[#E55C00]" />
-              </div>
-            </div>
-            <div className="mt-5">
-              <div className="text-base font-extrabold text-zinc-900 tracking-tight">
-                Corridas
-              </div>
-              <div className="text-[13px] font-medium text-zinc-500 mt-1">
-                Acompanhar entregas e mapa em tempo real
-              </div>
-            </div>
-          </a>
-          <a
-            href="/relatorios"
-            className="group bg-white border border-zinc-200/80 rounded-2xl shadow-sm p-5 hover:border-zinc-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E55C00]"
-            aria-label="Ir para Relatórios"
-          >
-            <div className="flex items-center justify-between">
-              <div className="text-[11px] font-extrabold uppercase tracking-widest text-zinc-500">
-                Ação rápida
-              </div>
-              <div className="h-9 w-9 rounded-xl bg-[#0a0a0a] text-white flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
-                <FileSpreadsheet className="h-4 w-4 text-[#E55C00]" />
-              </div>
-            </div>
-            <div className="mt-5">
-              <div className="text-base font-extrabold text-zinc-900 tracking-tight">
-                Relatórios
-              </div>
-              <div className="text-[13px] font-medium text-zinc-500 mt-1">
-                Fechamento, garantidos e produção por semana
-              </div>
-            </div>
-          </a>
-          <a
-            href="/escala"
-            className="group bg-white border border-zinc-200/80 rounded-2xl shadow-sm p-5 hover:border-zinc-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E55C00]"
-            aria-label="Ir para Escala"
-          >
-            <div className="flex items-center justify-between">
-              <div className="text-[11px] font-extrabold uppercase tracking-widest text-zinc-500">
-                Ação rápida
-              </div>
-              <div className="h-9 w-9 rounded-xl bg-[#0a0a0a] text-white flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
-                <CalendarDays className="h-4 w-4 text-[#E55C00]" />
-              </div>
-            </div>
-            <div className="mt-5">
-              <div className="text-base font-extrabold text-zinc-900 tracking-tight">
-                Escala
-              </div>
-              <div className="text-[13px] font-medium text-zinc-500 mt-1">
-                Definir garantido/diária por dia e turnos
-              </div>
-            </div>
-          </a>
+          <StatCard
+            title="Faturamento"
+            value={formatCurrency(metrics.faturamentoTotal)}
+            sub={
+              range === "today"
+                ? "Receita de hoje"
+                : range === "month"
+                  ? "Receita do mês"
+                  : "Volume no período"
+            }
+            badge="Receita"
+            badgeType="success"
+            icon={<DollarSign className="w-4 h-4 text-emerald-600" />}
+            iconBg="bg-emerald-50 text-emerald-600 border border-emerald-100"
+            help="Soma dos valores das corridas concluídas e movimentações financeiras"
+          />
+
+          <StatCard
+            title="Entregas Concluídas"
+            value={metrics.completedOrders}
+            sub={`De ${metrics.totalOrders} solicitadas`}
+            badge="Finalizadas"
+            badgeType="info"
+            icon={<CheckCircle2 className="w-4 h-4 text-blue-600" />}
+            iconBg="bg-blue-50 text-blue-600 border border-blue-100"
+            help="Quantidade de entregas com entrega finalizada no período"
+          />
+
+          <StatCard
+            title="Em Andamento"
+            value={metrics.activeOrders}
+            sub="Corridas na rua agora"
+            badge="Radar Ao Vivo"
+            badgeType="warning"
+            live={metrics.activeOrders > 0}
+            icon={<Activity className="w-4 h-4 text-[#E55C00]" />}
+            iconBg="bg-orange-50 text-[#E55C00] border border-orange-100"
+            help="Entregas em trânsito, aceitas ou em despacho neste momento"
+          />
+
+          <StatCard
+            title="Ticket Médio"
+            value={formatCurrency(metrics.averageTicket)}
+            sub="Média por entrega"
+            badge="Desempenho"
+            badgeType="neutral"
+            icon={<Receipt className="w-4 h-4 text-violet-600" />}
+            iconBg="bg-violet-50 text-violet-600 border border-violet-100"
+            help="Faturamento total dividido pelo total de entregas concluídas"
+          />
+
+          <StatCard
+            title="Taxa de Conclusão"
+            value={`${metrics.completionRate}%`}
+            sub="Eficiência operacional"
+            badge="Sucesso"
+            badgeType={metrics.completionRate >= 90 ? "success" : "warning"}
+            icon={<TrendingUp className="w-4 h-4 text-teal-600" />}
+            iconBg="bg-teal-50 text-teal-600 border border-teal-100"
+            help="Percentual de corridas concluídas com êxito vs canceladas"
+          />
+
+          <StatCard
+            title="Lojas & Frota"
+            value={`${metrics.activeStores} / ${metrics.activeDrivers}`}
+            sub="Lojas ativas · Motoboys"
+            badge="Operação"
+            badgeType="neutral"
+            icon={<Store className="w-4 h-4 text-amber-600" />}
+            iconBg="bg-amber-50 text-amber-600 border border-amber-100"
+            help="Lojas parceiras ativas e motoboys cadastrados e disponíveis"
+          />
         </motion.div>
       )}
 
-      {/* Main Content Dashboard */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Chart */}
-        <div className="lg:col-span-2 space-y-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="bg-white border border-zinc-200/80 rounded-2xl shadow-sm p-6 flex flex-col min-w-0"
-          >
-            <div className="flex items-center justify-between pb-4 border-b border-zinc-100 mb-6">
-              <div>
-                <h3 className="text-sm font-bold text-zinc-800 flex items-center gap-2 uppercase tracking-wide">
-                  <Activity className="w-4 h-4 text-[#E55C00]" />
-                  Evolução (Período)
-                </h3>
-                <p className="text-xs text-zinc-400 mt-1">
-                  Volume por dia no período selecionado
-                </p>
-              </div>
-              <div className="text-right">
-                <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block mb-0.5">
-                  Total do Período
-                </span>
-                <span className="text-xl font-black text-zinc-900">
-                  {new Intl.NumberFormat("pt-BR", {
-                    style: "currency",
-                    currency: "BRL",
-                  }).format(
-                    data.reduce((acc, curr) => acc + curr.faturamento, 0),
-                  )}
-                </span>
-              </div>
-            </div>
-            <div className="w-full min-w-0">
-              <ErrorBoundary>
-              <ResponsiveContainer width="99%" height={280}>
-                <AreaChart
-                  data={data}
-                  margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-                >
-                  <defs>
-                    <linearGradient
-                      id="colorCorridas"
-                      x1="0"
-                      y1="0"
-                      x2="0"
-                      y2="1"
-                    >
-                      <stop
-                        offset="5%"
-                        stopColor="#E55C00"
-                        stopOpacity={0.18}
-                      />
-                      <stop offset="95%" stopColor="#E55C00" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    vertical={false}
-                    stroke="#f4f4f5"
-                  />
-                  <XAxis
-                    dataKey="time"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: "#a1a1aa", fontSize: 11, fontWeight: 600 }}
-                    dy={15}
-                  />
-                  <YAxis
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: "#a1a1aa", fontSize: 11, fontWeight: 600 }}
-                    dx={-10}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      borderRadius: "12px",
-                      border: "1px solid #e4e4e7",
-                      boxShadow:
-                        "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",
-                      fontFamily: "var(--font-sans)",
-                      fontSize: "13px",
-                      padding: "12px 16px",
-                    }}
-                    labelStyle={{
-                      color: "#09090b",
-                      fontWeight: 800,
-                      marginBottom: "6px",
-                    }}
-                    itemStyle={{ color: "#4f46e5", fontWeight: 600 }}
-                    cursor={{
-                      stroke: "#e4e4e7",
-                      strokeWidth: 1,
-                      strokeDasharray: "4 4",
-                    }}
-                    formatter={(value: number) =>
-                      new Intl.NumberFormat("pt-BR", {
-                        style: "currency",
-                        currency: "BRL",
-                      }).format(value)
-                    }
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="faturamento"
-                    stroke="#E55C00"
-                    strokeWidth={3}
-                    fillOpacity={1}
-                    fill="url(#colorCorridas)"
-                    activeDot={{
-                      r: 6,
-                      fill: "#E55C00",
-                      stroke: "#FFE7D6",
-                      strokeWidth: 3,
-                    }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-              </ErrorBoundary>
-            </div>
-          </motion.div>
-        </div>
-
-        {/* Live feed */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="bg-[#0a0a0a] border border-[#1a1a1a] text-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col overflow-hidden relative"
+      {/* ─── Atalhos de Ação Rápida ───────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Link
+          to="/corridas"
+          className="group bg-white hover:bg-zinc-50/80 border border-zinc-200/80 hover:border-orange-300 rounded-2xl p-4 shadow-xs hover:shadow-sm transition-all flex items-center justify-between"
         >
-          <div className="absolute top-0 right-0 p-32 bg-[#E55C00]/10 blur-[80px] rounded-full pointer-events-none" />
-          <div className="p-5 border-b border-[#1a1a1a] flex items-center justify-between relative z-10 bg-[#0a0a0a]/50 backdrop-blur-md">
-            <div>
-              <h3 className="text-[15px] font-bold tracking-tight text-white flex items-center gap-2">
-                <Activity className="w-4 h-4 text-emerald-500 animate-pulse" />
-                Radar de Entregas Ativas
-              </h3>
-              <p className="text-[10px] text-zinc-400 mt-1 uppercase tracking-widest font-bold">
-                Monitoramento Machine em Tempo Real
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="h-10 w-10 rounded-xl bg-orange-50 border border-orange-100 text-[#E55C00] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <MapPin className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold text-zinc-900 group-hover:text-[#E55C00] transition-colors truncate">
+                Corridas & Despacho
+              </h2>
+              <p className="text-[12px] text-zinc-500 font-medium truncate">
+                Acompanhamento e mapa ao vivo
               </p>
             </div>
           </div>
-          <div className="p-5 overflow-y-auto flex-1 relative z-10 hide-scrollbar max-h-[400px]">
-            <div className="space-y-2">
-              {recentRides.length === 0 && (
-                <div className="text-center py-8 text-xs text-zinc-500">
-                  Nenhuma entrega ativa encontrada no momento.
-                </div>
-              )}
-              {recentRides.map((ride) => (
-                <div
-                  key={ride.id}
-                  className="flex items-start gap-4 p-3 hover:bg-[#1a1a1a] rounded-xl transition-colors cursor-pointer border border-transparent hover:border-white/5 group bg-white/[0.02]"
-                >
-                  <div
-                    className={cn(
-                      "mt-1.5 w-2 h-2 rounded-full ring-[3px] shrink-0 shadow-sm transition-all",
-                      ride.status === "Em trânsito"
-                        ? "bg-blue-400 ring-blue-400/20 shadow-blue-500/20 animate-pulse"
-                        : ride.status === "Finalizada"
-                          ? "bg-emerald-400 ring-emerald-400/20 shadow-emerald-500/20"
-                          : "bg-amber-400 ring-amber-400/20 shadow-amber-500/20 animate-pulse",
-                    )}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-bold text-zinc-100 truncate group-hover:text-white transition-colors">
-                      {ride.motoboy}
-                    </p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] font-mono font-bold text-indigo-400">
-                        {ride.id}
-                      </span>
-                      <span className="w-1 h-1 rounded-full bg-zinc-700"></span>
-                      <span
-                        className="text-[11px] font-medium text-zinc-400 truncate max-w-[140px]"
-                        title={ride.empresa}
-                      >
-                        {ride.empresa}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <span
-                      className={cn(
-                        "text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border font-mono",
-                        ride.status === "Em trânsito"
-                          ? "text-blue-400 border-blue-400/30 bg-blue-400/10"
-                          : ride.status === "Finalizada"
-                            ? "text-emerald-400 border-emerald-400/30 bg-emerald-400/10"
-                            : "text-amber-400 border-amber-400/30 bg-amber-400/10",
-                      )}
-                    >
-                      {ride.status}
-                    </span>
-                    <p className="text-[10px] font-mono text-zinc-500 mt-2 flex justify-end items-center gap-1 group-hover:text-zinc-400 transition-colors">
-                      {ride.time}
-                    </p>
-                  </div>
-                </div>
-              ))}
+          <ChevronRight className="h-4 w-4 text-zinc-400 group-hover:text-[#E55C00] group-hover:translate-x-0.5 transition-all shrink-0" />
+        </Link>
+
+        <Link
+          to="/relatorios"
+          className="group bg-white hover:bg-zinc-50/80 border border-zinc-200/80 hover:border-blue-300 rounded-2xl p-4 shadow-xs hover:shadow-sm transition-all flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="h-10 w-10 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <FileSpreadsheet className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold text-zinc-900 group-hover:text-blue-600 transition-colors truncate">
+                Relatórios & Fechamento
+              </h2>
+              <p className="text-[12px] text-zinc-500 font-medium truncate">
+                Extratos semanais e produção
+              </p>
             </div>
           </div>
-        </motion.div>
+          <ChevronRight className="h-4 w-4 text-zinc-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all shrink-0" />
+        </Link>
+
+        <Link
+          to="/escala"
+          className="group bg-white hover:bg-zinc-50/80 border border-zinc-200/80 hover:border-emerald-300 rounded-2xl p-4 shadow-xs hover:shadow-sm transition-all flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="h-10 w-10 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <CalendarDays className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold text-zinc-900 group-hover:text-emerald-600 transition-colors truncate">
+                Escala de Motoboys
+              </h2>
+              <p className="text-[12px] text-zinc-500 font-medium truncate">
+                Diárias, turnos e garantidos
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="h-4 w-4 text-zinc-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all shrink-0" />
+        </Link>
+
+        <Link
+          to="/financeiro"
+          className="group bg-white hover:bg-zinc-50/80 border border-zinc-200/80 hover:border-violet-300 rounded-2xl p-4 shadow-xs hover:shadow-sm transition-all flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="h-10 w-10 rounded-xl bg-violet-50 border border-violet-100 text-violet-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <Wallet className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold text-zinc-900 group-hover:text-violet-600 transition-colors truncate">
+                Gestão Financeira
+              </h2>
+              <p className="text-[12px] text-zinc-500 font-medium truncate">
+                Saldos, cobranças e repasses
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="h-4 w-4 text-zinc-400 group-hover:text-violet-600 group-hover:translate-x-0.5 transition-all shrink-0" />
+        </Link>
+      </div>
+
+      {/* ─── Layout de Conteúdo: Gráficos + Ranking vs Radar Ao Vivo ─────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Coluna Esquerda: Gráfico de Evolução e Ranking de Lojas (2 colunas) */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Card Gráfico de Evolução */}
+          <div className="bg-white border border-zinc-200/80 rounded-2xl shadow-sm p-5 sm:p-6 flex flex-col">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-100">
+              <div>
+                <h2 className="text-sm font-black text-zinc-900 flex items-center gap-2 uppercase tracking-wide">
+                  <BarChart3 className="w-4 h-4 text-[#E55C00]" />
+                  Evolução da Operação
+                </h2>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Desempenho diário de faturamento e volume no período selecionado
+                </p>
+              </div>
+
+              {/* Seletor Faturamento vs Volume */}
+              <div className="inline-flex items-center bg-zinc-100 p-1 rounded-xl border border-zinc-200/60 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setChartView("revenue")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                    chartView === "revenue"
+                      ? "bg-white text-zinc-900 shadow-xs font-extrabold"
+                      : "text-zinc-500 hover:text-zinc-800",
+                  )}
+                >
+                  Faturamento (R$)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChartView("rides")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                    chartView === "rides"
+                      ? "bg-white text-zinc-900 shadow-xs font-extrabold"
+                      : "text-zinc-500 hover:text-zinc-800",
+                  )}
+                >
+                  Corridas (Qtd)
+                </button>
+              </div>
+            </div>
+
+            {/* Gráfico Recharts */}
+            <div className="w-full pt-4 min-h-[290px]">
+              <ErrorBoundary>
+                {chartData.length === 0 ? (
+                  <div className="h-[280px] flex flex-col items-center justify-center text-zinc-400 text-xs">
+                    <BarChart3 className="w-8 h-8 text-zinc-300 mb-2 stroke-[1.5]" />
+                    Nenhum dado registrado para o período selecionado.
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={280}>
+                    <AreaChart
+                      data={chartData}
+                      margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient
+                          id="colorRevenue"
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop
+                            offset="5%"
+                            stopColor="#E55C00"
+                            stopOpacity={0.25}
+                          />
+                          <stop
+                            offset="95%"
+                            stopColor="#E55C00"
+                            stopOpacity={0}
+                          />
+                        </linearGradient>
+                        <linearGradient
+                          id="colorRides"
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop
+                            offset="5%"
+                            stopColor="#3B82F6"
+                            stopOpacity={0.25}
+                          />
+                          <stop
+                            offset="95%"
+                            stopColor="#3B82F6"
+                            stopOpacity={0}
+                          />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        vertical={false}
+                        stroke="#f4f4f5"
+                      />
+                      <XAxis
+                        dataKey="time"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: "#a1a1aa", fontSize: 11, fontWeight: 600 }}
+                        dy={8}
+                      />
+                      <YAxis
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: "#a1a1aa", fontSize: 11, fontWeight: 600 }}
+                        dx={-4}
+                        tickFormatter={(val) =>
+                          chartView === "revenue"
+                            ? `R$ ${val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val}`
+                            : `${val}`
+                        }
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          borderRadius: "14px",
+                          border: "1px solid #e4e4e7",
+                          boxShadow:
+                            "0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04)",
+                          fontSize: "12px",
+                          padding: "10px 14px",
+                        }}
+                        labelStyle={{
+                          color: "#09090b",
+                          fontWeight: 800,
+                          marginBottom: "4px",
+                        }}
+                        formatter={(val: any) => [
+                          chartView === "revenue"
+                            ? formatCurrency(Number(val) || 0)
+                            : `${val} corridas`,
+                          chartView === "revenue" ? "Faturamento" : "Volume",
+                        ]}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey={chartView === "revenue" ? "faturamento" : "corridas"}
+                        stroke={chartView === "revenue" ? "#E55C00" : "#3B82F6"}
+                        strokeWidth={2.5}
+                        fillOpacity={1}
+                        fill={
+                          chartView === "revenue"
+                            ? "url(#colorRevenue)"
+                            : "url(#colorRides)"
+                        }
+                        activeDot={{
+                          r: 6,
+                          fill: chartView === "revenue" ? "#E55C00" : "#3B82F6",
+                          stroke: "#ffffff",
+                          strokeWidth: 2,
+                        }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                )}
+              </ErrorBoundary>
+            </div>
+
+            {/* Rodapé Resumo do Gráfico */}
+            <div className="mt-4 pt-3 border-t border-zinc-100 grid grid-cols-3 gap-2 text-center">
+              <div className="p-2 rounded-xl bg-zinc-50/80">
+                <span className="text-[10px] uppercase font-bold text-zinc-400 block">
+                  Total Acumulado
+                </span>
+                <span className="text-sm font-black text-zinc-900">
+                  {chartView === "revenue"
+                    ? formatCurrency(chartSummary.totalVal)
+                    : `${chartSummary.totalVal} corridas`}
+                </span>
+              </div>
+              <div className="p-2 rounded-xl bg-zinc-50/80">
+                <span className="text-[10px] uppercase font-bold text-zinc-400 block">
+                  Pico do Período
+                </span>
+                <span className="text-sm font-black text-zinc-900">
+                  {chartView === "revenue"
+                    ? formatCurrency(chartSummary.maxVal)
+                    : `${chartSummary.maxVal} corridas`}
+                </span>
+              </div>
+              <div className="p-2 rounded-xl bg-zinc-50/80">
+                <span className="text-[10px] uppercase font-bold text-zinc-400 block">
+                  Média Diária
+                </span>
+                <span className="text-sm font-black text-zinc-900">
+                  {chartView === "revenue"
+                    ? formatCurrency(chartSummary.avgVal)
+                    : `${chartSummary.avgVal.toFixed(1)} corridas`}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card Ranking das Lojas Parceiras */}
+          <div className="bg-white border border-zinc-200/80 rounded-2xl shadow-sm p-5 sm:p-6">
+            <div className="flex items-center justify-between pb-4 border-b border-zinc-100">
+              <div>
+                <h2 className="text-sm font-black text-zinc-900 flex items-center gap-2 uppercase tracking-wide">
+                  <Award className="w-4 h-4 text-[#E55C00]" />
+                  Ranking de Lojas Parceiras
+                </h2>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Lojas com maior volume e faturamento na operação
+                </p>
+              </div>
+              <Link
+                to="/empresas"
+                className="text-xs font-bold text-[#E55C00] hover:underline flex items-center gap-1"
+              >
+                Ver todas ({metrics.totalStores})
+                <ChevronRight className="w-3 h-3" />
+              </Link>
+            </div>
+
+            <div className="mt-4 divide-y divide-zinc-100">
+              {topStores.length === 0 ? (
+                <div className="py-8 text-center text-xs text-zinc-400">
+                  Nenhuma loja parceira com dados registrados neste período.
+                </div>
+              ) : (
+                topStores.map((store: any, idx: number) => {
+                  const medal =
+                    idx === 0
+                      ? "🥇"
+                      : idx === 1
+                        ? "🥈"
+                        : idx === 2
+                          ? "🥉"
+                          : `${idx + 1}º`;
+                  return (
+                    <div
+                      key={store.id || idx}
+                      className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 group hover:bg-zinc-50/60 px-2 rounded-xl transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="w-6 text-center text-xs font-black text-zinc-600 shrink-0">
+                          {medal}
+                        </span>
+                        <div className="h-9 w-9 rounded-xl bg-orange-50/80 border border-orange-100 flex items-center justify-center text-[#E55C00] font-black text-xs shrink-0">
+                          <Store className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-zinc-900 truncate">
+                            {store.nome}
+                          </p>
+                          <div className="flex items-center gap-2 text-xs text-zinc-400">
+                            <span>{store.corridas || 0} entregas</span>
+                            <span>•</span>
+                            <span>
+                              Ticket: {formatCurrency(store.ticket_medio || 0)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-4 self-end sm:self-center shrink-0">
+                        <div className="w-24 sm:w-32 bg-zinc-100 h-2 rounded-full overflow-hidden hidden md:block">
+                          <div
+                            className="bg-[#E55C00] h-full rounded-full transition-all duration-500"
+                            style={{ width: `${Math.min(store.percentual || 15, 100)}%` }}
+                          />
+                        </div>
+                        <div className="text-right">
+                          <span className="text-sm font-black text-zinc-900 block font-sans">
+                            {formatCurrency(store.faturamento || 0)}
+                          </span>
+                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                            {store.percentual || 0}% do topo
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Coluna Direita: Radar de Entregas em Tempo Real (1 coluna) */}
+        <div className="space-y-6">
+          {/* Radar Ao Vivo */}
+          <div className="bg-[#0e0e10] border border-[#1e1e24] text-white rounded-2xl shadow-xl flex flex-col overflow-hidden relative">
+            <div className="absolute top-0 right-0 p-24 bg-[#E55C00]/15 blur-[60px] rounded-full pointer-events-none" />
+
+            {/* Cabeçalho do Radar */}
+            <div className="p-5 border-b border-zinc-800/80 flex items-center justify-between relative z-10 bg-[#0e0e10]/80 backdrop-blur-md">
+              <div>
+                <h2 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-emerald-400 animate-pulse" />
+                  Radar em Tempo Real
+                </h2>
+                <p className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold mt-0.5">
+                  Fluxo de Entregas & Despacho
+                </p>
+              </div>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                {metrics.activeOrders} ativas
+              </span>
+            </div>
+
+            {/* Lista de Entregas do Radar */}
+            <div className="p-4 overflow-y-auto max-h-[480px] space-y-2.5 relative z-10">
+              {recentOrders.length === 0 ? (
+                <div className="py-12 text-center text-xs text-zinc-500">
+                  <Truck className="w-8 h-8 text-zinc-700 mx-auto mb-2 opacity-50" />
+                  Nenhuma entrega ativa no momento.
+                </div>
+              ) : (
+                recentOrders.map((ride: any) => {
+                  const isTransit =
+                    ride.status === "STARTED" ||
+                    ride.status === "ARRIVED" ||
+                    ride.status === 1;
+                  const isDone =
+                    ride.status === "COMPLETED" || ride.status === 2;
+                  const isCanceled =
+                    ride.status === "CANCELED" ||
+                    ride.status === "CANCELED_IN_TRANSIT";
+
+                  return (
+                    <div
+                      key={ride.id}
+                      className="p-3 bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 hover:border-white/10 rounded-xl transition-colors flex items-start justify-between gap-3 group"
+                    >
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <span
+                          className={cn(
+                            "mt-1.5 h-2 w-2 rounded-full shrink-0",
+                            isTransit
+                              ? "bg-blue-400 ring-4 ring-blue-400/20 animate-pulse"
+                              : isDone
+                                ? "bg-emerald-400 ring-4 ring-emerald-400/20"
+                                : isCanceled
+                                  ? "bg-rose-400 ring-4 ring-rose-400/20"
+                                  : "bg-amber-400 ring-4 ring-amber-400/20",
+                          )}
+                        />
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-zinc-100 truncate group-hover:text-white transition-colors">
+                            {ride.motoboy || "Aguardando motoboy"}
+                          </p>
+                          <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 mt-0.5 truncate">
+                            <Store className="w-3 h-3 text-[#E55C00] shrink-0" />
+                            <span className="truncate">{ride.empresa}</span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-1 font-mono text-[10px] text-zinc-500">
+                            <span>{ride.id}</span>
+                            <span>•</span>
+                            <span>{ride.time}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <span
+                          className={cn(
+                            "text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border font-mono",
+                            isTransit
+                              ? "text-blue-400 border-blue-400/30 bg-blue-400/10"
+                              : isDone
+                                ? "text-emerald-400 border-emerald-400/30 bg-emerald-400/10"
+                                : isCanceled
+                                  ? "text-rose-400 border-rose-400/30 bg-rose-400/10"
+                                  : "text-amber-400 border-amber-400/30 bg-amber-400/10",
+                          )}
+                        >
+                          {ride.status_label || ride.status}
+                        </span>
+                        {ride.valor > 0 && (
+                          <p className="text-xs font-bold text-zinc-200 mt-2 font-mono">
+                            {formatCurrency(ride.valor)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Rodapé do Radar com Link para Corridas */}
+            <div className="p-3.5 border-t border-zinc-800/80 bg-zinc-950 text-center relative z-10">
+              <Link
+                to="/corridas"
+                className="text-xs font-bold text-[#E55C00] hover:text-orange-400 flex items-center justify-center gap-1.5 transition-colors"
+              >
+                Abrir Central de Corridas & Mapa ao Vivo
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          </div>
+
+          {/* Card Saúde da Operação */}
+          <div className="bg-white border border-zinc-200/80 rounded-2xl shadow-sm p-5 space-y-4">
+            <h2 className="text-xs font-black text-zinc-900 uppercase tracking-wide flex items-center gap-2">
+              <Zap className="w-4 h-4 text-[#E55C00]" />
+              Saúde da Operação
+            </h2>
+
+            <div className="space-y-3">
+              <div>
+                <div className="flex justify-between text-xs font-bold mb-1">
+                  <span className="text-zinc-600">Taxa de Sucesso</span>
+                  <span className="text-emerald-600">{metrics.completionRate}%</span>
+                </div>
+                <div className="w-full bg-zinc-100 h-2 rounded-full overflow-hidden">
+                  <div
+                    className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                    style={{ width: `${metrics.completionRate}%` }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between text-xs font-bold mb-1">
+                  <span className="text-zinc-600">Disponibilidade de Frota</span>
+                  <span className="text-blue-600">
+                    {metrics.activeDrivers} motoboys ativos
+                  </span>
+                </div>
+                <div className="w-full bg-zinc-100 h-2 rounded-full overflow-hidden">
+                  <div
+                    className="bg-blue-500 h-full rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min((metrics.activeDrivers / (metrics.activeDrivers || 1)) * 100, 100)}%` }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between text-xs font-bold mb-1">
+                  <span className="text-zinc-600">Lojas em Atendimento</span>
+                  <span className="text-[#E55C00]">
+                    {metrics.activeStores} ativas
+                  </span>
+                </div>
+                <div className="w-full bg-zinc-100 h-2 rounded-full overflow-hidden">
+                  <div
+                    className="bg-[#E55C00] h-full rounded-full transition-all duration-500"
+                    style={{ width: `${metrics.totalStores > 0 ? (metrics.activeStores / metrics.totalStores) * 100 : 100}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-function StatCard({ title, value, change, trend, icon, help }: any) {
-  return (
-    <motion.div
-      variants={itemVariants}
-      className="glass-panel p-6 flex flex-col relative overflow-hidden group hover:border-zinc-300 transition-all duration-300 bg-white border border-zinc-200/80 rounded-2xl shadow-sm"
-    >
-      <div className="flex justify-between items-start z-10 relative">
-        <div className="flex items-center gap-2 min-w-0">
-          <h3 className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest truncate">
-            {title}
-          </h3>
-          {help ? <TooltipBadge label={help} /> : null}
-        </div>
-        <div className="p-2 bg-zinc-50 border border-zinc-100 rounded-xl text-zinc-400 group-hover:text-zinc-900 group-hover:shadow-sm transition-all">
-          {icon}
-        </div>
-      </div>
-      <div className="mt-6 flex items-end justify-between z-10 relative bg-transparent">
-        <p className="text-2xl font-black text-zinc-900 tracking-tight font-sans leading-none">
-          {value}
-        </p>
-        <div
-          className={cn(
-            "flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.05)] font-mono",
-            trend === "up"
-              ? "text-emerald-700 bg-emerald-50 border border-emerald-200/60"
-              : trend === "down"
-                ? "text-rose-700 bg-rose-50 border border-rose-200/60"
-                : "text-zinc-600 bg-zinc-50 border border-zinc-200/60",
-          )}
-        >
-          {change}
-        </div>
-      </div>
-      <div className="absolute -bottom-6 -right-6 w-32 h-32 bg-gradient-to-br from-zinc-50 to-zinc-100 rounded-full opacity-50 blur-2xl group-hover:from-indigo-50/40 group-hover:scale-110 transition-all duration-500 pointer-events-none" />
-    </motion.div>
-  );
-}
+export default Dashboard;

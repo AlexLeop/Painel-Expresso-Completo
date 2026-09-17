@@ -10,6 +10,10 @@ from accounts.security import create_access_token
 
 @pytest.fixture(autouse=True)
 def setup_test_tables(db):
+    if not hasattr(connection.ops, "select"):
+        setattr(connection.ops, "select", "%s")
+    if not hasattr(connection.ops, "get_geom_placeholder"):
+        setattr(connection.ops, "get_geom_placeholder", lambda f, v, c: "%s")
     with connection.cursor() as cur:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS "Operator" (
@@ -87,7 +91,9 @@ def setup_test_tables(db):
                 name VARCHAR(255) NOT NULL,
                 "averagePrepTimeMinutes" INT DEFAULT 15,
                 operational BOOLEAN DEFAULT 0,
-                "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                geom TEXT,
+                "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
         cur.execute("""
@@ -97,11 +103,65 @@ def setup_test_tables(db):
                 name VARCHAR(255) NOT NULL,
                 phone VARCHAR(20) NOT NULL,
                 document VARCHAR(20),
+                supabase_uid CHAR(32),
+                "passwordHash" VARCHAR(255),
+                online BOOLEAN DEFAULT 0,
+                geom TEXT,
+                heading INT DEFAULT 0,
+                "speedKmh" INT DEFAULT 0,
+                "lastPingAt" TIMESTAMP,
                 active BOOLEAN DEFAULT 1,
+                operational_status VARCHAR(30) DEFAULT 'OFFLINE',
                 "maxActiveOrders" INT DEFAULT 1,
+                onboarding_status VARCHAR(50) DEFAULT 'INVITED',
+                tax_classification VARCHAR(50) DEFAULT 'PESSOA_FISICA_AUTONOMO',
                 "pixKeyType" VARCHAR(20),
                 "pixKey" VARCHAR(255),
-                "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS "Order" (
+                id CHAR(32) PRIMARY KEY,
+                operator_id CHAR(32) NOT NULL,
+                store_id CHAR(32) NOT NULL,
+                driver_id CHAR(32),
+                manifest_id CHAR(32),
+                status VARCHAR(30) DEFAULT 'COMPLETED',
+                "fareValueCents" INT DEFAULT 0,
+                "storeAuthorizedBonusCents" INT DEFAULT 0,
+                "distanceMeters" INT DEFAULT 0,
+                "businessDate" DATE,
+                "allocationDifficulty" BOOLEAN DEFAULT 0,
+                "requestedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                "acceptedAt" TIMESTAMP,
+                "startedAt" TIMESTAMP,
+                "arrivedAt" TIMESTAMP,
+                "completedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                "canceledAt" TIMESTAMP,
+                "external_order_id" VARCHAR(255),
+                "external_source" VARCHAR(50),
+                metadata TEXT DEFAULT '{}',
+                "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS "ManualEntry" (
+                id CHAR(32) PRIMARY KEY,
+                operator_id CHAR(32) NOT NULL,
+                driver_id CHAR(32) NOT NULL,
+                store_id CHAR(32),
+                created_by_staff_id CHAR(32),
+                created_by_client_id CHAR(32),
+                "amountCents" BIGINT NOT NULL,
+                description TEXT NOT NULL,
+                "visibleToStore" BOOLEAN DEFAULT 1,
+                "taxCategory" VARCHAR(50) DEFAULT 'TAXABLE_INCOME',
+                status VARCHAR(30) DEFAULT 'APPROVED',
+                "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
     yield
@@ -271,4 +331,59 @@ def test_operator_saas_billing_crud_and_actions(client: Client):
     )
     assert resp.status_code == 200
     assert resp.json()["success"] is True
+
+
+@pytest.mark.django_db
+def test_dashboard_stats_endpoint_metrics(client):
+    from accounts.models import Operator
+    from logistics.models import Store, Driver, Order
+    from accounts.security import create_access_token
+    from django.contrib.gis.db.models.proxy import SpatialProxy
+
+    setattr(SpatialProxy, "__set__", lambda self, instance, value: instance.__dict__.__setitem__(self.field.attname, value))
+    setattr(SpatialProxy, "__get__", lambda self, instance, cls=None: instance.__dict__.get(self.field.attname) if instance else self)
+
+    op = Operator.objects.create(id=uuid.uuid4(), name="Dashboard Operator", cnpj="99888777000199", status="ACTIVE")
+    store = Store.objects.create(id=uuid.uuid4(), operator=op, name="Pizzaria Central", operational=True)
+    driver = Driver.objects.create(id=uuid.uuid4(), operator=op, name="Carlos Motoboy", active=True)
+    
+    Order.objects.create(
+        id=uuid.uuid4(),
+        operator=op,
+        store=store,
+        driver=driver,
+        status=Order.OrderStatus.COMPLETED,
+        fareValueCents=2500,
+    )
+    Order.objects.create(
+        id=uuid.uuid4(),
+        operator=op,
+        store=store,
+        driver=driver,
+        status=Order.OrderStatus.STARTED,
+        fareValueCents=1800,
+    )
+
+    token = create_access_token({
+        "sub": "user_superadmin_master",
+        "email": "master@expressoneves.com.br",
+        "is_platform_admin": True,
+        "role": "SUPERADMIN",
+    })
+
+    resp = client.get(
+        "/api/v1/db/dashboard-stats?range=last7",
+        HTTP_AUTHORIZATION=f"Bearer {token}"
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["faturamento_total"] >= 25.0
+    assert data["completed_orders"] >= 1
+    assert data["active_orders"] >= 1
+    assert data["active_stores"] >= 1
+    assert data["active_drivers"] >= 1
+    assert len(data["chart_data"]) == 7
+    assert len(data["top_stores"]) >= 1
+    assert data["top_stores"][0]["nome"] == "Pizzaria Central"
+
 

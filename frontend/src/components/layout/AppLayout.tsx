@@ -25,6 +25,7 @@ import {
   History,
   Plus,
   CreditCard,
+  ShieldCheck,
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { cn, formatCurrency } from "../../lib/utils";
@@ -32,7 +33,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { authFetch } from "../../lib/api";
 
 // ─── 3-Tier Access Control Hierarchy ─────────────────────────
-// superadmin      → SuperAdmin Master (Plataforma). Acesso total, incluindo /operadores, /gerencial, /snapshots, /sync, /usuarios
+// superadmin      → SuperAdmin Master (Plataforma). Acesso total, incluindo /operadores, /snapshots, /sync, /usuarios
 // operador_admin  → Gerente/Admin do Operador Logístico. Acesso a /corridas, /motoboys, /empresas, /escala, /lancamentos, /financeiro, /saques, /relatorios, /historico, /usuarios, /configuracoes
 // operador_staff  → Despachante/Operacional do Operador. Acesso a /, /corridas, /escala, /relatorios, /historico
 // lojista         → Cliente / Lojista. Acesso a /, /corridas (lançar/rastrear), /lancamentos (extrato da loja), /relatorios (sua loja), /historico, /configuracoes (perfil)
@@ -40,7 +41,6 @@ import { authFetch } from "../../lib/api";
 
 const SUPERADMIN_ONLY_ROUTES = [
   "/operadores",
-  "/gerencial",
   "/snapshots",
   "/sync",
 ];
@@ -161,15 +161,9 @@ const navigationGroups = [
         roles: ["superadmin", "operador_admin", "operador_staff", "lojista"],
       },
       {
-        name: "Gerencial",
-        href: "/gerencial",
-        icon: Activity,
-        roles: ["superadmin"],
-      },
-      {
         name: "Operadores",
         href: "/operadores",
-        icon: Activity,
+        icon: ShieldCheck,
         roles: ["superadmin"],
       },
     ],

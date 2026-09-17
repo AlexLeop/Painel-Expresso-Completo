@@ -47,9 +47,6 @@ const Configuracoes = React.lazy(() =>
 const Operadores = React.lazy(() =>
   import("./pages/Operadores").then((m) => ({ default: m.Operadores })),
 );
-const Gerencial = React.lazy(() =>
-  import("./pages/Gerencial").then((m) => ({ default: m.Gerencial })),
-);
 const Historico = React.lazy(() =>
   import("./pages/Historico").then((m) => ({ default: m.Historico })),
 );
@@ -229,14 +226,7 @@ export default function App() {
               </PrivateRoute>
             }
           />
-          <Route
-            path="/gerencial"
-            element={
-              <PrivateRoute>
-                <Gerencial />
-              </PrivateRoute>
-            }
-          />
+          <Route path="/gerencial" element={<Navigate to="/" replace />} />
           <Route
             path="/operadores"
             element={
