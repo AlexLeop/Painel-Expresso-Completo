@@ -279,7 +279,7 @@ class EfiBaasClient:
                     )
                 data = res.json()
                 saldo_float = float(data.get("saldo", 0.0))
-                saldo_cents = int(round(saldo_float * 100))
+                saldo_cents = round(saldo_float * 100)
                 return {
                     "saldo": saldo_float,
                     "saldo_cents": saldo_cents,
