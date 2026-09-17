@@ -1,5 +1,6 @@
 import logging
 from ninja import Router
+from ninja.errors import HttpError
 from django.db import transaction
 from django.utils import timezone
 from uuid import uuid4
@@ -215,3 +216,219 @@ def login_callback(request):
         return 503, {"error": "Nao foi possivel invalidar sessoes antigas no momento."}
 
     return 200, {"message": "Sessão iniciada e tokens antigos invalidados com sucesso."}
+
+
+# -----------------------------------------------------------------------------
+# Native Auth Core Handlers & Routers
+# -----------------------------------------------------------------------------
+from ninja import Schema
+from accounts.models import PlatformAdmin, StaffMember
+from logistics.models import Store
+from accounts.security import (
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+    SecurityError,
+)
+
+
+class LoginPayload(Schema):
+    email: str
+    password: str
+
+
+class RefreshPayload(Schema):
+    refresh_token: str
+
+
+def handle_login(request, payload: LoginPayload):
+    email = payload.email.strip().lower()
+    raw_password = payload.password
+
+    # 1. Checa PlatformAdmin (Superadmin Soberano)
+    admin = PlatformAdmin.objects.filter(email__iexact=email).first()
+    if admin and admin.check_password(raw_password):
+        token_payload = {
+            "sub": str(admin.id),
+            "email": admin.email,
+            "role": "admin",
+            "is_platform_admin": True,
+            "operator_id": None,
+        }
+        access_token = create_access_token(token_payload)
+        refresh_token = create_refresh_token({"sub": str(admin.id), "type": "refresh"})
+
+        all_ops = Operator.objects.all()
+        companies_list = [{"id": "global", "nome": "Administração Global"}]
+        for op in all_ops:
+            companies_list.append({"id": str(op.id), "nome": op.name})
+
+        return 200, {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "user": {
+                "id": str(admin.id),
+                "email": admin.email,
+                "name": admin.name,
+                "role": "admin",
+                "is_platform_admin": True,
+                "company_id": "global",
+                "operator_id": None,
+                "companies": companies_list,
+            },
+        }
+
+    # 2. Checa StaffMember (Equipe interna do Operador)
+    staff = StaffMember.objects.filter(email__iexact=email, active=True).select_related("operator").first()
+    if staff and staff.check_password(raw_password):
+        token_payload = {
+            "sub": str(staff.id),
+            "email": staff.email,
+            "role": staff.role,
+            "is_platform_admin": False,
+            "operator_id": str(staff.operator_id),
+        }
+        access_token = create_access_token(token_payload)
+        refresh_token = create_refresh_token({"sub": str(staff.id), "type": "refresh"})
+
+        try:
+            stores = list(Store.objects.filter(operator_id=staff.operator_id).values("id", "name"))
+            companies_list = [{"id": str(s["id"]), "nome": s["name"]} for s in stores]
+        except Exception:
+            companies_list = []
+
+        if not companies_list:
+            op_name = staff.operator.name if staff.operator else "Operação Principal"
+            companies_list = [{"id": str(staff.operator_id), "nome": op_name}]
+
+        return 200, {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "user": {
+                "id": str(staff.id),
+                "email": staff.email,
+                "name": staff.name,
+                "role": staff.role,
+                "is_platform_admin": False,
+                "operator_id": str(staff.operator_id),
+                "company_id": str(staff.operator_id),
+                "companies": companies_list,
+            },
+        }
+
+    raise HttpError(401, "Credenciais inválidas.")
+
+
+def handle_me(request):
+    if not hasattr(request, "auth") or not request.auth:
+        raise HttpError(401, "Não autenticado.")
+
+    uid = request.auth.get("sub")
+    is_admin = request.auth.get("is_platform_admin", False)
+
+    if is_admin:
+        admin = PlatformAdmin.objects.filter(id=uid).first()
+        if not admin and "email" in request.auth:
+            admin = PlatformAdmin.objects.filter(email=request.auth["email"]).first()
+
+        all_ops = Operator.objects.all()
+        companies_list = [{"id": "global", "nome": "Administração Global"}]
+        for op in all_ops:
+            companies_list.append({"id": str(op.id), "nome": op.name})
+
+        return {
+            "authenticated": True,
+            "user": {
+                "id": str(admin.id) if admin else uid,
+                "email": admin.email if admin else request.auth.get("email", ""),
+                "name": admin.name if admin else "Platform Admin",
+                "role": "admin",
+                "is_platform_admin": True,
+                "company_id": "global",
+                "machine_empresa_id": "global",
+                "companies": companies_list,
+            },
+        }
+
+    staff = StaffMember.objects.filter(id=uid, active=True).first()
+    if not staff and "email" in request.auth:
+        staff = StaffMember.objects.filter(email=request.auth["email"], active=True).first()
+
+    if not staff:
+        raise HttpError(401, "Usuário não encontrado.")
+
+    try:
+        stores = list(Store.objects.filter(operator_id=staff.operator_id).values("id", "name"))
+        companies_list = [{"id": str(s["id"]), "nome": s["name"]} for s in stores]
+    except Exception:
+        companies_list = []
+
+    if not companies_list:
+        op_name = staff.operator.name if staff.operator else "Operação Principal"
+        companies_list = [{"id": str(staff.operator_id), "nome": op_name}]
+
+    return {
+        "authenticated": True,
+        "user": {
+            "id": str(staff.id),
+            "email": staff.email,
+            "name": staff.name,
+            "role": staff.role,
+            "is_platform_admin": False,
+            "operator_id": str(staff.operator_id),
+            "company_id": str(staff.operator_id),
+            "machine_empresa_id": str(staff.operator_id),
+            "companies": companies_list,
+        },
+    }
+
+
+def handle_refresh(request, payload: RefreshPayload):
+    try:
+        decoded = decode_token(payload.refresh_token)
+        if decoded.get("type") != "refresh":
+            raise HttpError(401, "Token não é de renovação.")
+        uid = decoded.get("sub")
+    except SecurityError as e:
+        raise HttpError(401, str(e))
+
+    admin = PlatformAdmin.objects.filter(id=uid).first()
+    if admin:
+        token_payload = {
+            "sub": str(admin.id),
+            "email": admin.email,
+            "role": "admin",
+            "is_platform_admin": True,
+            "operator_id": None,
+        }
+        return {"access_token": create_access_token(token_payload), "token_type": "bearer"}
+
+    staff = StaffMember.objects.filter(id=uid, active=True).first()
+    if staff:
+        token_payload = {
+            "sub": str(staff.id),
+            "email": staff.email,
+            "role": staff.role,
+            "is_platform_admin": False,
+            "operator_id": str(staff.operator_id),
+        }
+        return {"access_token": create_access_token(token_payload), "token_type": "bearer"}
+
+    raise HttpError(401, "Usuário não encontrado.")
+
+
+def handle_logout(request):
+    return {"success": True, "message": "Logout realizado com sucesso."}
+
+
+# Router dedicado para /api/v1/auth/
+api_auth_router = Router(tags=["Native Auth API"])
+api_auth_router.post("/login", auth=None)(handle_login)
+api_auth_router.get("/me")(handle_me)
+api_auth_router.post("/refresh", auth=None)(handle_refresh)
+api_auth_router.post("/logout")(handle_logout)
+
+# Alias para manter compatibilidade
+auth_router = api_auth_router

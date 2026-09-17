@@ -1,25 +1,82 @@
+import logging
 from django.http import HttpRequest
 from accounts.models import StaffMember, PlatformAdmin
-from typing import List, Optional
+from typing import Any, List, Optional
+from ninja.security import HttpBearer
 from ninja.errors import HttpError
 from logistics.models import ClientPortalUser
+from accounts.security import decode_token, SecurityError
+
+logger = logging.getLogger(__name__)
+
+
+class NativeJWTAuth(HttpBearer):
+    """
+    Extrator e Validador JWT Nativo para o Django Ninja.
+    Valida a assinatura localmente em O(1) com DJANGO_SECRET_KEY.
+    """
+
+    def authenticate(self, request: HttpRequest, token: str) -> Optional[Any]:
+        try:
+            claims = decode_token(token)
+            request.auth = claims
+            return claims
+        except SecurityError as e:
+            logger.warning(f"Falha na validação do token JWT: {e}")
+            raise HttpError(401, str(e))
+        except Exception as e:
+            logger.error(f"Erro inesperado na autenticação JWT: {e}")
+            raise HttpError(401, "Token inválido")
+
+
+# Alias para retrocompatibilidade
+SupabaseJWTAuth = NativeJWTAuth
 
 
 def get_staff_member(request: HttpRequest) -> Optional[StaffMember]:
-    """Retorna o StaffMember a partir do JWT extraído pelo middleware global."""
+    """Retorna o StaffMember a partir do JWT nativo extraído no request."""
     if not hasattr(request, "auth") or not request.auth:
         return None
+
+    # Superadmin Sovereignty: Se for PlatformAdmin, cria representação soberana com bypass
+    if request.auth.get("is_platform_admin"):
+        uid = request.auth.get("sub")
+        admin = PlatformAdmin.objects.filter(id=uid).first()
+        if not admin and "email" in request.auth:
+            admin = PlatformAdmin.objects.filter(email=request.auth["email"]).first()
+
+        target_operator_id = request.headers.get("X-Operator-Id") or request.auth.get("operator_id")
+        staff = StaffMember(
+            id=admin.id if admin else uid,
+            name=admin.name if admin else "Platform Admin",
+            email=admin.email if admin else request.auth.get("email", ""),
+            role=StaffMember.RoleType.ADMIN,
+            operator_id=target_operator_id,
+            active=True,
+        )
+        staff.is_platform_admin = True
+        return staff
+
     uid = request.auth.get("sub")
     try:
-        return StaffMember.objects.get(supabase_uid=uid, active=True)
-    except StaffMember.DoesNotExist:
-        return None
+        return StaffMember.objects.select_related("operator").get(id=uid, active=True)
+    except (StaffMember.DoesNotExist, ValueError):
+        try:
+            return StaffMember.objects.select_related("operator").get(supabase_uid=uid, active=True)
+        except (StaffMember.DoesNotExist, ValueError):
+            return None
 
 
 def require_role(roles: List[str]):
-    """Dependência Ninja para exigir Roles específicos."""
+    """
+    Dependência Ninja para exigir Roles específicos.
+    Superadmin (is_platform_admin=True) possui soberania total e bypassa restrições de papel.
+    """
 
     def dependency(request: HttpRequest):
+        if hasattr(request, "auth") and request.auth and request.auth.get("is_platform_admin"):
+            return get_staff_member(request)
+
         staff = get_staff_member(request)
         if not staff:
             raise HttpError(401, "Não autenticado ou Staff não encontrado.")
@@ -31,15 +88,19 @@ def require_role(roles: List[str]):
 
 
 def platform_admin_required(request: HttpRequest):
-    """Dependência Ninja para Platform Admins globais."""
+    """Dependência Ninja para Platform Admins globais (Superadmin)."""
     if not hasattr(request, "auth") or not request.auth:
         raise HttpError(401, "Não autenticado.")
-    uid = request.auth.get("sub")
-    try:
-        admin = PlatformAdmin.objects.get(supabase_uid=uid)
-        return admin
-    except PlatformAdmin.DoesNotExist:
+    if not request.auth.get("is_platform_admin"):
         raise HttpError(403, "Acesso negado. Requer privilégios de Platform Admin.")
+
+    uid = request.auth.get("sub")
+    admin = PlatformAdmin.objects.filter(id=uid).first()
+    if not admin and "email" in request.auth:
+        admin = PlatformAdmin.objects.filter(email=request.auth["email"]).first()
+    if not admin:
+        raise HttpError(403, "Platform Admin não encontrado no banco.")
+    return admin
 
 
 def get_client_portal_user(request: HttpRequest) -> Optional[ClientPortalUser]:

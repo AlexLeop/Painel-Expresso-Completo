@@ -1,101 +1,31 @@
 import os
-import jwt
 import logging
-from typing import Any, Optional
-from ninja.security import HttpBearer
-from ninja.errors import HttpError
-from django.http import HttpRequest
 from ninja import NinjaAPI
-
-SUPABASE_JWT_SECRET = os.environ.get(
-    "SUPABASE_JWT_SECRET", "super-secret-jwt-token-with-at-least-32-characters-long"
-)
-SUPABASE_JWT_AUDIENCE = os.environ.get("SUPABASE_JWT_AUDIENCE", "authenticated")
+from accounts.auth import NativeJWTAuth, SupabaseJWTAuth
 
 logger = logging.getLogger(__name__)
 
-class SupabaseJWTAuth(HttpBearer):
-    """
-    Extrator e Validador JWT do Supabase para o Django Ninja.
-    Como o banco já usa RLS, esta classe atua garantindo que a API só seja acessada
-    se a assinatura do token JWT for válida, populando o request com as claims.
-    """
-
-    def authenticate(self, request: HttpRequest, token: str) -> Optional[Any]:
-        """
-        Extrai e valida o token JWT do Supabase recebido no header Authorization.
-        
-        A validação da assinatura é rigorosamente executada de forma local usando o 
-        SUPABASE_JWT_SECRET para garantir complexidade de tempo O(1) e evitar ataques DoS.
-        O uso de validação remota (fallback) está bloqueado por motivos de segurança.
-        
-        Args:
-            request (HttpRequest): O contexto atual da requisição Django.
-            token (str): O token Bearer JWT passado pelo cliente.
-            
-        Returns:
-            Optional[Any]: Dicionário contendo as claims decodificadas do JWT.
-            
-        Raises:
-            HttpError: 401 Unauthorized se a assinatura falhar ou o token expirar.
-            
-        Example:
-            >>> auth = SupabaseJWTAuth()
-            >>> claims = auth.authenticate(request, "eyJhbG...")
-            >>> print(claims["sub"])
-        """
-        try:
-            decoded = jwt.decode(
-                token,
-                SUPABASE_JWT_SECRET,
-                algorithms=["HS256"],
-                audience=SUPABASE_JWT_AUDIENCE,
-            )
-            return decoded
-        except jwt.ExpiredSignatureError:
-            logger.error("Token Supabase expirado.")
-            raise HttpError(401, "Token expirado")
-        except jwt.InvalidTokenError as e_jwt:
-            # Fallback remoto (Mantido para compatibilidade com ambiente local sem secret)
-            logger.error(f"Validação local do JWT falhou (InvalidTokenError): {e_jwt}. Tentando fallback via Supabase API...")
-            try:
-                from config.supabase_client import get_supabase_client
-                supabase = get_supabase_client()
-                if not supabase:
-                    raise HttpError(401, "Falha na validação local e cliente Supabase não inicializado.")
-                
-                user_res = supabase.auth.get_user(token)
-                if user_res and getattr(user_res, 'user', None):
-                    return jwt.decode(token, options={"verify_signature": False, "verify_audience": False})  # type: ignore
-                
-                raise HttpError(401, "Token inválido via Supabase API")
-            except HttpError:
-                raise
-            except Exception as e:
-                logger.error(f"Erro no fallback do Supabase Auth: {e}")
-                raise HttpError(401, f"Erro no fallback do Supabase Auth: {str(e)}")
-
-
-# Importar Roters (A serem criados/recriados no Ninja)
+# Importar Routers
 from logistics.api_driver import router as driver_router
 from logistics.api_operator import router as operator_router
 from logistics.api_client import router as client_router
 from logistics.api_admin import router as logistics_admin_router
 from finance.api import router as finance_router
 from finance.api_admin import router as finance_admin_router
-from accounts.api import router as accounts_router
+from accounts.api import router as accounts_router, api_auth_router
 from accounts.api_admin import router as accounts_admin_router
 from integration.api import router as integration_router
 from todos.api import router as todos_router
-from config.panel_api import panel_api
 from config.db_api import router as db_router
 
 api = NinjaAPI(
     title="Expresso Neves API",
     description="API de Gestão Logística e Financeira (Django Ninja)",
     version="1.0.0",
-    auth=SupabaseJWTAuth(),
+    auth=NativeJWTAuth(),
 )
+
+api.add_router("/auth/", api_auth_router)
 
 api.add_router("/db/", db_router)
 api.add_router("/driver/", driver_router)

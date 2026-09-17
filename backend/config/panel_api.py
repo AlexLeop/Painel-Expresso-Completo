@@ -1,83 +1,33 @@
-from ninja import NinjaAPI
+from ninja import NinjaAPI, Router
 from typing import Optional
 from logistics.models import Driver, Order
 from accounts.models import Operator, StaffMember, PlatformAdmin
-from config.api import SupabaseJWTAuth
+from accounts.auth import NativeJWTAuth
+from accounts.api import handle_login, handle_me, handle_refresh, handle_logout, LoginPayload, RefreshPayload
 
-panel_api = NinjaAPI(urls_namespace="panel_api")
-auth_bearer = SupabaseJWTAuth()
+panel_api = NinjaAPI(urls_namespace="panel_api", auth=NativeJWTAuth())
+auth_bearer = NativeJWTAuth()
 
-@panel_api.get("/auth/me", auth=auth_bearer)
-def auth_me(request):
-    """
-    Retorna o perfil do usuário autenticado no Supabase.
-    Procura em StaffMember e PlatformAdmin e injeta as 'companies' (Store/Lojas) vinculadas.
-    """
-    uid = request.auth.get("sub")
-    
-    from logistics.models import Store
-    
-    try:
-        admin = PlatformAdmin.objects.get(supabase_uid=uid)
-        
-        # Puxa todos os operadores logísticos para que o Admin Master possa alternar no dropdown do frontend
-        from accounts.models import Operator
-        all_ops = Operator.objects.all()
-        companies_list = [{"id": "global", "nome": "Administração Global"}]
-        for op in all_ops:
-            companies_list.append({
-                "id": str(op.id),
-                "nome": op.name
-            })
-            
-        return {
-            "authenticated": True,
-            "user": {
-                "id": str(admin.id),
-                "email": admin.email,
-                "name": admin.name,
-                "role": "admin",
-                "company_id": "global",
-                "machine_empresa_id": "global",
-                "companies": companies_list
-            }
-        }
-    except PlatformAdmin.DoesNotExist:
-        pass
+@panel_api.post("/auth/login", auth=None, tags=["Native Auth Panel"])
+def panel_login(request, payload: LoginPayload):
+    return handle_login(request, payload)
 
-    try:
-        staff = StaffMember.objects.get(supabase_uid=uid, active=True)
-        
-        # Puxar todas as lojas (companies/clientes) atreladas ao Operador logístico deste funcionário
-        stores = Store.objects.filter(operator_id=staff.operator_id)
-        companies_list = [
-            {
-                "id": str(s.id),
-                "nome": s.name,
-                "documento": s.document if hasattr(s, 'document') else "",
-            }
-            for s in stores
-        ]
-        
-        return {
-            "authenticated": True,
-            "user": {
-                "id": str(staff.id),
-                "email": staff.email,
-                "name": staff.name,
-                "role": staff.role.lower(),
-                "company_id": str(staff.operator_id),
-                "machine_empresa_id": str(staff.operator_id),
-                "companies": companies_list if companies_list else [{"id": str(staff.operator_id), "nome": "Matriz Operador"}]
-            }
-        }
-    except StaffMember.DoesNotExist:
-        return panel_api.create_response(request, {"authenticated": False, "error": "Sua conta do Supabase não possui vínculos de permissões (Operador ou Admin) no sistema Logístico."}, status=403)
+@panel_api.get("/auth/me", tags=["Native Auth Panel"])
+def panel_me(request):
+    return handle_me(request)
+
+@panel_api.post("/auth/refresh", auth=None, tags=["Native Auth Panel"])
+def panel_refresh(request, payload: RefreshPayload):
+    return handle_refresh(request, payload)
+
+@panel_api.post("/auth/logout", tags=["Native Auth Panel"])
+def panel_logout(request):
+    return handle_logout(request)
 
 @panel_api.post("/auth/change-tenant")
 def change_tenant(request, payload: dict):
-    # Mock endpoint to prevent 404 from frontend
-    return {"success": True}
+    # Endpoint to allow Superadmin switching active tenant header/context
+    return {"success": True, "selected_tenant": payload.get("tenant_id")}
 
 
 
@@ -535,6 +485,6 @@ def create_operator(request, payload: dict):
 
 
 # Catch-all
-@panel_api.api_operation(['GET', 'POST', 'PUT', 'DELETE'], '/{path:path}')
+@panel_api.api_operation(['GET', 'POST', 'PUT', 'DELETE'], '/{path:path}', auth=None)
 def catch_all(request, path: str):
     return {}
