@@ -65,17 +65,19 @@ class PlatformAdmin(models.Model):
     Administradores globais da Plataforma (Expresso Neves).
 
     Têm o poder de fazer bypass no RLS do PostgreSQL e gerenciar Operadores,
-    auditorias e configurações globais. O vínculo com a identidade real é feito
-    através do `supabase_uid` gerado pelo Supabase Auth.
+    auditorias e configurações globais com soberania absoluta sobre todos os tenants.
     """
 
     id = models.UUIDField(primary_key=True, editable=False)
     supabase_uid = models.UUIDField(
-        unique=True, help_text="Identificador único no Supabase Auth."
+        null=True, blank=True, help_text="Identificador legado Supabase Auth (opcional)."
     )
     name = models.CharField(max_length=255, help_text="Nome completo do administrador.")
     email = models.CharField(
         max_length=255, unique=True, help_text="E-mail de login corporativo."
+    )
+    passwordHash = models.CharField(
+        max_length=255, null=True, blank=True, db_column="passwordHash", help_text="Hash PBKDF2 da senha de acesso."
     )
     createdAt = models.DateTimeField(auto_now_add=True, db_column="createdAt")
 
@@ -87,6 +89,14 @@ class PlatformAdmin(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.email})"
+
+    def set_password(self, raw_password: str):
+        from accounts.security import hash_password
+        self.passwordHash = hash_password(raw_password)
+
+    def check_password(self, raw_password: str) -> bool:
+        from accounts.security import verify_password
+        return verify_password(raw_password, self.passwordHash)
 
 
 class OperatorAuditLog(models.Model):
@@ -153,10 +163,13 @@ class StaffMember(TimeStampedTenantModel):
         Operator, on_delete=models.CASCADE, db_column="operator_id"
     )
     supabase_uid = models.UUIDField(
-        unique=True, help_text="Vínculo com o login seguro no Supabase Auth."
+        null=True, blank=True, help_text="Vínculo legado Supabase Auth (opcional)."
     )
     name = models.CharField(max_length=255, help_text="Nome do funcionário.")
     email = models.CharField(max_length=255, help_text="E-mail de acesso.")
+    passwordHash = models.CharField(
+        max_length=255, null=True, blank=True, db_column="passwordHash", help_text="Hash PBKDF2 da senha de acesso."
+    )
     role = models.CharField(
         max_length=20, choices=RoleType.choices, default=RoleType.OPERATOR_ROLE
     )
@@ -172,6 +185,14 @@ class StaffMember(TimeStampedTenantModel):
 
     def __str__(self):
         return f"{self.name} - {self.role}"
+
+    def set_password(self, raw_password: str):
+        from accounts.security import hash_password
+        self.passwordHash = hash_password(raw_password)
+
+    def check_password(self, raw_password: str) -> bool:
+        from accounts.security import verify_password
+        return verify_password(raw_password, self.passwordHash)
 
 
 class SecurityDenylist(models.Model):

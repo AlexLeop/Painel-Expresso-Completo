@@ -147,11 +147,14 @@ class Driver(TimeStampedTenantModel):
     operator = models.ForeignKey(
         Operator, on_delete=models.CASCADE, db_column="operator_id"
     )
-    supabase_uid = models.UUIDField(unique=True)
+    supabase_uid = models.UUIDField(null=True, blank=True)
     name = models.CharField(max_length=255)
     phone = models.CharField(max_length=20)
     pixKeyType = models.CharField(max_length=20, db_column="pixKeyType")
     pixKey = models.CharField(max_length=255, db_column="pixKey")
+    passwordHash = models.CharField(
+        max_length=255, null=True, blank=True, db_column="passwordHash", help_text="Hash PBKDF2 da senha de acesso."
+    )
     online = models.BooleanField(
         default=False,
         help_text="Flag indicando se o app do motoboy está rodando no background.",
