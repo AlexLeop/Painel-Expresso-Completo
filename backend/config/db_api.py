@@ -142,9 +142,77 @@ def get_companies(request):
 
 @router.get("/users")
 def get_users(request):
-    from accounts.models import StaffMember
-    users = StaffMember.objects.all()
-    return [{"id": str(u.id), "nome": u.name, "name": u.name, "email": u.email, "role": u.role} for u in users]
+    from accounts.models import StaffMember, PlatformAdmin
+    from logistics.models import ClientPortalUser
+    
+    auth = getattr(request, "auth", None) or {}
+    is_admin = auth.get("is_platform_admin", False)
+    op_id = auth.get("operator_id")
+    client_id = auth.get("client_id")
+    
+    if client_id:
+        return []
+
+    res = []
+    if is_admin:
+        # PlatformAdmin vê toda a hierarquia
+        for p in PlatformAdmin.objects.all().order_by("-createdAt"):
+            res.append({
+                "id": str(p.id),
+                "nome": p.name,
+                "name": p.name,
+                "email": p.email,
+                "role": "superadmin",
+                "active": True,
+                "companies": [{"id": "global", "name": "Administração Global"}],
+            })
+        for u in StaffMember.objects.select_related("operator").all().order_by("-createdAt"):
+            res.append({
+                "id": str(u.id),
+                "nome": u.name,
+                "name": u.name,
+                "email": u.email,
+                "role": u.role,
+                "active": u.active,
+                "companies": [{"id": str(u.operator_id), "name": u.operator.name}] if u.operator else [],
+            })
+        for c in ClientPortalUser.objects.select_related("client").all().order_by("-createdAt"):
+            res.append({
+                "id": str(c.id),
+                "nome": c.name,
+                "name": c.name,
+                "email": c.email,
+                "role": "lojista",
+                "active": True,
+                "companies": [{"id": str(c.client_id), "name": c.client.name}] if c.client else [],
+            })
+    elif op_id:
+        # Staff do operador vê seus colaboradores e lojistas
+        for u in StaffMember.objects.filter(operator_id=op_id).select_related("operator").order_by("-createdAt"):
+            res.append({
+                "id": str(u.id),
+                "nome": u.name,
+                "name": u.name,
+                "email": u.email,
+                "role": u.role,
+                "active": u.active,
+                "companies": [{"id": str(u.operator_id), "name": u.operator.name}] if u.operator else [],
+            })
+        for c in ClientPortalUser.objects.filter(operator_id=op_id).select_related("client").order_by("-createdAt"):
+            res.append({
+                "id": str(c.id),
+                "nome": c.name,
+                "name": c.name,
+                "email": c.email,
+                "role": "lojista",
+                "active": True,
+                "companies": [{"id": str(c.client_id), "name": c.client.name}] if c.client else [],
+            })
+    else:
+        for u in StaffMember.objects.all().order_by("-createdAt"):
+            res.append({"id": str(u.id), "nome": u.name, "name": u.name, "email": u.email, "role": u.role, "active": u.active})
+
+    return res
 
 class UserPayload(BaseModel):
     id: Optional[str] = None
@@ -157,46 +225,78 @@ class UserPayload(BaseModel):
 
 @router.post("/users")
 def create_user(request, payload: UserPayload):
-    from accounts.models import StaffMember, Operator
-    from config.supabase_client import get_supabase_admin
+    from accounts.models import StaffMember, Operator, PlatformAdmin
+    from logistics.models import ClientPortalUser, Client
+    import uuid
     try:
         if not payload.email:
-            return {"success": False, "error": "Email is required"}
-            
-        supabase_admin = get_supabase_admin()
-        user_res = supabase_admin.auth.admin.create_user({
-            "email": payload.email,
-            "password": payload.password or "123456",
-            "email_confirm": True,
-            "user_metadata": {"name": payload.fullName, "role": payload.role or "staff"}
-        })
-        operator = None
+            return {"success": False, "error": "Email é obrigatório."}
+
+        auth = getattr(request, "auth", None) or {}
+        is_admin = auth.get("is_platform_admin", False)
+        auth_op_id = auth.get("operator_id")
+
         c_id = payload.companyId
         if not c_id and payload.companyIds and len(payload.companyIds) > 0:
             c_id = payload.companyIds[0]
-            
-        if c_id and c_id != "global":
-            operator = Operator.objects.filter(id=c_id).first()
-            
-        if operator:
-            StaffMember.objects.create(
-                supabase_uid=user_res.user.id,
-                name=payload.fullName,
-                email=payload.email,
-                role=payload.role or "OPERATOR_ROLE",
-                operator=operator,
-                active=True
-            )
+
+        if not is_admin and auth_op_id:
+            target_operator_id = auth_op_id
         else:
-            from accounts.models import PlatformAdmin
-            PlatformAdmin.objects.create(
-                supabase_uid=user_res.user.id,
+            target_operator_id = c_id if (c_id and c_id != "global") else None
+
+        role = (payload.role or "OPERATOR_ROLE").upper()
+        raw_password = payload.password or "123456"
+
+        if role == "LOJISTA":
+            client = None
+            if target_operator_id:
+                client = Client.objects.filter(operator_id=target_operator_id).first()
+            if not client:
+                client = Client.objects.first()
+            if not client:
+                return {"success": False, "error": "Nenhum cliente cadastrado para vincular o lojista."}
+
+            c_user = ClientPortalUser(
+                id=uuid.uuid4(),
+                operator=client.operator,
+                client=client,
                 name=payload.fullName,
-                email=payload.email,
-                active=True
+                email=payload.email.strip().lower(),
             )
-            
-        return {"success": True}
+            c_user.set_password(raw_password)
+            c_user.save()
+            return {"success": True}
+
+        operator = None
+        if target_operator_id:
+            operator = Operator.objects.filter(id=target_operator_id).first()
+
+        if operator:
+            staff = StaffMember(
+                id=uuid.uuid4(),
+                operator=operator,
+                name=payload.fullName,
+                email=payload.email.strip().lower(),
+                role=payload.role or "OPERATOR_ROLE",
+                active=True,
+            )
+            staff.set_password(raw_password)
+            staff.save()
+            return {"success": True}
+
+        if is_admin:
+            p_admin = PlatformAdmin(
+                id=uuid.uuid4(),
+                name=payload.fullName,
+                email=payload.email.strip().lower(),
+            )
+            p_admin.set_password(raw_password)
+            p_admin.save()
+            return {"success": True}
+        else:
+            return {"success": False, "error": "Operador inválido ou não informado."}
+
     except Exception as e:
         return {"success": False, "error": str(e)}
 
