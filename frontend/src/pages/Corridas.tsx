@@ -149,6 +149,32 @@ function MapController({
   return null;
 }
 
+// Map Resizer to dynamically invalidate size whenever the container height/width changes (e.g. dragging historyHeight)
+function MapResizer({ trigger }: { trigger: any }) {
+  const map = useMap();
+
+  useEffect(() => {
+    map.invalidateSize();
+    const t = setTimeout(() => {
+      map.invalidateSize();
+    }, 60);
+    return () => clearTimeout(t);
+  }, [trigger, map]);
+
+  useEffect(() => {
+    const container = map.getContainer();
+    if (!container || typeof ResizeObserver === "undefined") return;
+
+    const ro = new ResizeObserver(() => {
+      map.invalidateSize();
+    });
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, [map]);
+
+  return null;
+}
+
 type DriverPosition = {
   machine_condutor_id: string;
   latitude: number;
@@ -1528,9 +1554,10 @@ export function Corridas() {
                 zoomControl={false}
               >
               <TileLayer
-                attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
-                url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
+              <MapResizer trigger={historyHeight} />
               {/* Legend & Status Overlay */}
               <div className="absolute top-3 right-3 z-[400] flex flex-col items-end gap-2 pointer-events-none">
                 <div

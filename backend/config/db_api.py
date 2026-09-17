@@ -100,8 +100,45 @@ def delete_entry(request, id: str):
 
 @router.get("/companies")
 def get_companies(request):
-    ops = Operator.objects.all()
-    return [{"id": str(o.id), "nome": o.name, "name": o.name} for o in ops]
+    from accounts.models import Operator
+    from logistics.models import Store
+    from finance.models import Contract
+
+    stores = Store.objects.select_related("operator", "client").all()
+    res = []
+    for s in stores:
+        contract = Contract.objects.filter(store=s).first()
+        res.append({
+            "id": str(s.id),
+            "nome": s.name,
+            "name": s.name,
+            "documento": s.client.document if s.client else "",
+            "telefone": "",
+            "endereco": "",
+            "active": s.operational if hasattr(s, "operational") else True,
+            "ride_fee_per_delivery": (contract.rideFeePerDeliveryCents / 100.0) if (contract and contract.rideFeePerDeliveryCents) else 1.6,
+            "minimum_rides_fee_floor": (contract.minimumRidesFeeFloorCents / 100.0) if (contract and contract.minimumRidesFeeFloorCents) else 350.0,
+            "daily_rate_weekday": (contract.dailyRateWeekdayCents / 100.0) if (contract and contract.dailyRateWeekdayCents) else 60.0,
+            "daily_rate_saturday": (contract.dailyRateSaturdayCents / 100.0) if (contract and contract.dailyRateSaturdayCents) else 70.0,
+            "daily_rate_sunday": (contract.dailyRateSundayCents / 100.0) if (contract and contract.dailyRateSundayCents) else 80.0,
+            "daily_rate_holiday": (contract.dailyRateHolidayCents / 100.0) if (contract and contract.dailyRateHolidayCents) else 80.0,
+            "operator_id": str(s.operator_id),
+        })
+
+    if not res:
+        ops = Operator.objects.all()
+        for o in ops:
+            res.append({
+                "id": str(o.id),
+                "nome": o.name,
+                "name": o.name,
+                "documento": o.cnpj or "",
+                "active": True,
+                "ride_fee_per_delivery": 1.6,
+                "minimum_rides_fee_floor": 350.0,
+                "daily_rate_weekday": 60.0,
+            })
+    return res
 
 @router.get("/users")
 def get_users(request):
@@ -213,30 +250,37 @@ class CompanyDriverPayload(BaseModel):
 def get_company_drivers(request, company_id: Optional[str] = None, active_only: int = 0):
     try:
         from django.core.exceptions import ValidationError
-        from logistics.models import StoreDriver
-        qs = StoreDriver.objects.select_related('driver').all()
+        from logistics.models import Driver, Vehicle
+
         if company_id and company_id != "global":
             try:
-                store = Store.objects.filter(operator_id=company_id).first()
-            except ValidationError:
-                store = None
-            if store:
-                qs = qs.filter(store=store)
-            else:
-                qs = qs.none()
-        
+                drivers = Driver.objects.filter(operator_id=company_id)
+            except (ValidationError, ValueError):
+                drivers = Driver.objects.none()
+        else:
+            drivers = Driver.objects.all()
+
+        if active_only:
+            drivers = drivers.filter(active=True)
+
         res = []
-        for sd in qs:
-            try:
-                res.append({
-                    "id": sd.id,
-                    "driverId": str(sd.driver.id) if sd.driver_id else "",
-                    "nome": sd.driver.name if sd.driver_id else "Desconhecido",
-                    "phone": sd.driver.phone if sd.driver_id else "",
-                    "active": sd.driver.active if sd.driver_id else False
-                })
-            except Exception:
-                continue
+        for d in drivers.order_by("-createdAt"):
+            veh = Vehicle.objects.filter(operator=d.operator).first()
+            res.append({
+                "id": str(d.id),
+                "driverId": str(d.id),
+                "nome": d.name,
+                "phone": d.phone,
+                "telefone": d.phone,
+                "document": d.document or "",
+                "placa": veh.plate if veh else "",
+                "modelo": "Motocicleta" if (veh and veh.type == "MOTORCYCLE") else (veh.type if veh else "Motocicleta"),
+                "status": "Ativo" if d.active else "Inativo",
+                "active": d.active,
+                "maxActiveOrders": d.maxActiveOrders,
+                "pixKeyType": d.pixKeyType,
+                "pixKey": d.pixKey,
+            })
         return res
     except Exception:
         import traceback
@@ -259,13 +303,32 @@ def update_company_driver(request, payload: CompanyDriverPayload):
         return {"success": False, "error": "Driver not found"}
 
 class DriverCreateSchema(BaseModel):
-    companyId: str
+    companyId: Optional[str] = None
     nome: str
     phone: Optional[str] = None
     telefone: Optional[str] = None
     email: str
     password: Optional[str] = "123456"
     document: Optional[str] = None
+    rg: Optional[str] = None
+    birthDate: Optional[str] = None
+    cep: Optional[str] = None
+    logradouro: Optional[str] = None
+    numero: Optional[str] = None
+    complemento: Optional[str] = None
+    bairro: Optional[str] = None
+    cidade: Optional[str] = None
+    estado: Optional[str] = None
+    vehicleType: Optional[str] = "MOTORCYCLE"
+    placa: Optional[str] = None
+    modelo: Optional[str] = None
+    marca: Optional[str] = None
+    ano: Optional[str] = None
+    cor: Optional[str] = None
+    cnhNumero: Optional[str] = None
+    cnhCategoria: Optional[str] = "A"
+    cnhValidade: Optional[str] = None
+    cnhPrimeiraHabilitacao: Optional[str] = None
     pixKeyType: str = "TELEFONE"
     pixKey: str = ""
     maxActiveOrders: int = 3
@@ -274,55 +337,90 @@ class DriverCreateSchema(BaseModel):
 @router.post("/company-drivers")
 def create_company_driver(request, payload: DriverCreateSchema):
     """
-    Cadastra um novo motoboy. Cria usuário no Supabase Auth usando o Admin SDK,
-    e persiste o Driver no BD.
-    Payload expected: companyId (str), nome (str), phone (str), email (str), password (opt)
+    Cadastra um novo motoboy de forma 100% nativa sem dependência de Supabase Auth.
+    Persiste o Driver, dados do Veículo e Documentação vinculados ao Operador.
     """
     from accounts.models import Operator
-    from logistics.models import Driver, StoreDriver
-    from config.supabase_client import get_supabase_admin
+    from logistics.models import Driver, Store, StoreDriver, Vehicle, DriverDocument
+    from accounts.security import hash_password
+    from django.core.exceptions import ValidationError
     import uuid
 
     company_id = payload.companyId
     nome = payload.nome
     phone = payload.phone or payload.telefone
     email = payload.email
-    password = payload.password
+    password = payload.password or "123456"
     
-    if not all([company_id, nome, phone, email]):
-        return {"success": False, "error": "Dados insuficientes (companyId, nome, phone/telefone, email são obrigatórios)"}
+    if not all([nome, phone, email]):
+        return {"success": False, "error": "Nome, telefone e e-mail são obrigatórios"}
     
     try:
-        operator = Operator.objects.get(id=company_id)
+        operator = None
+        if company_id and company_id != "global":
+            try:
+                operator = Operator.objects.filter(id=company_id).first()
+            except (ValidationError, ValueError):
+                operator = None
+        if not operator:
+            operator = Operator.objects.first()
+
+        if not operator:
+            return {"success": False, "error": "Nenhum operador logístico encontrado no sistema."}
         
-        # 1. Criar Auth User no Supabase
-        supabase_admin = get_supabase_admin()
-        user_res = supabase_admin.auth.admin.create_user({
-            "email": email,
-            "password": password or "123456",
-            "email_confirm": True,
-            "user_metadata": {"name": nome, "role": "driver"}
-        })
-        
-        supa_uid = user_res.user.id
-        
-        # 2. Criar Driver record
+        # 1. Criar Driver record de forma 100% nativa
         driver = Driver.objects.create(
+            id=uuid.uuid4(),
             operator=operator,
-            supabase_uid=supa_uid,
+            supabase_uid=uuid.uuid4(),
             name=nome,
             phone=phone,
             document=payload.document,
-            pixKeyType=payload.pixKeyType,
+            pixKeyType=payload.pixKeyType or "TELEFONE",
             pixKey=payload.pixKey or phone,
-            maxActiveOrders=payload.maxActiveOrders,
-            tax_classification=payload.tax_classification
+            maxActiveOrders=payload.maxActiveOrders or 3,
+            tax_classification=payload.tax_classification or "PESSOA_FISICA_AUTONOMO",
+            passwordHash=hash_password(password),
+            active=True
         )
         
-        # 3. Vincular a uma Store do operador (primeira Store encontrada ou criar genérica)
+        # 2. Se placa foi informada, registrar veículo
+        if payload.placa:
+            clean_plate = payload.placa.strip().upper()
+            try:
+                v_type = (payload.vehicleType or "MOTORCYCLE").upper()
+                if v_type not in ["MOTORCYCLE", "BICYCLE", "CAR"]:
+                    v_type = "MOTORCYCLE"
+                Vehicle.objects.update_or_create(
+                    plate=clean_plate,
+                    defaults={
+                        "operator": operator,
+                        "type": v_type,
+                        "active": True
+                    }
+                )
+            except Exception:
+                pass
+
+        # 3. Se CNH foi informada, registrar DriverDocument
+        if payload.cnhNumero:
+            try:
+                DriverDocument.objects.create(
+                    id=uuid.uuid4(),
+                    operator=operator,
+                    driver=driver,
+                    name=f"CNH {payload.cnhCategoria or 'A'} - {payload.cnhNumero}",
+                    fileUrl="",
+                    document_type="CNH",
+                    status="APPROVED"
+                )
+            except Exception:
+                pass
+
+        # 4. Vincular a uma Store do operador (primeira Store encontrada)
         store = Store.objects.filter(operator_id=operator.id).first()
         if store:
-            StoreDriver.objects.create(
+            StoreDriver.objects.get_or_create(
                 operator=operator,
                 store=store,
                 driver=driver
@@ -333,55 +431,88 @@ def create_company_driver(request, payload: DriverCreateSchema):
         return {"success": False, "error": str(e)}
 
 class StoreCreateSchema(BaseModel):
-    companyId: str
+    companyId: Optional[str] = None
     name: str
     documento: Optional[str] = ""
+    endereco: Optional[str] = ""
+    telefone: Optional[str] = ""
     lat: Optional[float] = None
     lng: Optional[float] = None
     averagePrepTimeMinutes: int = 15
+    taxaCorridaPerEntrega: Optional[float] = 1.6
+    pisoFixo: Optional[float] = 350.0
+    diaria_weekday: Optional[float] = 60.0
 
 @router.post("/companies")
 def create_company_store(request, payload: StoreCreateSchema):
     """
     Cadastra uma nova Empresa/Loja (Store) para o Operador logístico.
-    Payload expected: companyId (operator), name, documento, endereco, lat, lng
     """
     from accounts.models import Operator
-    from logistics.models import Client
+    from logistics.models import Client, Store
+    from finance.models import Contract
+    from django.core.exceptions import ValidationError
+    from django.contrib.gis.geos import Point
     import uuid
 
-    operator_id = payload.companyId
+    operator = None
+    if payload.companyId and payload.companyId != "global":
+        try:
+            operator = Operator.objects.filter(id=payload.companyId).first()
+        except (ValidationError, ValueError):
+            operator = None
+    if not operator:
+        operator = Operator.objects.first()
+
+    if not operator:
+        return {"success": False, "error": "Nenhum operador logístico cadastrado para vincular a empresa."}
+
     name = payload.name
-    
-    if not operator_id or not name:
-        return {"success": False, "error": "operator_id (companyId) e name obrigatórios"}
-        
+    if not name:
+        return {"success": False, "error": "Nome da empresa é obrigatório."}
+
     try:
-        operator = Operator.objects.get(id=operator_id)
-        # Criar um Client base para a Store
+        # 1. Criar Client
         client = Client.objects.create(
+            id=uuid.uuid4(),
             operator=operator,
             name=name,
-            document=payload.documento or ""
+            document=payload.documento or "",
+            active=True
         )
-        
-        # Criar Store
-        lat = payload.lat
-        lng = payload.lng
-        from django.contrib.gis.geos import Point
-        if lat and lng:
-            geom = Point(lng, lat, srid=4326)
+
+        # 2. Criar Store
+        if payload.lat and payload.lng:
+            geom = Point(payload.lng, payload.lat, srid=4326)
         else:
-            geom = Point(-43.1729, -22.9068, srid=4326) # Default Rio coords
-            
+            geom = Point(-43.1729, -22.9068, srid=4326)
+
         store = Store.objects.create(
+            id=uuid.uuid4(),
             operator=operator,
             client=client,
             name=name,
             geom=geom,
-            averagePrepTimeMinutes=payload.averagePrepTimeMinutes
+            averagePrepTimeMinutes=payload.averagePrepTimeMinutes or 15,
+            operational=True
         )
-        
+
+        # 3. Criar Contrato financeiro padrão
+        Contract.objects.get_or_create(
+            operator=operator,
+            store=store,
+            defaults={
+                "compensationMode": Contract.CompensationMode.GARANTIDA,
+                "rideFeePerDeliveryCents": int((payload.taxaCorridaPerEntrega or 1.6) * 100),
+                "minimumRidesFeeFloorCents": int((payload.pisoFixo or 350.0) * 100),
+                "minimumFloorBps": 0,
+                "adminTaxThresholdCents": 0,
+                "adminTaxFixedAmountCents": 0,
+                "adminTaxBps": 0,
+                "dailyRateWeekdayCents": int((payload.diaria_weekday or 60.0) * 100),
+            }
+        )
+
         return {"success": True, "storeId": str(store.id)}
     except Exception as e:
         return {"success": False, "error": str(e)}

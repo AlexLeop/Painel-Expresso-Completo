@@ -244,9 +244,14 @@ export function Empresas() {
             companyId,
             name: empresa.nome,
             documento: empresa.documento || "",
+            endereco: empresa.endereco || "",
+            telefone: empresa.telefone || "",
             lat: empresa.lat,
             lng: empresa.lng,
-            averagePrepTimeMinutes: empresa.averagePrepTimeMinutes || 15
+            averagePrepTimeMinutes: empresa.averagePrepTimeMinutes || 15,
+            taxaCorridaPerEntrega: empresa.taxaCorridaPerEntrega,
+            pisoFixo: empresa.pisoFixo,
+            diaria_weekday: empresa.diaria_weekday,
           }),
         });
         
@@ -331,10 +336,16 @@ export function Empresas() {
             Empresas
           </h1>
           <p className="text-[13px] font-medium text-zinc-500 mt-1">
-            Gestão de regras financeiras para lojas sincronizadas da Machine
-            API.
+            Gestão de regras financeiras para lojas e estabelecimentos parceiros.
           </p>
         </div>
+        <button
+          onClick={() => handleOpenModal()}
+          className="bg-zinc-900 hover:bg-zinc-800 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all shadow-sm"
+        >
+          <Plus className="h-4 w-4" />
+          <span>Nova Empresa</span>
+        </button>
       </div>
 
       <div className="glass-panel overflow-hidden flex flex-col">

@@ -53,7 +53,7 @@ export function Configuracoes() {
   const { session } = useAuth();
   const user = session?.user;
   const isAdmin = user?.role === "admin" || user?.role === "administrador";
-  const currentCompany = Array.isArray(user?.companies) ? user.companies.find(
+  const currentCompany: any = Array.isArray(user?.companies) ? user.companies.find(
     (c: any) => String(c.id) === String(user?.machine_empresa_id || user?.company_id),
   ) : undefined;
   const companyName = currentCompany?.nome || user?.name || "";
