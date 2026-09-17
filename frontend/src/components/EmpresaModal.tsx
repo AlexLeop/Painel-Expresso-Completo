@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   Store,
@@ -349,6 +350,16 @@ export function EmpresaModal({
     setCepError(null);
   }, [empresa, isOpen]);
 
+  useEffect(() => {
+    if (isOpen) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   // Busca no ViaCEP
@@ -532,31 +543,31 @@ export function EmpresaModal({
 
   const currentTabIndex = TABS.findIndex((t) => t.id === activeTab);
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <>
+        <div className="fixed inset-0 z-[9999] overflow-hidden pointer-events-none">
           {/* Backdrop Blur */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-zinc-900/40 backdrop-blur-xs z-[50]"
+            className="fixed inset-0 bg-zinc-950/50 backdrop-blur-xs pointer-events-auto"
             onClick={onClose}
           />
 
-          {/* Modal Lateral (Slide-over Drawer com largura ampliada) */}
+          {/* Modal Lateral Amplo (Slide-over Drawer sem scroll nas abas) */}
           <motion.div
-            initial={{ x: "100%", opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: "100%", opacity: 0 }}
-            transition={{ type: "spring", damping: 26, stiffness: 220 }}
-            className="fixed top-0 right-0 h-full w-full max-w-2xl lg:max-w-3xl bg-white shadow-2xl z-[51] flex flex-col border-l border-zinc-200"
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "spring", damping: 28, stiffness: 280 }}
+            className="fixed top-0 right-0 h-full w-full max-w-3xl md:max-w-4xl lg:max-w-5xl bg-white shadow-2xl flex flex-col border-l border-zinc-200 pointer-events-auto"
           >
             {/* Header */}
-            <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/60">
+            <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/70 shrink-0">
               <div className="flex items-center gap-3.5">
-                <div className="h-11 w-11 rounded-2xl bg-zinc-900 text-white flex items-center justify-center shadow-md shadow-zinc-900/10">
+                <div className="h-11 w-11 rounded-2xl bg-zinc-900 text-white flex items-center justify-center shadow-md shadow-zinc-900/10 shrink-0">
                   <Building2 className="h-5 w-5" />
                 </div>
                 <div>
@@ -564,7 +575,7 @@ export function EmpresaModal({
                     {empresa ? "Editar Loja Parceira" : "Nova Loja Parceira"}
                     <span
                       className={cn(
-                        "text-[11px] font-bold px-2 py-0.5 rounded-full border",
+                        "text-[11px] font-bold px-2.5 py-0.5 rounded-full border",
                         formData.status === "Ativo"
                           ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                           : "bg-zinc-100 text-zinc-600 border-zinc-200"
@@ -589,31 +600,33 @@ export function EmpresaModal({
               </button>
             </div>
 
-            {/* Abas Superiores com Estilo Apple / Segmented */}
-            <div className="px-6 pt-3 pb-2 border-b border-zinc-100 bg-zinc-50/50 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-              {TABS.map((tab) => {
-                const Icon = tab.icon;
-                const isActive = activeTab === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setActiveTab(tab.id)}
-                    className={cn(
-                      "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap select-none",
-                      isActive
-                        ? "bg-white text-zinc-900 shadow-xs border border-zinc-200/80"
-                        : "text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100/60"
-                    )}
-                  >
-                    <Icon className={cn("h-4 w-4", isActive ? "text-zinc-900" : "text-zinc-400")} />
-                    {tab.label}
-                    {tab.id === "endereco" && formData.lat && formData.lng && (
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 ml-0.5" title="Localizado" />
-                    )}
-                  </button>
-                );
-              })}
+            {/* Abas Superiores Segmentadas em Grid de 5 colunas - SEM NENHUM SCROLL */}
+            <div className="px-6 py-2.5 border-b border-zinc-200/80 bg-zinc-50/70 shrink-0">
+              <div className="grid grid-cols-5 gap-1.5 p-1 bg-zinc-200/70 rounded-2xl">
+                {TABS.map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setActiveTab(tab.id)}
+                      className={cn(
+                        "w-full flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-xs font-bold transition-all select-none truncate",
+                        isActive
+                          ? "bg-white text-zinc-900 shadow-sm border border-zinc-200/80"
+                          : "text-zinc-600 hover:text-zinc-900 hover:bg-white/50"
+                      )}
+                    >
+                      <Icon className={cn("h-4 w-4 shrink-0", isActive ? "text-zinc-900" : "text-zinc-500")} />
+                      <span className="truncate">{tab.label}</span>
+                      {tab.id === "endereco" && formData.lat && formData.lng && (
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" title="Localizado" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Conteúdo das Abas */}
@@ -1604,27 +1617,30 @@ export function EmpresaModal({
                 )}
               </form>
             </div>
-
             {/* Rodapé Moderno com Navegação entre Abas e Salvar */}
-            <div className="px-6 py-4 border-t border-zinc-200 bg-zinc-50/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="px-6 py-4 border-t border-zinc-200 bg-zinc-50/90 flex items-center justify-between gap-4 shrink-0">
               {/* Navegação entre Abas */}
               <div className="flex items-center gap-2">
-                {currentTabIndex > 0 && (
+                {currentTabIndex > 0 ? (
                   <button
                     type="button"
                     onClick={() => setActiveTab(TABS[currentTabIndex - 1].id)}
-                    className="px-3 py-2 text-xs font-bold rounded-xl border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 transition-all flex items-center gap-1 shadow-2xs"
+                    className="px-3.5 py-2 text-xs font-bold rounded-xl border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 transition-all flex items-center gap-1.5 shadow-2xs"
                   >
                     <ChevronLeft className="h-4 w-4" />
                     Anterior
                   </button>
+                ) : (
+                  <div className="text-[11px] font-semibold text-zinc-400 pl-1">
+                    Passo 1 de 5
+                  </div>
                 )}
 
                 {currentTabIndex < TABS.length - 1 && (
                   <button
                     type="button"
                     onClick={() => setActiveTab(TABS[currentTabIndex + 1].id)}
-                    className="px-3.5 py-2 text-xs font-bold rounded-xl border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 transition-all flex items-center gap-1 shadow-2xs"
+                    className="px-3.5 py-2 text-xs font-bold rounded-xl border border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-100 hover:text-zinc-900 transition-all flex items-center gap-1.5 shadow-2xs"
                   >
                     Próximo: {TABS[currentTabIndex + 1].label}
                     <ChevronRight className="h-4 w-4" />
@@ -1633,11 +1649,11 @@ export function EmpresaModal({
               </div>
 
               {/* Ações Primárias */}
-              <div className="flex items-center gap-2.5 self-end sm:self-auto">
+              <div className="flex items-center gap-2.5">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 text-xs font-bold rounded-xl border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-100 transition-all"
+                  className="px-4 py-2 text-xs font-bold rounded-xl border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 transition-all"
                 >
                   Cancelar
                 </button>
@@ -1653,8 +1669,9 @@ export function EmpresaModal({
               </div>
             </div>
           </motion.div>
-        </>
+        </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }
