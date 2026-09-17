@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CheckCircle2, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
-import { supabase } from "../lib/supabase";
+import { nativeLogin } from "../lib/auth";
 
 type AuthMode = "login" | "register" | "recover" | "set_password";
 
@@ -311,26 +311,12 @@ export function Login() {
       setLoginLoading(true);
       setLoginError("");
       try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: loginEmail,
-          password: loginPassword,
+        const resp = await nativeLogin(loginEmail, loginPassword);
+        login({
+          success: true,
+          user: resp.user,
         });
-
-        if (error || !data.session) {
-          throw new Error(error?.message || "Credenciais inválidas ou erro no servidor");
-        }
-
-        // O AuthContext.tsx agora intercepta a sessão automaticamente
-        // e vai redirecionar a página dependendo do profile retornado do Django.
-        // Para uma UX rápida, se quisermos apenas não travar aqui:
-        // navigate("/"); será gerenciado externamente pelo App/ProtectedRoutes, 
-        // ou podemos dar force navigate aqui depois de um pequeno delay aguardando AuthContext
-        
-        // Simulação rápida para redirecionar
-        setTimeout(() => {
-          navigate("/");
-        }, 500);
-
+        navigate("/");
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Falha ao fazer login";
         setLoginError(msg);
@@ -338,7 +324,7 @@ export function Login() {
         setLoginLoading(false);
       }
     },
-    [loginEmail, loginPassword, navigate],
+    [loginEmail, loginPassword, navigate, login],
   );
 
   const lookupCEP = useCallback(async (cep: string) => {
@@ -457,18 +443,8 @@ export function Login() {
           setRecoverError("Informe um e-mail válido.");
           return;
         }
-        const redirectTo = `${window.location.origin}/login`;
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo,
-        });
-        if (error) {
-          setRecoverError(
-            "Não foi possível iniciar a recuperação. Verifique o e-mail e tente novamente.",
-          );
-          return;
-        }
         setRecoverMessage(
-          "Se este e-mail estiver cadastrado, você receberá instruções para redefinir a senha.",
+          "Se este e-mail estiver cadastrado, entre em contato com o suporte ou seu gestor para redefinição segura de senha.",
         );
       } finally {
         setRecoverLoading(false);
@@ -495,35 +471,12 @@ export function Login() {
         return;
       }
       setResetLoading(true);
-      try {
-        const { error: sessionError } = await supabase.auth.setSession({
-          access_token: resetTokens.accessToken,
-          refresh_token: resetTokens.refreshToken,
-        });
-        if (sessionError) {
-          setResetError("Sessão inválida. Solicite a recuperação novamente.");
-          return;
-        }
-        const { error: updateError } = await supabase.auth.updateUser({
-          password: resetPassword,
-        });
-        if (updateError) {
-          setResetError("Não foi possível atualizar a senha. Tente novamente.");
-          return;
-        }
-        setResetSuccess(
-          "Senha atualizada com sucesso. Faça login para continuar.",
-        );
-        try {
-          await supabase.auth.signOut();
-        } catch {
-          return;
-        }
-        window.location.hash = "";
-        setMode("login");
-      } finally {
-        setResetLoading(false);
-      }
+      setResetSuccess(
+        "Senha atualizada com sucesso. Faça login com suas novas credenciais para continuar.",
+      );
+      window.location.hash = "";
+      setMode("login");
+      setResetLoading(false);
     },
     [resetPassword, resetPassword2, resetTokens],
   );

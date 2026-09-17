@@ -1,8 +1,11 @@
-import { supabase } from "./supabase";
+import { authStorage, nativeRefreshToken } from "./auth";
 
 export async function authFetch(url: string, options: RequestInit = {}) {
-  const { data: sessionData, error } = await supabase.auth.getSession();
-  const token = sessionData?.session?.access_token;
+  let token = authStorage.getAccessToken();
+
+  if (!token) {
+    token = await nativeRefreshToken();
+  }
 
   if (!token) {
     if (window.location.pathname !== "/login") {

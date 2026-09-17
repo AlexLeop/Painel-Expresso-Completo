@@ -43,7 +43,6 @@ import { FilaDinamica } from "../components/FilaDinamica";
 import { RideChatModal } from "../components/RideChatModal";
 import { authFetch } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
-import { supabase } from "../lib/supabase";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 
 export interface RideData {

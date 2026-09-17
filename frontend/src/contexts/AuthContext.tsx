@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { authFetch } from "../lib/api";
+import { authStorage, fetchCurrentProfile, nativeLogout, User as AuthUser } from "../lib/auth";
 
 export interface Company {
   id: string;
@@ -10,15 +10,7 @@ export interface Company {
   endereco?: string;
 }
 
-export interface User {
-  id?: string;
-  email: string;
-  name: string;
-  role: string;
-  companies?: Company[];
-  company_id: string;
-  machine_empresa_id?: string;
-}
+export type User = AuthUser;
 
 export interface SessionData {
   success: boolean;
@@ -46,24 +38,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    const loadProfile = async (supabaseSession: any) => {
+    const initAuth = async () => {
       try {
-        const { authFetch } = await import("../lib/api");
-        const res = await authFetch("/api/auth/me");
-        if (res.ok) {
-          const data = await res.json();
-          if (data.authenticated && mounted) {
-            const newSession = {
-              success: true,
-              user: data.user,
-            };
-            localStorage.setItem("nevesgo:session", JSON.stringify(newSession));
-            setSession(newSession);
+        const token = authStorage.getAccessToken();
+        if (!token) {
+          if (mounted) {
+            setSession(null);
+            setIsLoading(false);
           }
+          return;
         }
-      } catch (err) {
+
+        const user = await fetchCurrentProfile();
+        if (user && mounted) {
+          const newSession: SessionData = {
+            success: true,
+            user,
+          };
+          localStorage.setItem("nevesgo:session", JSON.stringify(newSession));
+          setSession(newSession);
+        } else if (mounted) {
+          authStorage.clearTokens();
+          setSession(null);
+        }
+      } catch {
         if (mounted) {
-          localStorage.removeItem("nevesgo:session");
+          authStorage.clearTokens();
           setSession(null);
         }
       } finally {
@@ -71,31 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    import("../lib/supabase").then(({ supabase }) => {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session) {
-          loadProfile(session);
-        } else {
-          if (mounted) {
-            localStorage.removeItem("nevesgo:session");
-            setSession(null);
-            setIsLoading(false);
-          }
-        }
-      });
-
-      supabase.auth.onAuthStateChange((_event, session) => {
-        if (session) {
-          loadProfile(session);
-        } else {
-          if (mounted) {
-            localStorage.removeItem("nevesgo:session");
-            setSession(null);
-            setIsLoading(false);
-          }
-        }
-      });
-    });
+    initAuth();
 
     return () => {
       mounted = false;
@@ -108,9 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
-    const { supabase } = await import("../lib/supabase");
-    await supabase.auth.signOut();
-    localStorage.removeItem("nevesgo:session");
+    await nativeLogout();
     setSession(null);
   };
 
