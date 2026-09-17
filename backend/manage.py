@@ -4,6 +4,12 @@
 import os
 import sys
 
+# Suporte gracioso para execução local no Windows caso bibliotecas C do GDAL não estejam instaladas
+try:
+    import tests.gdal_mock_plugin
+except Exception:
+    pass
+
 
 def main():
     """Run administrative tasks."""
