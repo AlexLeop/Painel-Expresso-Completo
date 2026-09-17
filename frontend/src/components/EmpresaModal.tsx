@@ -535,26 +535,26 @@ export function EmpresaModal({
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+        <>
           {/* Backdrop Blur */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-zinc-950/60 backdrop-blur-xs"
+            className="fixed inset-0 bg-zinc-900/40 backdrop-blur-xs z-[50]"
             onClick={onClose}
           />
 
-          {/* Modal Container */}
+          {/* Modal Lateral (Slide-over Drawer com largura ampliada) */}
           <motion.div
-            initial={{ scale: 0.95, opacity: 0, y: 15 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.95, opacity: 0, y: 15 }}
-            transition={{ type: "spring", damping: 28, stiffness: 280 }}
-            className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl border border-zinc-200/80 overflow-hidden flex flex-col max-h-[92vh] z-10"
+            initial={{ x: "100%", opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: "100%", opacity: 0 }}
+            transition={{ type: "spring", damping: 26, stiffness: 220 }}
+            className="fixed top-0 right-0 h-full w-full max-w-2xl lg:max-w-3xl bg-white shadow-2xl z-[51] flex flex-col border-l border-zinc-200"
           >
             {/* Header */}
-            <div className="px-6 py-5 border-b border-zinc-100 flex items-center justify-between bg-gradient-to-r from-zinc-50 via-white to-zinc-50/50">
+            <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/60">
               <div className="flex items-center gap-3.5">
                 <div className="h-11 w-11 rounded-2xl bg-zinc-900 text-white flex items-center justify-center shadow-md shadow-zinc-900/10">
                   <Building2 className="h-5 w-5" />
@@ -1653,7 +1653,7 @@ export function EmpresaModal({
               </div>
             </div>
           </motion.div>
-        </div>
+        </>
       )}
     </AnimatePresence>
   );
