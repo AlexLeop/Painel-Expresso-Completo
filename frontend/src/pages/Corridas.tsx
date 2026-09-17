@@ -846,81 +846,9 @@ export function Corridas() {
     };
     document.addEventListener("visibilitychange", handleVisibility);
 
-    // Supabase Realtime subscription com buffer de throttling de 1500ms
-    // para evitar re-renders a cada ping individual de coordenadas
-    const positionBuffer = new Map<string, DriverPosition>();
-    let flushTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const flushBuffer = () => {
-      if (positionBuffer.size === 0) return;
-      const updates = Array.from(positionBuffer.values());
-      positionBuffer.clear();
-      setDriverPositions((prev) => {
-        const map = new Map(
-          prev.map((p) => [String(p.machine_condutor_id), p]),
-        );
-        updates.forEach((u) => map.set(String(u.machine_condutor_id), u));
-        return Array.from(map.values());
-      });
-    };
-
-    const channel = supabase
-      .channel("driver-positions-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "driver_positions" },
-        (payload) => {
-          const newRecord = payload.new as {
-            machine_condutor_id?: unknown;
-            latitude?: unknown;
-            longitude?: unknown;
-            speed?: unknown;
-            heading?: unknown;
-            machine_ride_id?: unknown;
-            received_at?: unknown;
-          };
-          const id = String(newRecord?.machine_condutor_id || "");
-          if (!id) return;
-
-          const allowed =
-            companyDriverIdsRef.current.has(id) ||
-            knownDriverIdsRef.current.has(id) ||
-            activeDriverIdsRef.current.has(id);
-          if (!allowed) return;
-
-          const coords = normalizeLatLng(
-            newRecord?.latitude,
-            newRecord?.longitude,
-          );
-          if (!coords) return;
-
-          // Acumula no buffer (substitui posição anterior do mesmo condutor)
-          positionBuffer.set(id, {
-            machine_condutor_id: id,
-            latitude: coords.lat,
-            longitude: coords.lng,
-            speed: parseCoordNumber(newRecord.speed) ?? 0,
-            heading: parseCoordNumber(newRecord.heading) ?? 0,
-            machine_ride_id: newRecord.machine_ride_id
-              ? String(newRecord.machine_ride_id)
-              : null,
-            received_at: String(
-              newRecord.received_at || new Date().toISOString(),
-            ),
-          });
-
-          // Debounce: aplica todas as atualizações acumuladas de uma vez a cada 1500ms
-          if (flushTimer) clearTimeout(flushTimer);
-          flushTimer = setTimeout(flushBuffer, 1500);
-        },
-      )
-      .subscribe();
-
     return () => {
       clearInterval(interval);
-      if (flushTimer) clearTimeout(flushTimer);
       document.removeEventListener("visibilitychange", handleVisibility);
-      supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId, refreshKey]);

@@ -123,8 +123,13 @@ def get_schedules(request, company_id: Optional[str] = None):
 def get_machine_companies(request):
     from logistics.models import Store
     
+    is_admin = request.auth.get("is_platform_admin", False)
+    if is_admin:
+        ops = Operator.objects.all()
+        return {"companies": [{"id": str(o.id), "nome": o.name} for o in ops]}
+
     uid = request.auth.get("sub")
-    staff = StaffMember.objects.filter(supabase_uid=uid).first()
+    staff = StaffMember.objects.filter(id=uid).first() or StaffMember.objects.filter(supabase_uid=uid).first()
     
     if staff and staff.operator_id:
         stores = Store.objects.filter(operator_id=staff.operator_id)
@@ -368,7 +373,7 @@ def get_machine_rides_estimate(
     distancia = distancia * 1.3
     
     uid = request.auth.get("sub")
-    staff = StaffMember.objects.filter(supabase_uid=uid).first()
+    staff = StaffMember.objects.filter(id=uid).first() or StaffMember.objects.filter(supabase_uid=uid).first()
     operator_id = staff.operator_id if staff else None
 
     valor_cents = 1000 # default fallback R$ 10.00
@@ -414,8 +419,9 @@ def get_operators(request):
     """
     Retorna a lista de Operadores (apenas para PlatformAdmin).
     """
+    is_admin = request.auth.get("is_platform_admin", False)
     uid = request.auth.get("sub")
-    if not PlatformAdmin.objects.filter(supabase_uid=uid).exists():
+    if not is_admin and not PlatformAdmin.objects.filter(id=uid).exists() and not PlatformAdmin.objects.filter(supabase_uid=uid).exists():
         return panel_api.create_response(request, {"error": "Acesso Negado"}, status=403)
         
     ops = Operator.objects.all().order_by("-createdAt")
