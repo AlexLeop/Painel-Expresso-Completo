@@ -1773,7 +1773,7 @@ def dispatch_store_ride(request, payload: DispatchStoreRidePayload):
 
     # 1. Validação de Saldo Pré-Pago
     bal = compute_store_balance(store)
-    mode = str(bal.get("billing_mode", "")).upper()
+    mode = bal.get("billing_mode", "").upper()
     if (mode in ("PRE_PAGO", "PRÉ-PAGO")) and bal["balance_cents"] < payload.valor_estimado_cents:
         return {
             "success": False,
@@ -1955,7 +1955,10 @@ def list_client_customers(request, q: Optional[str] = None, store_id: Optional[s
         }
         if q:
             query = q.lower()
-            if query not in item["name"].lower() and query not in item["phone"].lower() and query not in item["address"].lower():
+            name_val = str(item.get("name") or "").lower()
+            phone_val = str(item.get("phone") or "").lower()
+            address_val = str(item.get("address") or "").lower()
+            if query not in name_val and query not in phone_val and query not in address_val:
                 continue
         results.append(item)
 
