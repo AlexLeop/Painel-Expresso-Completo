@@ -173,19 +173,22 @@ export function Creditos() {
   ];
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="space-y-6 pb-12 max-w-7xl mx-auto">
       {/* Header & Breadcrumb */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-zinc-200 dark:border-zinc-800 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-white p-5 rounded-2xl shadow-xs border border-zinc-200 gap-4">
         <div>
-          <nav className="text-xs text-zinc-500 mb-1 flex items-center gap-1">
-            <span>Financeiro</span>
-            <span>/</span>
-            <span className="text-zinc-900 dark:text-zinc-100 font-medium">Créditos & Cobrança</span>
-          </nav>
-          <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase bg-zinc-900 text-white">
+              Lojista
+            </span>
+            <span className="text-xs font-semibold text-zinc-500">
+              Gestão de Saldo & Faturamento (Módulo C2)
+            </span>
+          </div>
+          <h1 className="text-xl font-bold text-zinc-900 tracking-tight">
             Créditos & Cobrança
           </h1>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-0.5">
+          <p className="text-sm text-zinc-500 mt-0.5">
             Gerencie seu saldo disponível para pedidos, adicione créditos via PIX e consulte faturas.
           </p>
         </div>
@@ -193,7 +196,7 @@ export function Creditos() {
         <button
           onClick={fetchBalanceAndHistory}
           disabled={loading}
-          className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-300 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors shadow-sm self-start sm:self-auto"
+          className="inline-flex items-center gap-2 px-4 py-2 text-xs font-medium text-zinc-700 bg-white border border-zinc-200 rounded-xl hover:bg-zinc-50 transition-colors shadow-xs self-start sm:self-auto cursor-pointer"
         >
           <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
           Atualizar
@@ -204,56 +207,56 @@ export function Creditos() {
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl flex items-center gap-3 text-emerald-800 dark:text-emerald-300 text-sm"
+          className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3 text-emerald-800 text-sm shadow-xs"
         >
           <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
-          <span>{successToast}</span>
+          <span className="font-medium">{successToast}</span>
         </motion.div>
       )}
 
       {error && (
-        <div className="p-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-xl flex items-center gap-3 text-rose-800 dark:text-rose-300 text-sm">
+        <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-3 text-rose-800 text-sm shadow-xs">
           <AlertCircle className="h-5 w-5 text-rose-600 shrink-0" />
-          <span>{error}</span>
+          <span className="font-medium">{error}</span>
         </div>
       )}
 
       {/* Grid Principal: Saldo Atual + Adicionar Créditos */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Card Saldo em Conta */}
-        <div className="lg:col-span-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+        <div className="lg:col-span-1 bg-white border border-zinc-200 rounded-2xl p-6 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="h-9 w-9 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-800 dark:text-zinc-200">
+                <div className="h-9 w-9 rounded-xl bg-zinc-100 flex items-center justify-center text-zinc-800">
                   <Wallet className="h-5 w-5" />
                 </div>
-                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">
                   Saldo em Conta
                 </span>
               </div>
               {balance?.status === "DISPONIVEL" && (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                   DISPONÍVEL
                 </span>
               )}
               {balance?.status === "ZERADO" && (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
                   ZERADO
                 </span>
               )}
               {balance?.status === "DEVEDOR" && (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
                   DEVEDOR
                 </span>
               )}
             </div>
 
             <div className="mt-6">
-              <span className="text-3xl sm:text-4xl font-extrabold text-zinc-900 dark:text-zinc-100 tracking-tight">
+              <span className="text-3xl sm:text-4xl font-extrabold text-zinc-900 tracking-tight">
                 {balance ? formatCurrency(balance.balance_reais) : "R$ 0,00"}
               </span>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+              <p className="text-xs text-zinc-500 mt-1.5">
                 {balance?.billing_mode === "POS_PAGO"
                   ? "Regime Faturado Semanal — Fechamento aos domingos."
                   : "Regime Pré-Pago — Créditos debitados automaticamente por corrida."}
@@ -261,16 +264,16 @@ export function Creditos() {
             </div>
           </div>
 
-          <div className="mt-8 pt-4 border-t border-zinc-100 dark:border-zinc-800/80 space-y-2 text-xs text-zinc-600 dark:text-zinc-400">
+          <div className="mt-8 pt-4 border-t border-zinc-100 space-y-2 text-xs text-zinc-600">
             <div className="flex items-center justify-between">
-              <span>Loja Ativa:</span>
-              <span className="font-semibold text-zinc-900 dark:text-zinc-200">
+              <span className="text-zinc-500">Loja Ativa:</span>
+              <span className="font-semibold text-zinc-900">
                 {balance?.store_name || session?.user?.name || "Minha Loja"}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span>Operadora Logística:</span>
-              <span className="font-semibold text-zinc-900 dark:text-zinc-200">
+              <span className="text-zinc-500">Operadora Logística:</span>
+              <span className="font-semibold text-zinc-900">
                 Expresso Neves
               </span>
             </div>
@@ -278,12 +281,12 @@ export function Creditos() {
         </div>
 
         {/* Card Adicionar Créditos */}
-        <div className="lg:col-span-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-sm space-y-5">
+        <div className="lg:col-span-2 bg-white border border-zinc-200 rounded-2xl p-6 shadow-xs space-y-5">
           <div>
-            <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">
+            <h2 className="text-lg font-bold text-zinc-900">
               Adicionar Créditos via PIX
             </h2>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+            <p className="text-xs text-zinc-500 mt-0.5">
               Escolha um pacote de créditos ou informe um valor personalizado. A liberação do saldo é instantânea após o pagamento.
             </p>
           </div>
@@ -301,10 +304,10 @@ export function Creditos() {
                     setCustomAmount("");
                   }}
                   className={cn(
-                    "relative flex flex-col items-center justify-center p-4 rounded-xl border text-sm font-semibold transition-all",
+                    "relative flex flex-col items-center justify-center p-4 rounded-xl border text-sm font-semibold transition-all cursor-pointer",
                     isSelected
-                      ? "border-zinc-900 dark:border-zinc-100 bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-sm"
-                      : "border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50 text-zinc-900 dark:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-700"
+                      ? "border-zinc-900 bg-zinc-900 text-white shadow-xs"
+                      : "border-zinc-200 bg-zinc-50/80 text-zinc-800 hover:border-zinc-300 hover:bg-zinc-100"
                   )}
                 >
                   {pack.popular && (
@@ -312,7 +315,7 @@ export function Creditos() {
                       Popular
                     </span>
                   )}
-                  <span className="text-base">{pack.label}</span>
+                  <span className="text-base font-bold">{pack.label}</span>
                 </button>
               );
             })}
@@ -320,11 +323,11 @@ export function Creditos() {
 
           {/* Campo de valor personalizado */}
           <div className="pt-2">
-            <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5">
+            <label className="block text-xs font-semibold text-zinc-700 mb-1.5">
               Ou digite outro valor (R$):
             </label>
-            <div className="relative rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50 focus-within:border-zinc-900 dark:focus-within:border-zinc-100 transition-colors">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-500">
+            <div className="relative rounded-xl border border-zinc-200 bg-zinc-50 focus-within:border-zinc-900 focus-within:bg-white transition-colors">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-400">
                 R$
               </span>
               <input
@@ -337,7 +340,7 @@ export function Creditos() {
                   setCustomAmount(e.target.value);
                   setSelectedPack(0);
                 }}
-                className="w-full bg-transparent pl-10 pr-4 py-2.5 text-sm font-semibold text-zinc-900 dark:text-zinc-100 focus:outline-none"
+                className="w-full bg-transparent pl-10 pr-4 py-2.5 text-sm font-semibold text-zinc-900 focus:outline-none"
               />
             </div>
           </div>
@@ -351,7 +354,7 @@ export function Creditos() {
             <button
               onClick={handleRechargeSubmit}
               disabled={isGeneratingPix}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm transition-colors shadow-sm disabled:opacity-50"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm transition-all shadow-xs disabled:opacity-50 active:scale-95 cursor-pointer"
             >
               <QrCode className="h-4 w-4" />
               {isGeneratingPix ? "Gerando PIX..." : "Gerar PIX de Recarga"}
@@ -361,13 +364,13 @@ export function Creditos() {
       </div>
 
       {/* Histórico de Faturas & Recargas */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+      <div className="bg-white border border-zinc-200 rounded-2xl shadow-xs overflow-hidden">
+        <div className="p-6 border-b border-zinc-100 flex items-center justify-between">
           <div>
-            <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
+            <h3 className="text-base font-bold text-zinc-900">
               Histórico de Pagamentos
             </h3>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+            <p className="text-xs text-zinc-500 mt-0.5">
               Faturas e recargas de saldo geradas para a sua loja.
             </p>
           </div>
@@ -375,7 +378,7 @@ export function Creditos() {
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-zinc-50 dark:bg-zinc-800/60 border-b border-zinc-200 dark:border-zinc-800 text-[10px] uppercase font-bold tracking-wider text-zinc-500">
+            <thead className="bg-zinc-50/80 border-b border-zinc-200 text-[10px] uppercase font-bold tracking-wider text-zinc-500">
               <tr>
                 <th className="px-6 py-3">Descrição</th>
                 <th className="px-6 py-3">Data</th>
@@ -384,17 +387,17 @@ export function Creditos() {
                 <th className="px-6 py-3 text-right">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+            <tbody className="divide-y divide-zinc-100">
               {invoices.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-zinc-500 text-xs">
+                  <td colSpan={5} className="px-6 py-8 text-center text-zinc-400 text-xs">
                     Nenhuma fatura ou recarga encontrada no período.
                   </td>
                 </tr>
               ) : (
                 invoices.map((inv) => (
-                  <tr key={inv.id} className="hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40 transition-colors">
-                    <td className="px-6 py-3.5 font-medium text-zinc-900 dark:text-zinc-100">
+                  <tr key={inv.id} className="hover:bg-zinc-50/60 transition-colors">
+                    <td className="px-6 py-3.5 font-medium text-zinc-900">
                       <div className="flex items-center gap-2">
                         <Receipt className="h-4 w-4 text-zinc-400" />
                         <span>{inv.description}</span>
@@ -409,16 +412,16 @@ export function Creditos() {
                         minute: "2-digit",
                       })}
                     </td>
-                    <td className="px-6 py-3.5 text-right font-semibold text-zinc-900 dark:text-zinc-100">
+                    <td className="px-6 py-3.5 text-right font-bold text-zinc-900">
                       {formatCurrency(inv.amount_reais)}
                     </td>
                     <td className="px-6 py-3.5 text-center">
                       {inv.status === "PAID" ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                           PAGO
                         </span>
                       ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
                           PENDENTE
                         </span>
                       )}
@@ -436,7 +439,7 @@ export function Creditos() {
                             });
                             setIsRechargeModalOpen(true);
                           }}
-                          className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 hover:underline"
+                          className="text-xs font-bold text-emerald-600 hover:text-emerald-700 hover:underline cursor-pointer"
                         >
                           Ver PIX
                         </button>
@@ -455,43 +458,43 @@ export function Creditos() {
       {/* Modal de Pagamento PIX */}
       <AnimatePresence>
         {isRechargeModalOpen && rechargeData && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/40 backdrop-blur-xs">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-md w-full p-6 shadow-xl space-y-5"
+              className="bg-white border border-zinc-200 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5"
             >
-              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
+              <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
                 <div className="flex items-center gap-2">
-                  <div className="h-8 w-8 rounded-lg bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center text-emerald-700 dark:text-emerald-300">
+                  <div className="h-8 w-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-700">
                     <QrCode className="h-4 w-4" />
                   </div>
-                  <h3 className="font-bold text-zinc-900 dark:text-zinc-100 text-base">
+                  <h3 className="font-bold text-zinc-900 text-base">
                     Pagamento via PIX
                   </h3>
                 </div>
                 <button
                   onClick={() => setIsRechargeModalOpen(false)}
-                  className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-sm font-bold"
+                  className="text-zinc-400 hover:text-zinc-600 text-sm font-bold cursor-pointer p-1"
                 >
                   ✕
                 </button>
               </div>
 
               {/* Detalhes do Valor */}
-              <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl text-center space-y-1">
+              <div className="p-4 bg-zinc-50 border border-zinc-100 rounded-xl text-center space-y-1">
                 <span className="text-xs text-zinc-500 font-medium">Valor da Recarga</span>
-                <div className="text-2xl font-extrabold text-zinc-900 dark:text-zinc-100">
+                <div className="text-2xl font-black text-zinc-900">
                   {formatCurrency(rechargeData.amount_reais)}
                 </div>
-                <span className="text-[11px] text-zinc-500">
+                <span className="text-[11px] text-zinc-400">
                   Beneficiário: Expresso Neves Logística LTDA
                 </span>
               </div>
 
               {/* QR Code Container */}
-              <div className="flex flex-col items-center justify-center p-4 border border-zinc-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-950">
+              <div className="flex flex-col items-center justify-center p-4 border border-zinc-200 rounded-xl bg-white">
                 {rechargeData.pix_qr_code_base64 ? (
                   <img
                     src={rechargeData.pix_qr_code_base64}
@@ -499,8 +502,8 @@ export function Creditos() {
                     className="w-48 h-48 object-contain"
                   />
                 ) : (
-                  <div className="w-48 h-48 bg-zinc-100 dark:bg-zinc-900 rounded-lg flex flex-col items-center justify-center text-center p-2">
-                    <QrCode className="h-20 w-20 text-zinc-800 dark:text-zinc-200 mb-2" />
+                  <div className="w-48 h-48 bg-zinc-50 border border-zinc-100 rounded-lg flex flex-col items-center justify-center text-center p-2">
+                    <QrCode className="h-20 w-20 text-zinc-700 mb-2" />
                     <span className="text-[10px] text-zinc-500">QR Code gerado para leitura</span>
                   </div>
                 )}
@@ -512,7 +515,7 @@ export function Creditos() {
 
               {/* PIX Copia e Cola */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                <label className="block text-xs font-semibold text-zinc-700">
                   PIX Copia e Cola:
                 </label>
                 <div className="relative">
@@ -520,11 +523,11 @@ export function Creditos() {
                     type="text"
                     readOnly
                     value={rechargeData.pix_copy_paste}
-                    className="w-full bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 font-mono pr-20 select-all"
+                    className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs text-zinc-800 font-mono pr-20 select-all"
                   />
                   <button
                     onClick={handleCopyPix}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 text-xs font-semibold rounded-lg hover:opacity-90 transition-opacity flex items-center gap-1"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-zinc-900 text-white text-xs font-semibold rounded-lg hover:bg-zinc-800 transition-colors flex items-center gap-1 cursor-pointer"
                   >
                     {copied ? (
                       <>
@@ -542,18 +545,18 @@ export function Creditos() {
               </div>
 
               {/* Ações de simulação/verificação */}
-              <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 space-y-2">
+              <div className="pt-2 border-t border-zinc-100 space-y-2">
                 <button
                   onClick={handleConfirmSimulation}
                   disabled={simulatingPayment}
-                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
+                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
                 >
                   <CheckCircle2 className="h-4 w-4" />
                   {simulatingPayment ? "Processando..." : "Confirmar Pagamento (Simulação Instantânea)"}
                 </button>
                 <button
                   onClick={() => setIsRechargeModalOpen(false)}
-                  className="w-full py-2 text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                  className="w-full py-2 text-xs font-medium text-zinc-500 hover:text-zinc-700 cursor-pointer"
                 >
                   Fechar janela
                 </button>
@@ -565,3 +568,4 @@ export function Creditos() {
     </div>
   );
 }
+

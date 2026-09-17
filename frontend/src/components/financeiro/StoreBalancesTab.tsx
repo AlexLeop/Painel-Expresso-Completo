@@ -147,33 +147,33 @@ export function StoreBalancesTab() {
     <div className="space-y-6">
       {/* Toast Feedback */}
       {actionSuccess && (
-        <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl flex items-center gap-3 text-emerald-800 dark:text-emerald-300 text-sm">
+        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3 text-emerald-800 text-sm shadow-xs">
           <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
-          <span>{actionSuccess}</span>
+          <span className="font-medium">{actionSuccess}</span>
         </div>
       )}
 
       {error && (
-        <div className="p-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-xl flex items-center gap-3 text-rose-800 dark:text-rose-300 text-sm">
+        <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-3 text-rose-800 text-sm shadow-xs">
           <AlertCircle className="h-5 w-5 text-rose-600 shrink-0" />
-          <span>{error}</span>
+          <span className="font-medium">{error}</span>
         </div>
       )}
 
       {/* Top KPIs — Módulo 18 MotorK */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Total em Débito */}
-        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm">
+        <div className="bg-white border border-zinc-200 rounded-2xl p-5 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">
               Total em Débito
             </span>
-            <div className="h-8 w-8 rounded-xl bg-rose-100 dark:bg-rose-950 flex items-center justify-center text-rose-700 dark:text-rose-300">
+            <div className="h-8 w-8 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-700">
               <TrendingDown className="h-4 w-4" />
             </div>
           </div>
           <div className="mt-3">
-            <span className="text-2xl font-black text-rose-600 dark:text-rose-400 tracking-tight">
+            <span className="text-2xl font-black text-rose-600 tracking-tight">
               {data ? formatCurrency(data.kpis.total_em_debito_reais) : "R$ 0,00"}
             </span>
             <p className="text-[11px] text-zinc-500 mt-0.5">
@@ -183,17 +183,17 @@ export function StoreBalancesTab() {
         </div>
 
         {/* Total em Crédito */}
-        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm">
+        <div className="bg-white border border-zinc-200 rounded-2xl p-5 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">
               Total em Crédito
             </span>
-            <div className="h-8 w-8 rounded-xl bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center text-emerald-700 dark:text-emerald-300">
+            <div className="h-8 w-8 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-700">
               <TrendingUp className="h-4 w-4" />
             </div>
           </div>
           <div className="mt-3">
-            <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
+            <span className="text-2xl font-black text-emerald-600 tracking-tight">
               {data ? formatCurrency(data.kpis.total_em_credito_reais) : "R$ 0,00"}
             </span>
             <p className="text-[11px] text-zinc-500 mt-0.5">Pagamentos e recargas antecipadas</p>
@@ -201,17 +201,17 @@ export function StoreBalancesTab() {
         </div>
 
         {/* Total de Lojas */}
-        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm">
+        <div className="bg-white border border-zinc-200 rounded-2xl p-5 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">
               Total de Lojas
             </span>
-            <div className="h-8 w-8 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
+            <div className="h-8 w-8 rounded-xl bg-zinc-100 flex items-center justify-center text-zinc-700">
               <Store className="h-4 w-4" />
             </div>
           </div>
           <div className="mt-3">
-            <span className="text-2xl font-black text-zinc-900 dark:text-zinc-100 tracking-tight">
+            <span className="text-2xl font-black text-zinc-900 tracking-tight">
               {data ? data.kpis.total_de_lojas : 0}
             </span>
             <p className="text-[11px] text-zinc-500 mt-0.5">Lojas parceiras cadastradas</p>
@@ -220,7 +220,7 @@ export function StoreBalancesTab() {
       </div>
 
       {/* Controles de Busca e Ordenação */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+      <div className="bg-white border border-zinc-200 rounded-2xl p-4 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
         <div className="relative flex-1 max-w-md">
           <Search className="h-4 w-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
@@ -228,19 +228,19 @@ export function StoreBalancesTab() {
             placeholder="Buscar por loja, empresa ou e-mail..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-xs font-semibold bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-800 rounded-xl focus:outline-none"
+            className="w-full pl-9 pr-4 py-2 text-xs font-semibold bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none"
           />
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800/80 p-1 rounded-xl">
+          <div className="flex items-center gap-1 bg-zinc-100 p-1 rounded-xl">
             <button
               onClick={() => setSortBy("debt")}
               className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all",
+                "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer",
                 sortBy === "debt"
-                  ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-sm"
-                  : "text-zinc-600 dark:text-zinc-400"
+                  ? "bg-white text-zinc-900 shadow-xs"
+                  : "text-zinc-600 hover:text-zinc-900"
               )}
             >
               Maior dívida primeiro
@@ -248,10 +248,10 @@ export function StoreBalancesTab() {
             <button
               onClick={() => setSortBy("credit")}
               className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all",
+                "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer",
                 sortBy === "credit"
-                  ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-sm"
-                  : "text-zinc-600 dark:text-zinc-400"
+                  ? "bg-white text-zinc-900 shadow-xs"
+                  : "text-zinc-600 hover:text-zinc-900"
               )}
             >
               Maior saldo primeiro
@@ -259,10 +259,10 @@ export function StoreBalancesTab() {
             <button
               onClick={() => setSortBy("name")}
               className={cn(
-                "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all",
+                "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer",
                 sortBy === "name"
-                  ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-sm"
-                  : "text-zinc-600 dark:text-zinc-400"
+                  ? "bg-white text-zinc-900 shadow-xs"
+                  : "text-zinc-600 hover:text-zinc-900"
               )}
             >
               Por Nome
@@ -272,7 +272,7 @@ export function StoreBalancesTab() {
           <button
             onClick={fetchBalances}
             disabled={loading}
-            className="p-2 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800"
+            className="p-2 border border-zinc-200 rounded-xl hover:bg-zinc-50 cursor-pointer"
             title="Atualizar dados"
           >
             <RefreshCw className={cn("h-4 w-4 text-zinc-600", loading && "animate-spin")} />
@@ -281,10 +281,10 @@ export function StoreBalancesTab() {
       </div>
 
       {/* Tabela de Lojas e Saldos */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-sm overflow-hidden">
+      <div className="bg-white border border-zinc-200 rounded-2xl shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-zinc-50 dark:bg-zinc-800/60 border-b border-zinc-200 dark:border-zinc-800 text-[10px] uppercase font-bold tracking-wider text-zinc-500">
+            <thead className="bg-zinc-50/80 border-b border-zinc-200 text-[10px] uppercase font-bold tracking-wider text-zinc-500">
               <tr>
                 <th className="px-6 py-3">Loja</th>
                 <th className="px-6 py-3">Responsável</th>
@@ -294,7 +294,7 @@ export function StoreBalancesTab() {
                 <th className="px-6 py-3 text-right">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+            <tbody className="divide-y divide-zinc-100">
               {loading ? (
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center text-zinc-500 text-xs">
@@ -306,7 +306,7 @@ export function StoreBalancesTab() {
                 </tr>
               ) : filteredStores.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-zinc-500 text-xs">
+                  <td colSpan={6} className="px-6 py-12 text-center text-zinc-400 text-xs">
                     Nenhuma loja encontrada para os filtros selecionados.
                   </td>
                 </tr>
@@ -314,15 +314,15 @@ export function StoreBalancesTab() {
                 filteredStores.map((store) => (
                   <tr
                     key={store.id}
-                    className="hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40 transition-colors"
+                    className="hover:bg-zinc-50/60 transition-colors"
                   >
-                    <td className="px-6 py-3.5 font-medium text-zinc-900 dark:text-zinc-100">
+                    <td className="px-6 py-3.5 font-medium text-zinc-900">
                       <div className="flex items-center gap-2.5">
-                        <div className="h-8 w-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300 shrink-0">
+                        <div className="h-8 w-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-700 shrink-0">
                           <Store className="h-4 w-4" />
                         </div>
                         <div>
-                          <div className="font-bold text-zinc-900 dark:text-zinc-100">
+                          <div className="font-bold text-zinc-900">
                             {store.name}
                           </div>
                           <div className="text-[11px] text-zinc-500">
@@ -331,12 +331,12 @@ export function StoreBalancesTab() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-3.5 text-xs text-zinc-600 dark:text-zinc-400">
+                    <td className="px-6 py-3.5 text-xs text-zinc-600">
                       <div>{store.responsible || store.email || "—"}</div>
                       {store.city && <div className="text-[10px] text-zinc-400">{store.city}</div>}
                     </td>
                     <td className="px-6 py-3.5 text-xs">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-md font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-[11px]">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md font-semibold bg-zinc-100 text-zinc-700 text-[11px]">
                         {store.billing_mode === "POS_PAGO" ? "Pós-Pago" : "Pré-Pago"}
                       </span>
                     </td>
@@ -344,25 +344,25 @@ export function StoreBalancesTab() {
                       className={cn(
                         "px-6 py-3.5 text-right font-black text-sm",
                         store.balance_reais < 0
-                          ? "text-rose-600 dark:text-rose-400"
+                          ? "text-rose-600"
                           : store.balance_reais > 0
-                            ? "text-emerald-600 dark:text-emerald-400"
-                            : "text-zinc-900 dark:text-zinc-100"
+                            ? "text-emerald-600"
+                            : "text-zinc-900"
                       )}
                     >
                       {formatCurrency(store.balance_reais)}
                     </td>
                     <td className="px-6 py-3.5 text-center">
                       {store.status === "DEVEDOR" ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
                           DEVEDOR
                         </span>
                       ) : store.status === "EM_DIA" ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                           EM DIA
                         </span>
                       ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
                           ZERADO
                         </span>
                       )}
@@ -375,7 +375,7 @@ export function StoreBalancesTab() {
                           setAmountInput("");
                           setReason("");
                         }}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 text-xs font-bold rounded-lg hover:opacity-90 transition-opacity shadow-xs"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-zinc-900 text-white text-xs font-bold rounded-lg hover:bg-zinc-800 transition-colors shadow-xs cursor-pointer"
                       >
                         Ajustar
                       </button>
@@ -391,23 +391,23 @@ export function StoreBalancesTab() {
       {/* Modal Ajustar Saldo */}
       <AnimatePresence>
         {adjustingStore && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/40 backdrop-blur-xs">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4"
+              className="bg-white border border-zinc-200 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4"
             >
-              <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
+              <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
                 <div>
-                  <h3 className="font-bold text-zinc-900 dark:text-zinc-100 text-base">
+                  <h3 className="font-bold text-zinc-900 text-base">
                     Ajustar Saldo da Loja
                   </h3>
                   <p className="text-xs text-zinc-500">{adjustingStore.name}</p>
                 </div>
                 <button
                   onClick={() => setAdjustingStore(null)}
-                  className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-sm font-bold"
+                  className="text-zinc-400 hover:text-zinc-600 text-sm font-bold cursor-pointer p-1"
                 >
                   <X className="h-5 w-5" />
                 </button>
@@ -415,16 +415,16 @@ export function StoreBalancesTab() {
 
               <form onSubmit={handleAdjustSubmit} className="space-y-4">
                 {/* Saldo Atual */}
-                <div className="p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl flex items-center justify-between text-xs">
+                <div className="p-3 bg-zinc-50 border border-zinc-100 rounded-xl flex items-center justify-between text-xs">
                   <span className="text-zinc-500 font-medium">Saldo Atual:</span>
-                  <span className="font-black text-sm text-zinc-900 dark:text-zinc-100">
+                  <span className="font-black text-sm text-zinc-900">
                     {formatCurrency(adjustingStore.balance_reais)}
                   </span>
                 </div>
 
                 {/* Direção: Crédito ou Débito */}
                 <div>
-                  <label className="block text-xs font-bold text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  <label className="block text-xs font-bold text-zinc-700 mb-1.5">
                     Tipo de Ajuste:
                   </label>
                   <div className="grid grid-cols-2 gap-2">
@@ -432,10 +432,10 @@ export function StoreBalancesTab() {
                       type="button"
                       onClick={() => setDirection("CREDIT")}
                       className={cn(
-                        "flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border text-xs font-bold transition-all",
+                        "flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer",
                         direction === "CREDIT"
                           ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
-                          : "border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                          : "border-zinc-200 text-zinc-700 hover:bg-zinc-50"
                       )}
                     >
                       <Plus className="h-4 w-4" />
@@ -445,10 +445,10 @@ export function StoreBalancesTab() {
                       type="button"
                       onClick={() => setDirection("DEBIT")}
                       className={cn(
-                        "flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border text-xs font-bold transition-all",
+                        "flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer",
                         direction === "DEBIT"
                           ? "bg-rose-600 text-white border-rose-600 shadow-xs"
-                          : "border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                          : "border-zinc-200 text-zinc-700 hover:bg-zinc-50"
                       )}
                     >
                       <Minus className="h-4 w-4" />
@@ -459,11 +459,11 @@ export function StoreBalancesTab() {
 
                 {/* Valor */}
                 <div>
-                  <label className="block text-xs font-bold text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  <label className="block text-xs font-bold text-zinc-700 mb-1.5">
                     Valor (R$):
                   </label>
-                  <div className="relative rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-500">
+                  <div className="relative rounded-xl border border-zinc-200 bg-zinc-50 focus-within:border-zinc-900 focus-within:bg-white transition-colors">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400">
                       R$
                     </span>
                     <input
@@ -474,20 +474,20 @@ export function StoreBalancesTab() {
                       placeholder="0,00"
                       value={amountInput}
                       onChange={(e) => setAmountInput(e.target.value)}
-                      className="w-full bg-transparent pl-9 pr-4 py-2.5 text-sm font-bold text-zinc-900 dark:text-zinc-100 focus:outline-none"
+                      className="w-full bg-transparent pl-9 pr-4 py-2.5 text-sm font-bold text-zinc-900 focus:outline-none"
                     />
                   </div>
                 </div>
 
                 {/* Categoria */}
                 <div>
-                  <label className="block text-xs font-bold text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  <label className="block text-xs font-bold text-zinc-700 mb-1.5">
                     Categoria:
                   </label>
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
-                    className="w-full text-xs font-semibold bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-800 rounded-xl px-3 py-2.5 text-zinc-900 dark:text-zinc-100 focus:outline-none"
+                    className="w-full text-xs font-semibold bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2.5 text-zinc-900 focus:outline-none cursor-pointer"
                   >
                     <option value="BONUS">Bônus Promocional / Bonificação</option>
                     <option value="REFUND">Estorno de Corrida / Corrida Indevida</option>
@@ -498,7 +498,7 @@ export function StoreBalancesTab() {
 
                 {/* Motivo Obrigatório */}
                 <div>
-                  <label className="block text-xs font-bold text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  <label className="block text-xs font-bold text-zinc-700 mb-1.5">
                     Justificativa (Obrigatória para Auditoria):
                   </label>
                   <textarea
@@ -507,22 +507,22 @@ export function StoreBalancesTab() {
                     placeholder="Descreva o motivo do ajuste manual..."
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
-                    className="w-full text-xs bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-800 rounded-xl p-3 text-zinc-900 dark:text-zinc-100 focus:outline-none"
+                    className="w-full text-xs bg-zinc-50 border border-zinc-200 rounded-xl p-3 text-zinc-900 focus:outline-none focus:bg-white transition-colors"
                   />
                 </div>
 
-                <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-end gap-2">
+                <div className="pt-2 border-t border-zinc-100 flex items-center justify-end gap-2">
                   <button
                     type="button"
                     onClick={() => setAdjustingStore(null)}
-                    className="px-4 py-2 text-xs font-semibold text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl"
+                    className="px-4 py-2 text-xs font-semibold text-zinc-600 hover:bg-zinc-100 rounded-xl cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="px-5 py-2 bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 text-xs font-bold rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50"
+                    className="px-5 py-2 bg-zinc-900 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
                   >
                     {isSubmitting ? "Gravando..." : "Confirmar Ajuste"}
                   </button>

@@ -53,6 +53,12 @@ const OPERATOR_ONLY_ROUTES = [
   "/escala",
 ];
 
+const LOJISTA_ONLY_ROUTES = [
+  "/clientes",
+  "/creditos",
+  "/extrato",
+];
+
 const SUPERVISOR_ONLY_ROUTE = "/escala";
 const SUPERVISOR_ROLES = ["supervisor", "coordinator"];
 
@@ -76,7 +82,7 @@ const navigationGroups = [
         name: "Meus Clientes",
         href: "/clientes",
         icon: Users,
-        roles: ["superadmin", "operador_admin", "operador_staff", "lojista"],
+        roles: ["lojista"],
       },
       {
         name: "Escala",
@@ -116,13 +122,13 @@ const navigationGroups = [
         name: "Créditos & Cobrança",
         href: "/creditos",
         icon: Wallet,
-        roles: ["superadmin", "operador_admin", "lojista"],
+        roles: ["lojista"],
       },
       {
         name: "Extrato Financeiro",
         href: "/extrato",
         icon: FileSpreadsheet,
-        roles: ["superadmin", "operador_admin", "lojista"],
+        roles: ["lojista"],
       },
       {
         name: "Lançamentos",
@@ -335,6 +341,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       role === "lojista" &&
       (OPERATOR_ONLY_ROUTES.includes(location.pathname) ||
         SUPERADMIN_ONLY_ROUTES.includes(location.pathname))
+    ) {
+      navigate("/", { replace: true });
+      return;
+    }
+    // Operators and staff cannot access lojista-only routes
+    if (
+      role !== "lojista" &&
+      LOJISTA_ONLY_ROUTES.includes(location.pathname)
     ) {
       navigate("/", { replace: true });
       return;
@@ -631,28 +645,28 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 <div className="flex items-center gap-2 mr-1">
                   <Link
                     to="/creditos"
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-[#F5F5F7] dark:bg-zinc-800/80 hover:bg-zinc-200/60 dark:hover:bg-zinc-800 transition-colors shadow-xs group"
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-zinc-200 bg-[#F5F5F7] hover:bg-zinc-200/60 transition-colors shadow-xs group"
                     title="Clique para gerenciar créditos e recargas"
                   >
-                    <Wallet className="h-4 w-4 text-zinc-500 group-hover:text-zinc-900 dark:group-hover:text-zinc-100 transition-colors" />
+                    <Wallet className="h-4 w-4 text-zinc-500 group-hover:text-zinc-900 transition-colors" />
                     <div className="flex items-center gap-1.5 text-xs">
                       <span className="text-zinc-500 font-medium hidden sm:inline">Saldo:</span>
-                      <span className="font-extrabold text-zinc-900 dark:text-zinc-100">
+                      <span className="font-extrabold text-zinc-900">
                         {storeBalance ? formatCurrency(storeBalance.balance_reais) : "R$ 0,00"}
                       </span>
                     </div>
                     {storeBalance?.status === "DISPONIVEL" && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
                         DISPONÍVEL
                       </span>
                     )}
                     {storeBalance?.status === "ZERADO" && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
                         ZERADO
                       </span>
                     )}
                     {storeBalance?.status === "DEVEDOR" && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800">
                         DEVEDOR
                       </span>
                     )}
