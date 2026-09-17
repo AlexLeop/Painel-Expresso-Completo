@@ -11,6 +11,8 @@ export interface User {
   is_platform_admin?: boolean;
   company_id: string;
   operator_id?: string | null;
+  client_id?: string | null;
+  store_id?: string | null;
   machine_empresa_id?: string;
   companies?: Array<{ id: string; nome: string }>;
 }

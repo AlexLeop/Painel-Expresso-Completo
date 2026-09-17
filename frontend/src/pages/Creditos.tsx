@@ -268,7 +268,7 @@ export function Creditos() {
             <div className="flex items-center justify-between">
               <span className="text-zinc-500">Loja Ativa:</span>
               <span className="font-semibold text-zinc-900">
-                {balance?.store_name || session?.user?.name || "Minha Loja"}
+                {balance?.store_name || (session?.user?.name ? String(session.user.name) : "Minha Loja")}
               </span>
             </div>
             <div className="flex items-center justify-between">
