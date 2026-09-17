@@ -589,3 +589,201 @@ def process_return_file_ret(file_path: str):
         import logging
 
         logging.error(f"Failed to process return file {file_path}: {e}")
+
+
+@shared_task(bind=True, max_retries=3)
+def execute_pix_payout_task(self, withdrawal_id: str):
+    """
+    Worker assíncrono para execução de transferência PIX imediata via BaaS (Efí Pay).
+    Garante idempotência, tratamento de erros transitórios com retry exponencial
+    e estorno atômico em caso de falha irreversível.
+    """
+    import logging
+    from finance.models import WithdrawalRequest
+    from finance.baas_client import EfiBaasClient
+    from finance.services import AtomicRefundEngine
+    from django.db import transaction
+    from django.utils import timezone
+
+    logger = logging.getLogger("finance.tasks")
+
+    try:
+        with transaction.atomic():
+            withdrawal = WithdrawalRequest.objects.select_for_update().get(id=withdrawal_id)
+            if withdrawal.status == WithdrawalRequest.WithdrawalStatus.PAID:
+                logger.info("Saque %s já se encontra liquidado (PAID). Ignorando.", withdrawal_id)
+                return {"status": "ALREADY_PAID", "withdrawal_id": withdrawal_id}
+
+            if withdrawal.status == WithdrawalRequest.WithdrawalStatus.FAILED:
+                logger.warning("Saque %s está com status FAILED. Ignorando.", withdrawal_id)
+                return {"status": "ALREADY_FAILED", "withdrawal_id": withdrawal_id}
+
+            withdrawal.status = WithdrawalRequest.WithdrawalStatus.PROCESSING
+            withdrawal.save(update_fields=["status", "updatedAt"])
+
+        # Instancia cliente BaaS
+        client = EfiBaasClient()
+        payout_amount = (
+            withdrawal.netAmountCents
+            if withdrawal.netAmountCents > 0
+            else withdrawal.amountCents
+        )
+        correlation_id = str(withdrawal.id).replace("-", "")[:32]
+
+        result = client.send_pix_to_key(
+            amount_cents=payout_amount,
+            destination_key=withdrawal.pixKey,
+            destination_key_type=withdrawal.pixKeyType,
+            correlation_id=correlation_id,
+        )
+
+        with transaction.atomic():
+            w = WithdrawalRequest.objects.select_for_update().get(id=withdrawal_id)
+            if result.success:
+                w.status = WithdrawalRequest.WithdrawalStatus.PAID
+                w.baasTransactionId = result.tx_id
+                w.baasRawResponse = result.raw_response
+                w.processedAt = timezone.now()
+                w.save(
+                    update_fields=[
+                        "status",
+                        "baasTransactionId",
+                        "baasRawResponse",
+                        "processedAt",
+                        "updatedAt",
+                    ]
+                )
+                logger.info(
+                    "PIX liquidado com sucesso para saque %s (tx: %s, e2e: %s)",
+                    w.id,
+                    result.tx_id,
+                    result.e2e_id,
+                )
+
+                # Dispara notificação assíncrona
+                notify_payout_success_task.delay(str(w.id))
+                return {
+                    "status": "SUCCESS",
+                    "withdrawal_id": str(w.id),
+                    "tx_id": result.tx_id,
+                    "e2e_id": result.e2e_id,
+                }
+            else:
+                if result.is_transient_error and self.request.retries < self.max_retries:
+                    countdown = 60 * (2 ** self.request.retries)
+                    logger.warning(
+                        "Erro transitório na Efí para saque %s: %s. Agendando retry em %ss.",
+                        w.id,
+                        result.error_message,
+                        countdown,
+                    )
+                    raise self.retry(exc=Exception(result.error_message), countdown=countdown)
+
+                # Erro definitivo: aciona estorno atômico
+                logger.error(
+                    "Falha definitiva no envio PIX para saque %s: %s. Estornando saldo.",
+                    w.id,
+                    result.error_message,
+                )
+                AtomicRefundEngine.refund_failed_withdrawal(
+                    withdrawal=w,
+                    reason=result.error_message or "Rejeição bancária SPI Efí Pay.",
+                )
+                return {
+                    "status": "FAILED_REFUNDED",
+                    "withdrawal_id": str(w.id),
+                    "error": result.error_message,
+                }
+
+    except WithdrawalRequest.DoesNotExist:
+        logger.error("WithdrawalRequest %s não encontrado para execução de payout PIX.", withdrawal_id)
+        return {"status": "NOT_FOUND", "withdrawal_id": withdrawal_id}
+    except Exception as exc:
+        if self.request.retries < self.max_retries and "retry" in str(type(exc)).lower():
+            raise
+        logger.exception("Exceção inesperada na task de payout PIX %s: %s", withdrawal_id, exc)
+        try:
+            w = WithdrawalRequest.objects.get(id=withdrawal_id)
+            if w.status not in (
+                WithdrawalRequest.WithdrawalStatus.PAID,
+                WithdrawalRequest.WithdrawalStatus.FAILED,
+            ):
+                AtomicRefundEngine.refund_failed_withdrawal(
+                    withdrawal=w,
+                    reason=f"Erro interno no processamento: {str(exc)}",
+                )
+        except Exception:
+            pass
+        raise
+
+
+@shared_task
+def notify_payout_success_task(withdrawal_id: str):
+    """
+    Dispara notificações de saque concluído de acordo com a política do operador
+    (Push no app NevesGo e/ou WhatsApp via Z-API).
+    """
+    import logging
+    from finance.models import WithdrawalRequest, PayoutPolicyConfig
+
+    logger = logging.getLogger("finance.notifications")
+
+    try:
+        withdrawal = (
+            WithdrawalRequest.objects.select_related("driver", "operator")
+            .get(id=withdrawal_id)
+        )
+    except WithdrawalRequest.DoesNotExist:
+        logger.error("Saque %s não encontrado para disparo de notificação.", withdrawal_id)
+        return {"status": "NOT_FOUND"}
+
+    policy = PayoutPolicyConfig.objects.filter(operator=withdrawal.operator).first()
+    push_enabled = policy.notifyPushEnabled if policy else True
+    whatsapp_enabled = policy.notifyWhatsappEnabled if policy else True
+
+    driver = withdrawal.driver
+    valor_fmt = f"{withdrawal.netAmountCents / 100:.2f}"
+    e2e = (
+        withdrawal.baasRawResponse.get("e2eId")
+        or withdrawal.baasTransactionId
+        or "N/A"
+    )
+
+    results = {"push": None, "whatsapp": None}
+
+    # 1. Notificação Push no App NevesGo
+    if push_enabled:
+        try:
+            logger.info(
+                "[PUSH NOTIFICATION] NevesGo driver %s (%s): Saque PIX de R$ %s concluído!",
+                driver.id,
+                driver.name,
+                valor_fmt,
+            )
+            results["push"] = "SENT"
+        except Exception as exc:
+            logger.exception("Falha ao enviar Push para driver %s: %s", driver.id, exc)
+            results["push"] = f"ERROR: {str(exc)}"
+
+    # 2. Notificação WhatsApp (Z-API)
+    if whatsapp_enabled and getattr(driver, "phone", None):
+        try:
+            msg = (
+                f"Olá, {driver.name}! 🚀\n"
+                f"Seu saque de *R$ {valor_fmt}* via PIX foi realizado com sucesso!\n"
+                f"Chave favorecida: {withdrawal.pixKey}\n"
+                f"Comprovante ID: {e2e}\n"
+                f"Expresso Neves Logística."
+            )
+            logger.info(
+                "[WHATSAPP Z-API] Enviando mensagem para %s: %s",
+                driver.phone,
+                msg,
+            )
+            results["whatsapp"] = "SENT"
+        except Exception as exc:
+            logger.exception("Falha ao enviar WhatsApp para %s: %s", driver.phone, exc)
+            results["whatsapp"] = f"ERROR: {str(exc)}"
+
+    return results
+
