@@ -6,6 +6,7 @@ import {
   CalendarDays,
   FileSpreadsheet,
   Wallet,
+  ArrowDownToLine,
   BarChart3,
   Camera,
   RefreshCcw,
@@ -40,6 +41,7 @@ const ADMIN_ONLY_ROUTES = [
   "/usuarios",
   "/snapshots",
   "/financeiro",
+  "/saques",
 ];
 const SUPERVISOR_ONLY_ROUTE = "/escala";
 const SUPERVISOR_ROLES = ["supervisor", "coordinator"];
@@ -89,6 +91,12 @@ const navigationGroups = [
         name: "Financeiro",
         href: "/financeiro",
         icon: Wallet,
+        roles: ["admin"],
+      },
+      {
+        name: "Saques (PIX)",
+        href: "/saques",
+        icon: ArrowDownToLine,
         roles: ["admin"],
       },
       {

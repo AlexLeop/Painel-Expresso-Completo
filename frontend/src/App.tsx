@@ -26,6 +26,9 @@ const Lancamentos = React.lazy(() =>
 const Financeiro = React.lazy(() =>
   import("./pages/Financeiro").then((m) => ({ default: m.Financeiro })),
 );
+const Saques = React.lazy(() =>
+  import("./pages/Saques").then((m) => ({ default: m.Saques })),
+);
 const Relatorios = React.lazy(() =>
   import("./pages/Relatorios").then((m) => ({ default: m.Relatorios })),
 );
@@ -142,6 +145,14 @@ export default function App() {
             element={
               <PrivateRoute>
                 <Financeiro />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/saques"
+            element={
+              <PrivateRoute>
+                <Saques />
               </PrivateRoute>
             }
           />
