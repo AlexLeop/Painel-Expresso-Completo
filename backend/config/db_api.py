@@ -104,9 +104,19 @@ def get_companies(request):
     from logistics.models import Store
     from finance.models import Contract
 
-    stores = Store.objects.select_related("operator", "client").all()
+    auth = getattr(request, "auth", None) or {}
+    is_admin = auth.get("is_platform_admin", False)
+    op_id = auth.get("operator_id")
+    client_id = auth.get("client_id")
+
+    qs = Store.objects.select_related("operator", "client").all()
+    if client_id:
+        qs = qs.filter(client_id=client_id)
+    elif op_id and not is_admin:
+        qs = qs.filter(operator_id=op_id)
+
     res = []
-    for s in stores:
+    for s in qs:
         contract = Contract.objects.filter(store=s).first()
         res.append({
             "id": str(s.id),
@@ -123,21 +133,9 @@ def get_companies(request):
             "daily_rate_sunday": (contract.dailyRateSundayCents / 100.0) if (contract and contract.dailyRateSundayCents) else 80.0,
             "daily_rate_holiday": (contract.dailyRateHolidayCents / 100.0) if (contract and contract.dailyRateHolidayCents) else 80.0,
             "operator_id": str(s.operator_id),
+            "operator_name": s.operator.name if s.operator else "",
         })
 
-    if not res:
-        ops = Operator.objects.all()
-        for o in ops:
-            res.append({
-                "id": str(o.id),
-                "nome": o.name,
-                "name": o.name,
-                "documento": o.cnpj or "",
-                "active": True,
-                "ride_fee_per_delivery": 1.6,
-                "minimum_rides_fee_floor": 350.0,
-                "daily_rate_weekday": 60.0,
-            })
     return res
 
 @router.get("/users")

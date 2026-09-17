@@ -333,10 +333,10 @@ export function Empresas() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 py-2">
         <div>
           <h1 className="text-xl font-bold text-zinc-900 tracking-tight">
-            Empresas
+            Lojas Parceiras
           </h1>
           <p className="text-[13px] font-medium text-zinc-500 mt-1">
-            Gestão de regras financeiras para lojas e estabelecimentos parceiros.
+            Gestão de regras financeiras para lojas, restaurantes e estabelecimentos parceiros.
           </p>
         </div>
         <button
@@ -344,7 +344,7 @@ export function Empresas() {
           className="bg-zinc-900 hover:bg-zinc-800 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all shadow-sm"
         >
           <Plus className="h-4 w-4" />
-          <span>Nova Empresa</span>
+          <span>Nova Loja Parceira</span>
         </button>
       </div>
 
@@ -357,7 +357,7 @@ export function Empresas() {
             />
             <input
               type="text"
-              placeholder="Buscar por nome, endereço ou telefone..."
+              placeholder="Buscar loja por nome, endereço ou telefone..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-9 pr-4 py-1.5 text-[13px] font-medium bg-white border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0a0a0a]/10 focus:border-zinc-300 transition-all placeholder:text-zinc-400 shadow-sm"
@@ -382,7 +382,7 @@ export function Empresas() {
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 font-semibold text-[10px] uppercase tracking-wider">
               <tr>
-                <th className="px-4 py-2">Empresa</th>
+                <th className="px-4 py-2">Loja / Estabelecimento</th>
                 <th className="px-4 py-2">Endereço / Contato</th>
                 <th className="px-4 py-2">Status</th>
                 <th className="px-4 py-2 text-right">Taxa/Entr.</th>
@@ -409,8 +409,8 @@ export function Empresas() {
                     className="px-4 py-8 text-center text-zinc-500"
                   >
                     {searchTerm
-                      ? "Nenhuma empresa encontrada para a busca."
-                      : "Nenhuma empresa encontrada."}
+                      ? "Nenhuma loja encontrada para a busca."
+                      : "Nenhuma loja parceira cadastrada ainda."}
                   </td>
                 </tr>
               )}
@@ -541,7 +541,7 @@ export function Empresas() {
 
         <div className="px-4 py-3 border-t border-zinc-200 bg-zinc-50 flex items-center justify-center">
           <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
-            Mostrando {filteredEmpresas.length} de {empresas.length} empresas
+            Mostrando {filteredEmpresas.length} de {empresas.length} lojas parceiras
           </span>
         </div>
       </div>
@@ -555,8 +555,8 @@ export function Empresas() {
 
       <ConfirmModal
         isOpen={isConfirmOpen}
-        title="Excluir Empresa"
-        message="Tem certeza que deseja excluir esta empresa? Essa ação não pode ser desfeita."
+        title="Excluir Loja Parceira"
+        message="Tem certeza que deseja excluir esta loja parceira? Essa ação não pode ser desfeita."
         onConfirm={confirmDelete}
         onCancel={() => {
           setIsConfirmOpen(false);

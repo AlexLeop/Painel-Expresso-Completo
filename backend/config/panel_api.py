@@ -144,9 +144,7 @@ def get_machine_companies(request):
     if staff and staff.operator_id:
         stores = Store.objects.filter(operator_id=staff.operator_id)
         return {"companies": [{"id": str(s.id), "nome": s.name} for s in stores]}
-    else:
-        ops = Operator.objects.all()
-        return {"companies": [{"id": str(o.id), "nome": o.name} for o in ops]}
+    return {"companies": []}
 
 @panel_api.get("/machine/drivers")
 def get_machine_drivers(request, company_id: Optional[str] = None):

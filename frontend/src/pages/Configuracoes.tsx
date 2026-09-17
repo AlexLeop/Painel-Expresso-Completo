@@ -168,7 +168,7 @@ export function Configuracoes() {
     },
     {
       id: "empresa" as TabId,
-      label: "Dados da Loja",
+      label: user?.role === "lojista" ? "Dados da Loja" : "Dados da Central",
       icon: <Building2 className="w-4 h-4" />,
       adminOnly: false,
     },
@@ -328,11 +328,14 @@ export function Configuracoes() {
             <div className="bg-white rounded-xl shadow-sm ring-1 ring-zinc-950/5 p-6 space-y-6">
               <div>
                 <h3 className="text-lg font-bold text-zinc-900">
-                  Dados da Loja
+                  {user?.role === "lojista"
+                    ? "Dados da Loja"
+                    : "Dados da Central / Operador Logístico"}
                 </h3>
                 <p className="text-sm text-zinc-500">
-                  Informações cadastrais da sua loja. (Dados vindos da
-                  plataforma)
+                  {user?.role === "lojista"
+                    ? "Informações cadastrais da sua loja parceira."
+                    : "Informações cadastrais da sua central de logística e entregas."}
                 </p>
               </div>
               <div className="h-px w-full bg-zinc-100" />

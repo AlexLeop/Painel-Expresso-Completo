@@ -87,7 +87,7 @@ const navigationGroups = [
         roles: ["superadmin", "operador_admin"],
       },
       {
-        name: "Empresas",
+        name: "Lojas Parceiras",
         href: "/empresas",
         icon: Store,
         roles: ["superadmin", "operador_admin"],
