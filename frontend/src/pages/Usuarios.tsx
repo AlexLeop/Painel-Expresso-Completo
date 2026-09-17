@@ -45,12 +45,15 @@ export function Usuarios() {
         const rawList = Array.isArray(data) ? data : data.users || [];
         // Map API fields (fullName, role, companies) → UserType shape
         const ROLE_LABEL: Record<string, string> = {
+          superadmin: "SuperAdmin Master",
           admin: "Administrador",
           manager: "Gestor",
           supervisor: "Supervisor",
           coordinator: "Coordenador",
           operator: "Operador",
           viewer: "Visualizador",
+          lojista: "Lojista",
+          LOJISTA: "Lojista",
         };
         const fetchedUsers = rawList.map((u: any) => ({
           id: u.id,
@@ -98,12 +101,14 @@ export function Usuarios() {
   const handleSaveUser = async (user: UserType) => {
     try {
       const ROLE_TO_API: Record<string, string> = {
+        "SuperAdmin Master": "superadmin",
         Administrador: "admin",
         Gestor: "manager",
         Supervisor: "supervisor",
         Coordenador: "coordinator",
         Operador: "operator",
         Visualizador: "viewer",
+        Lojista: "lojista",
       };
       const apiRole = ROLE_TO_API[user.cargo] || "operator";
 
@@ -310,13 +315,24 @@ export function Usuarios() {
                     </div>
                   </td>
                   <td className="px-4 py-2">
-                    <div className="flex items-center gap-1.5 text-xs text-zinc-700 font-medium">
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium border",
+                        usuario.cargo === "SuperAdmin Master"
+                          ? "bg-purple-50 text-purple-700 border-purple-200/60"
+                          : usuario.cargo === "Administrador" || usuario.cargo === "Gestor"
+                          ? "bg-amber-50 text-amber-700 border-amber-200/60"
+                          : usuario.cargo === "Lojista"
+                          ? "bg-blue-50 text-blue-700 border-blue-200/60"
+                          : "bg-zinc-100 text-zinc-700 border-zinc-200/60"
+                      )}
+                    >
                       <UserCog
                         strokeWidth={1.5}
-                        className="h-3.5 w-3.5 text-zinc-400"
+                        className="h-3.5 w-3.5 shrink-0 opacity-70"
                       />
                       {usuario.cargo}
-                    </div>
+                    </span>
                   </td>
                   <td className="px-4 py-2">
                     <span

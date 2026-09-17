@@ -4,13 +4,15 @@ import { X, Check, Building2, User, Mail, Phone, Shield } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "../lib/utils";
 import { authFetch } from "../lib/api";
+import { useAuth } from "../contexts/AuthContext";
 
-const roles = [
+const DEFAULT_ROLES = [
   "Gestor",
+  "Operador",
   "Supervisor",
   "Coordenador",
-  "Operador",
   "Visualizador",
+  "Lojista",
 ];
 
 export interface UserType {
@@ -32,6 +34,12 @@ interface UserModalProps {
 }
 
 export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
+  const { session } = useAuth();
+  const isPlatformAdmin = Boolean(session?.user?.is_platform_admin);
+  const rolesList = isPlatformAdmin
+    ? ["SuperAdmin Master", "Administrador", ...DEFAULT_ROLES]
+    : DEFAULT_ROLES;
+
   const [availableCompanies, setAvailableCompanies] = useState<
     Array<{
       id: string;
@@ -232,7 +240,7 @@ export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
                         }
                         className="w-full px-3 py-2 text-sm bg-white border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                       >
-                        {roles.map((role) => (
+                        {rolesList.map((role) => (
                           <option key={role} value={role}>
                             {role}
                           </option>
