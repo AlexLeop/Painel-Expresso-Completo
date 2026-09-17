@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   Phone,
@@ -107,6 +108,17 @@ export function MotoboyModal({
     maxActiveOrders: 3,
     password: "",
   });
+
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     setSaving(false);
@@ -228,67 +240,96 @@ export function MotoboyModal({
       type="button"
       onClick={() => setActiveTab(id)}
       className={cn(
-        "flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-lg transition-all border shrink-0 whitespace-nowrap",
+        "flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer",
         activeTab === id
-          ? "bg-emerald-50 text-emerald-700 border-emerald-300 shadow-sm"
-          : "bg-white text-zinc-500 border-transparent hover:bg-zinc-100 hover:text-zinc-700",
+          ? "bg-white text-zinc-900 shadow-xs"
+          : "text-zinc-600 hover:text-zinc-900 hover:bg-white/50",
       )}
     >
-      <Icon className="h-4 w-4" /> {label}
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className="truncate">{label}</span>
     </button>
   );
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <>
+        <div className="fixed inset-0 z-[9999] overflow-hidden pointer-events-none">
+          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-zinc-900/40 backdrop-blur-sm z-[50]"
+            className="fixed inset-0 bg-zinc-950/50 backdrop-blur-xs pointer-events-auto transition-all"
             onClick={onClose}
           />
+
+          {/* Lateral Slide-Over Drawer */}
           <motion.div
-            initial={{ x: "100%", opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: "100%", opacity: 0 }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="fixed top-0 right-0 h-full w-full max-w-xl bg-white shadow-2xl z-[51] flex flex-col border-l border-zinc-200"
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "spring", damping: 30, stiffness: 300 }}
+            className="fixed top-0 right-0 h-full w-full max-w-3xl lg:max-w-4xl bg-white shadow-2xl border-l border-zinc-200 z-10 flex flex-col pointer-events-auto overflow-hidden"
           >
             {/* Header */}
-            <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/70 shrink-0">
-              <div>
-                <h2 className="text-lg font-bold text-zinc-900">
-                  {isCreating ? "Novo Motoboy (Parceiro)" : "Perfil do Motoboy"}
-                </h2>
-                <p className="text-xs text-zinc-500 mt-0.5">
-                  {isCreating
-                    ? "Preencha os dados cadastrais, endereço, veículo e CNH."
-                    : `Gestão cadastral e operacional de ${motoboy?.nome || "Entregador"}`}
-                </p>
+            <div className="px-6 md:px-8 py-5 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/70 shrink-0">
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white shadow-md shadow-emerald-500/20 shrink-0">
+                  <Bike className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      {isCreating ? "Novo Cadastro" : "Gestão de Parceiro"}
+                    </span>
+                    {!isCreating && (
+                      <span
+                        className={cn(
+                          "text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border",
+                          motoboy?.ativo
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : "bg-rose-50 text-rose-700 border-rose-200",
+                        )}
+                      >
+                        {motoboy?.ativo ? "Ativo" : "Inativo"}
+                      </span>
+                    )}
+                  </div>
+                  <h2 className="text-xl font-black text-zinc-900 tracking-tight mt-0.5">
+                    {isCreating ? "Novo Motoboy" : (motoboy?.nome || "Perfil do Motoboy")}
+                  </h2>
+                  <p className="text-xs text-zinc-500 font-medium">
+                    {isCreating
+                      ? "Preencha os dados cadastrais, endereço, veículo e CNH do entregador"
+                      : "Gestão cadastral, operacional e financeira do entregador"}
+                  </p>
+                </div>
               </div>
               <button
                 onClick={onClose}
-                className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-full transition-colors"
+                className="p-2 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 rounded-xl transition-all cursor-pointer"
               >
-                <X className="h-5 w-5" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Content */}
-            <div className="flex-1 flex flex-col overflow-hidden">
-              {isCreating && (
-                <div className="px-6 py-2.5 border-b border-zinc-100 bg-white flex gap-2 overflow-x-auto hide-scrollbar shrink-0">
+            {/* Segmented Control Navigation */}
+            {isCreating && (
+              <div className="px-6 md:px-8 py-3 bg-zinc-100/80 border-b border-zinc-200 shrink-0">
+                <div className="grid grid-cols-5 gap-1.5 p-1 bg-zinc-200/70 rounded-2xl">
                   <TabButton id="geral" icon={User} label="Pessoais" />
                   <TabButton id="endereco" icon={MapPin} label="Endereço" />
                   <TabButton id="veiculo" icon={Bike} label="Veículo" />
                   <TabButton id="documentos" icon={FileText} label="Documentação" />
-                  <TabButton id="financeiro" icon={Wallet} label="Financeiro & Operação" />
+                  <TabButton id="financeiro" icon={Wallet} label="Financeiro" />
                 </div>
-              )}
+              </div>
+            )}
 
-              <div className="flex-1 overflow-y-auto p-6 bg-zinc-50/30">
+            {/* Content */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-zinc-50/30">
                 {isCreating ? (
                   <form
                     id="motoboy-form"
@@ -979,12 +1020,12 @@ export function MotoboyModal({
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="p-4 border-t border-zinc-200 bg-white flex gap-3 shadow-[0_-4px_10px_rgba(0,0,0,0.02)] shrink-0">
+            {/* Standard Footer */}
+            <div className="px-6 md:px-8 py-4 border-t border-zinc-200 bg-zinc-50/90 backdrop-blur-xs flex items-center justify-between gap-4 shrink-0">
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-2 text-sm font-bold text-zinc-700 bg-white border border-zinc-200 hover:bg-zinc-100 rounded-lg transition-colors"
+                className="px-5 py-2.5 text-xs font-bold text-zinc-700 bg-white border border-zinc-200 hover:bg-zinc-100 rounded-xl transition-all cursor-pointer shadow-xs"
               >
                 {isCreating ? "Cancelar" : "Fechar"}
               </button>
@@ -1000,7 +1041,7 @@ export function MotoboyModal({
                     !formData.email ||
                     !formData.document
                   }
-                  className="flex-1 px-4 py-2 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 border border-emerald-600 rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="px-6 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-sm shadow-emerald-600/20"
                 >
                   {saving ? (
                     <>
@@ -1008,14 +1049,18 @@ export function MotoboyModal({
                       <span>Registrando...</span>
                     </>
                   ) : (
-                    <span>Registrar Parceiro</span>
+                    <>
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>Registrar Parceiro</span>
+                    </>
                   )}
                 </button>
               )}
             </div>
           </motion.div>
-        </>
+        </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

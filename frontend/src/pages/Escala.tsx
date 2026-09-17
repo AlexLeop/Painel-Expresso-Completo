@@ -1,5 +1,7 @@
 import { logger } from "@/lib/logger";
 import { useCallback, useEffect, useMemo, useState, memo } from "react";
+import { createPortal } from "react-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus,
   ChevronLeft,
@@ -10,6 +12,8 @@ import {
   Clock,
   AlertCircle,
   User,
+  UserPlus,
+  X,
   MessageSquare,
   PhoneCall,
 } from "lucide-react";
@@ -338,6 +342,17 @@ export function Escala() {
 
   const [isFreelancerModalOpen, setIsFreelancerModalOpen] = useState(false);
   const [freelancerData, setFreelancerData] = useState({ name: "", phone: "" });
+
+  useEffect(() => {
+    if (isFreelancerModalOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [isFreelancerModalOpen]);
 
   const handleOpenNewModal = (dUUID?: string) => {
     setEditingEntry(null);
@@ -1442,117 +1457,163 @@ export function Escala() {
       />
 
       {/* Freelancer Modal */}
-      {isFreelancerModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl flex flex-col overflow-hidden">
-            <div className="px-5 py-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
-              <h3 className="font-bold text-zinc-900">
-                Adicionar Motoboy Manual
-              </h3>
-              <button
-                onClick={() => setIsFreelancerModalOpen(false)}
-                className="text-zinc-400 hover:text-zinc-700 text-sm font-bold"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="p-5 space-y-4">
-              <p className="text-xs text-zinc-500 leading-relaxed">
-                Adicione um motoboy que não esteja na base da Machine para que
-                ele receba alocações e apareça nos relatórios com lançamentos
-                manuais.
-              </p>
-              <div>
-                <label className="block text-xs font-bold text-zinc-700 mb-1">
-                  Nome do Motoboy *
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ex: João Silva"
-                  className="w-full text-sm font-medium border border-zinc-200 rounded-lg px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  value={freelancerData.name}
-                  onChange={(e) =>
-                    setFreelancerData((prev) => ({
-                      ...prev,
-                      name: e.target.value,
-                    }))
-                  }
+      {typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {isFreelancerModalOpen && (
+              <div className="fixed inset-0 z-[9999] overflow-hidden pointer-events-none">
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={() => setIsFreelancerModalOpen(false)}
+                  className="fixed inset-0 bg-zinc-950/50 backdrop-blur-xs pointer-events-auto transition-all"
                 />
+
+                <motion.div
+                  initial={{ x: "100%" }}
+                  animate={{ x: 0 }}
+                  exit={{ x: "100%" }}
+                  transition={{ type: "spring", damping: 28, stiffness: 260 }}
+                  className="fixed top-0 right-0 h-full w-full max-w-md md:max-w-lg bg-white shadow-2xl z-10 flex flex-col pointer-events-auto border-l border-zinc-200"
+                >
+                  {/* Header */}
+                  <div className="px-6 md:px-8 py-5 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/80 backdrop-blur-xs shrink-0">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-2xl shadow-sm shadow-indigo-500/20 text-white">
+                        <UserPlus className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 border border-indigo-200/60 px-2 py-0.5 rounded-full">
+                            Equipe & Escala
+                          </span>
+                        </div>
+                        <h2 className="text-lg font-bold text-zinc-900 mt-0.5">
+                          Adicionar Motoboy Manual
+                        </h2>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setIsFreelancerModalOpen(false)}
+                      className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-xl transition-colors cursor-pointer"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  {/* Body */}
+                  <div className="flex-1 overflow-y-auto px-6 md:px-8 py-6 space-y-5">
+                    <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl">
+                      <p className="text-xs text-indigo-900 leading-relaxed">
+                        Adicione um motoboy que não esteja na base da Machine para que
+                        ele receba alocações e apareça nos relatórios com lançamentos
+                        manuais da escala.
+                      </p>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-zinc-600 mb-1.5">
+                          Nome do Motoboy *
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ex: João Silva"
+                          className="w-full text-sm font-medium border border-zinc-200 rounded-xl px-3.5 py-2.5 bg-zinc-50/50 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all"
+                          value={freelancerData.name}
+                          onChange={(e) =>
+                            setFreelancerData((prev) => ({
+                              ...prev,
+                              name: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-zinc-600 mb-1.5">
+                          Telefone (Opcional)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ex: 11999999999"
+                          className="w-full text-sm font-medium border border-zinc-200 rounded-xl px-3.5 py-2.5 bg-zinc-50/50 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all"
+                          value={freelancerData.phone}
+                          onChange={(e) =>
+                            setFreelancerData((prev) => ({
+                              ...prev,
+                              phone: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Standard Footer */}
+                  <div className="px-6 md:px-8 py-4 border-t border-zinc-200 bg-zinc-50/90 backdrop-blur-xs flex items-center justify-end gap-3 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setIsFreelancerModalOpen(false)}
+                      className="px-5 py-2.5 text-xs font-bold text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/60 rounded-xl transition-all cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!freelancerData.name) {
+                          setNotificationStatus({
+                            type: "error",
+                            message: "Nome do motoboy é obrigatório.",
+                          });
+                          return;
+                        }
+                        try {
+                          setLoading(true);
+                          const res = await authFetch("/api/v1/db/company-drivers", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              companyId: machineCompanyId,
+                              driverId: `FREE-${Date.now()}`,
+                              driverName: freelancerData.name,
+                              driverPhone: freelancerData.phone,
+                              isPrimary: false,
+                            }),
+                          });
+                          if (!res.ok)
+                            throw new Error("Erro ao adicionar motoboy manual.");
+                          setNotificationStatus({
+                            type: "success",
+                            message: "Motoboy manual adicionado à equipe!",
+                          });
+                          setIsFreelancerModalOpen(false);
+                          setFreelancerData({ name: "", phone: "" });
+                          // @ts-ignore
+                          loadData();
+                        } catch (err: any) {
+                          setNotificationStatus({
+                            type: "error",
+                            message: err.message,
+                          });
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                      className="px-6 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer"
+                    >
+                      Adicionar Motoboy
+                    </button>
+                  </div>
+                </motion.div>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-zinc-700 mb-1">
-                  Telefone (Opcional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ex: 11999999999"
-                  className="w-full text-sm font-medium border border-zinc-200 rounded-lg px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  value={freelancerData.phone}
-                  onChange={(e) =>
-                    setFreelancerData((prev) => ({
-                      ...prev,
-                      phone: e.target.value,
-                    }))
-                  }
-                />
-              </div>
-            </div>
-            <div className="p-4 bg-zinc-50 border-t border-zinc-100 flex justify-end gap-2">
-              <button
-                onClick={() => setIsFreelancerModalOpen(false)}
-                className="px-4 py-2 text-xs font-bold text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/50 rounded-xl transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={async () => {
-                  if (!freelancerData.name) {
-                    setNotificationStatus({
-                      type: "error",
-                      message: "Nome do motoboy é obrigatório.",
-                    });
-                    return;
-                  }
-                  try {
-                    setLoading(true);
-                    const res = await authFetch("/api/v1/db/company-drivers", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        companyId: machineCompanyId,
-                        driverId: `FREE-${Date.now()}`,
-                        driverName: freelancerData.name,
-                        driverPhone: freelancerData.phone,
-                        isPrimary: false,
-                      }),
-                    });
-                    if (!res.ok)
-                      throw new Error("Erro ao adicionar motoboy manual.");
-                    setNotificationStatus({
-                      type: "success",
-                      message: "Motoboy manual adicionado à equipe!",
-                    });
-                    setIsFreelancerModalOpen(false);
-                    setFreelancerData({ name: "", phone: "" });
-                    // @ts-ignore
-                    loadData();
-                  } catch (err: any) {
-                    setNotificationStatus({
-                      type: "error",
-                      message: err.message,
-                    });
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
-                className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold rounded-xl transition-colors shadow-sm"
-              >
-                Adicionar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            )}
+          </AnimatePresence>,
+          document.body
+        )}
 
       {/* Glassmorphic Toast Notification */}
       {notificationStatus && (

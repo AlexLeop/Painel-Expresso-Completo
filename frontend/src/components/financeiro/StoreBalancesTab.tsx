@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   Store,
   Wallet,
@@ -57,6 +58,17 @@ export function StoreBalancesTab() {
   const [reason, setReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (adjustingStore) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [adjustingStore]);
 
   const fetchBalances = async () => {
     setLoading(true);
@@ -389,149 +401,189 @@ export function StoreBalancesTab() {
       </div>
 
       {/* Modal Ajustar Saldo */}
-      <AnimatePresence>
-        {adjustingStore && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/40 backdrop-blur-xs">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white border border-zinc-200 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4"
-            >
-              <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-                <div>
-                  <h3 className="font-bold text-zinc-900 text-base">
-                    Ajustar Saldo da Loja
-                  </h3>
-                  <p className="text-xs text-zinc-500">{adjustingStore.name}</p>
-                </div>
-                <button
+      {typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {adjustingStore && (
+              <div className="fixed inset-0 z-[9999] overflow-hidden pointer-events-none">
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
                   onClick={() => setAdjustingStore(null)}
-                  className="text-zinc-400 hover:text-zinc-600 text-sm font-bold cursor-pointer p-1"
+                  className="fixed inset-0 bg-zinc-950/50 backdrop-blur-xs pointer-events-auto transition-all"
+                />
+
+                <motion.div
+                  initial={{ x: "100%" }}
+                  animate={{ x: 0 }}
+                  exit={{ x: "100%" }}
+                  transition={{ type: "spring", damping: 28, stiffness: 260 }}
+                  className="fixed top-0 right-0 h-full w-full max-w-lg md:max-w-xl bg-white shadow-2xl z-10 flex flex-col pointer-events-auto border-l border-zinc-200"
                 >
-                  <X className="h-5 w-5" />
-                </button>
+                  {/* Header */}
+                  <div className="px-6 md:px-8 py-5 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/80 backdrop-blur-xs shrink-0">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl shadow-sm shadow-emerald-500/20 text-white">
+                        <Wallet className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 rounded-full">
+                            Financeiro & Saldos
+                          </span>
+                        </div>
+                        <h2 className="text-lg font-bold text-zinc-900 mt-0.5">
+                          Ajustar Saldo da Loja
+                        </h2>
+                        <p className="text-xs text-zinc-500">{adjustingStore.name}</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAdjustingStore(null)}
+                      className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-xl transition-colors cursor-pointer"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  {/* Form & Body */}
+                  <form
+                    id="adjust-store-form"
+                    onSubmit={handleAdjustSubmit}
+                    className="flex-1 overflow-y-auto px-6 md:px-8 py-6 space-y-5"
+                  >
+                    {/* Saldo Atual */}
+                    <div className="p-4 bg-zinc-50 border border-zinc-200/80 rounded-2xl flex items-center justify-between">
+                      <div>
+                        <span className="text-xs text-zinc-500 font-medium block">
+                          Saldo Atual da Conta
+                        </span>
+                        <span className="text-[11px] text-zinc-400">
+                          {adjustingStore.client_name || "Loja Cadastrada"}
+                        </span>
+                      </div>
+                      <span className="font-black text-base text-zinc-900">
+                        {formatCurrency(adjustingStore.balance_reais)}
+                      </span>
+                    </div>
+
+                    {/* Direção: Crédito ou Débito */}
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-zinc-600 mb-2">
+                        Tipo de Ajuste *
+                      </label>
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setDirection("CREDIT")}
+                          className={cn(
+                            "flex items-center justify-center gap-2 py-3 px-4 rounded-xl border text-xs font-bold transition-all cursor-pointer",
+                            direction === "CREDIT"
+                              ? "bg-emerald-600 text-white border-emerald-600 shadow-sm shadow-emerald-600/20"
+                              : "border-zinc-200 text-zinc-700 hover:bg-zinc-50"
+                          )}
+                        >
+                          <Plus className="h-4 w-4" />
+                          Crédito (+)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDirection("DEBIT")}
+                          className={cn(
+                            "flex items-center justify-center gap-2 py-3 px-4 rounded-xl border text-xs font-bold transition-all cursor-pointer",
+                            direction === "DEBIT"
+                              ? "bg-rose-600 text-white border-rose-600 shadow-sm shadow-rose-600/20"
+                              : "border-zinc-200 text-zinc-700 hover:bg-zinc-50"
+                          )}
+                        >
+                          <Minus className="h-4 w-4" />
+                          Débito (-)
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Valor */}
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-zinc-600 mb-1.5">
+                        Valor do Ajuste (R$) *
+                      </label>
+                      <div className="relative rounded-xl border border-zinc-200 bg-zinc-50/60 focus-within:border-zinc-900 focus-within:bg-white transition-all">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400">
+                          R$
+                        </span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          required
+                          placeholder="0,00"
+                          value={amountInput}
+                          onChange={(e) => setAmountInput(e.target.value)}
+                          className="w-full bg-transparent pl-10 pr-4 py-3 text-sm font-bold text-zinc-900 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Categoria */}
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-zinc-600 mb-1.5">
+                        Categoria de Ajuste *
+                      </label>
+                      <select
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value)}
+                        className="w-full text-xs font-semibold bg-zinc-50/60 border border-zinc-200 rounded-xl px-3.5 py-3 text-zinc-900 focus:outline-none focus:bg-white focus:border-zinc-900 transition-all cursor-pointer"
+                      >
+                        <option value="BONUS">Bônus Promocional / Bonificação</option>
+                        <option value="REFUND">Estorno de Corrida / Corrida Indevida</option>
+                        <option value="ADJUSTMENT">Ajuste de Conciliação Bancária</option>
+                        <option value="PENALTY">Taxa Extraordinária / Penalidade</option>
+                      </select>
+                    </div>
+
+                    {/* Motivo Obrigatório */}
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-zinc-600 mb-1.5">
+                        Justificativa (Obrigatória para Auditoria) *
+                      </label>
+                      <textarea
+                        rows={3}
+                        required
+                        placeholder="Descreva detalhadamente o motivo do ajuste manual..."
+                        value={reason}
+                        onChange={(e) => setReason(e.target.value)}
+                        className="w-full text-xs bg-zinc-50/60 border border-zinc-200 rounded-xl p-3 text-zinc-900 focus:outline-none focus:bg-white focus:border-zinc-900 transition-all resize-none"
+                      />
+                    </div>
+                  </form>
+
+                  {/* Standard Footer */}
+                  <div className="px-6 md:px-8 py-4 border-t border-zinc-200 bg-zinc-50/90 backdrop-blur-xs flex items-center justify-end gap-3 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setAdjustingStore(null)}
+                      className="px-5 py-2.5 text-xs font-bold text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/60 rounded-xl transition-all cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      form="adjust-store-form"
+                      disabled={isSubmitting}
+                      className="px-6 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold rounded-xl transition-all disabled:opacity-50 cursor-pointer shadow-sm"
+                    >
+                      {isSubmitting ? "Gravando..." : "Confirmar Ajuste"}
+                    </button>
+                  </div>
+                </motion.div>
               </div>
-
-              <form onSubmit={handleAdjustSubmit} className="space-y-4">
-                {/* Saldo Atual */}
-                <div className="p-3 bg-zinc-50 border border-zinc-100 rounded-xl flex items-center justify-between text-xs">
-                  <span className="text-zinc-500 font-medium">Saldo Atual:</span>
-                  <span className="font-black text-sm text-zinc-900">
-                    {formatCurrency(adjustingStore.balance_reais)}
-                  </span>
-                </div>
-
-                {/* Direção: Crédito ou Débito */}
-                <div>
-                  <label className="block text-xs font-bold text-zinc-700 mb-1.5">
-                    Tipo de Ajuste:
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setDirection("CREDIT")}
-                      className={cn(
-                        "flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer",
-                        direction === "CREDIT"
-                          ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
-                          : "border-zinc-200 text-zinc-700 hover:bg-zinc-50"
-                      )}
-                    >
-                      <Plus className="h-4 w-4" />
-                      Crédito (+)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDirection("DEBIT")}
-                      className={cn(
-                        "flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer",
-                        direction === "DEBIT"
-                          ? "bg-rose-600 text-white border-rose-600 shadow-xs"
-                          : "border-zinc-200 text-zinc-700 hover:bg-zinc-50"
-                      )}
-                    >
-                      <Minus className="h-4 w-4" />
-                      Débito (-)
-                    </button>
-                  </div>
-                </div>
-
-                {/* Valor */}
-                <div>
-                  <label className="block text-xs font-bold text-zinc-700 mb-1.5">
-                    Valor (R$):
-                  </label>
-                  <div className="relative rounded-xl border border-zinc-200 bg-zinc-50 focus-within:border-zinc-900 focus-within:bg-white transition-colors">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400">
-                      R$
-                    </span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      required
-                      placeholder="0,00"
-                      value={amountInput}
-                      onChange={(e) => setAmountInput(e.target.value)}
-                      className="w-full bg-transparent pl-9 pr-4 py-2.5 text-sm font-bold text-zinc-900 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* Categoria */}
-                <div>
-                  <label className="block text-xs font-bold text-zinc-700 mb-1.5">
-                    Categoria:
-                  </label>
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="w-full text-xs font-semibold bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2.5 text-zinc-900 focus:outline-none cursor-pointer"
-                  >
-                    <option value="BONUS">Bônus Promocional / Bonificação</option>
-                    <option value="REFUND">Estorno de Corrida / Corrida Indevida</option>
-                    <option value="ADJUSTMENT">Ajuste de Conciliação Bancária</option>
-                    <option value="PENALTY">Taxa Extraordinária / Penalidade</option>
-                  </select>
-                </div>
-
-                {/* Motivo Obrigatório */}
-                <div>
-                  <label className="block text-xs font-bold text-zinc-700 mb-1.5">
-                    Justificativa (Obrigatória para Auditoria):
-                  </label>
-                  <textarea
-                    rows={3}
-                    required
-                    placeholder="Descreva o motivo do ajuste manual..."
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    className="w-full text-xs bg-zinc-50 border border-zinc-200 rounded-xl p-3 text-zinc-900 focus:outline-none focus:bg-white transition-colors"
-                  />
-                </div>
-
-                <div className="pt-2 border-t border-zinc-100 flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setAdjustingStore(null)}
-                    className="px-4 py-2 text-xs font-semibold text-zinc-600 hover:bg-zinc-100 rounded-xl cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="px-5 py-2 bg-zinc-900 text-white text-xs font-bold rounded-xl hover:bg-zinc-800 transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
-                  >
-                    {isSubmitting ? "Gravando..." : "Confirmar Ajuste"}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
+            )}
+          </AnimatePresence>,
+          document.body
         )}
-      </AnimatePresence>
     </div>
   );
 }

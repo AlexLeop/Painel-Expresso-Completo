@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { createPortal } from "react-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Banknote,
   TrendingUp,
@@ -69,6 +71,17 @@ export function CashReconciliationTab() {
   const [settleNotes, setSettleNotes] = useState("");
   const [isSubmittingSettle, setIsSubmittingSettle] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (settlingDriver) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [settlingDriver]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -478,114 +491,149 @@ export function CashReconciliationTab() {
       )}
 
       {/* Settlement Modal */}
-      {settlingDriver && (
-        <div className="fixed inset-0 bg-zinc-900/40 backdrop-blur-sm z-[1000] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-zinc-200 p-6 space-y-5">
-            <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-              <div>
-                <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider block">
-                  Conferência de Dinheiro
-                </span>
-                <h3 className="text-base font-bold text-zinc-900">
-                  Quitar Acerto em Espécie
-                </h3>
-              </div>
-              <button
-                onClick={() => setSettlingDriver(null)}
-                className="p-1.5 text-zinc-400 hover:text-zinc-600 rounded-lg hover:bg-zinc-100"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Motoboy Summary */}
-            <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3.5 space-y-1.5">
-              <div className="flex justify-between text-xs">
-                <span className="text-zinc-500">Entregador:</span>
-                <span className="font-bold text-zinc-900">
-                  {settlingDriver.driver_name}
-                </span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-zinc-500">Dinheiro Coletado:</span>
-                <span className="font-bold text-zinc-900">
-                  {formatCurrency(settlingDriver.cash_collected_reais)}
-                </span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-zinc-500">Ganhos do Condutor:</span>
-                <span className="font-bold text-blue-700">
-                  {formatCurrency(settlingDriver.driver_earnings_reais)}
-                </span>
-              </div>
-              <div className="flex justify-between text-xs border-t border-zinc-200/80 pt-1.5">
-                <span className="font-bold text-zinc-700">Líquido Devido à Base:</span>
-                <span className="font-black text-amber-600">
-                  {formatCurrency(settlingDriver.net_due_operator_reais)}
-                </span>
-              </div>
-            </div>
-
-            {/* Input Amount */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-zinc-700 block">
-                Valor a Quitar / Baixar (R$) *
-              </label>
-              <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-400">
-                  R$
-                </span>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={settleAmount}
-                  onChange={(e) => setSettleAmount(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-zinc-300 rounded-xl font-bold text-zinc-900 focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900"
+      {typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {settlingDriver && (
+              <div className="fixed inset-0 z-[9999] overflow-hidden pointer-events-none">
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={() => setSettlingDriver(null)}
+                  className="fixed inset-0 bg-zinc-950/50 backdrop-blur-xs pointer-events-auto transition-all"
                 />
+
+                <motion.div
+                  initial={{ x: "100%" }}
+                  animate={{ x: 0 }}
+                  exit={{ x: "100%" }}
+                  transition={{ type: "spring", damping: 28, stiffness: 260 }}
+                  className="fixed top-0 right-0 h-full w-full max-w-lg md:max-w-xl bg-white shadow-2xl z-10 flex flex-col pointer-events-auto border-l border-zinc-200"
+                >
+                  {/* Header */}
+                  <div className="px-6 md:px-8 py-5 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/80 backdrop-blur-xs shrink-0">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-gradient-to-br from-amber-500 to-amber-600 rounded-2xl shadow-sm shadow-amber-500/20 text-white">
+                        <Banknote className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200/60 px-2 py-0.5 rounded-full">
+                            Conferência de Dinheiro
+                          </span>
+                        </div>
+                        <h2 className="text-lg font-bold text-zinc-900 mt-0.5">
+                          Quitar Acerto em Espécie
+                        </h2>
+                        <p className="text-xs text-zinc-500">{settlingDriver.driver_name}</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSettlingDriver(null)}
+                      className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-xl transition-colors cursor-pointer"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  {/* Body */}
+                  <div className="flex-1 overflow-y-auto px-6 md:px-8 py-6 space-y-5">
+                    {/* Motoboy Summary */}
+                    <div className="bg-zinc-50 border border-zinc-200/80 rounded-2xl p-4 space-y-2.5">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-zinc-500 font-medium">Entregador:</span>
+                        <span className="font-bold text-zinc-900">
+                          {settlingDriver.driver_name}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-zinc-500 font-medium">Dinheiro Coletado:</span>
+                        <span className="font-bold text-zinc-900">
+                          {formatCurrency(settlingDriver.cash_collected_reais)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-zinc-500 font-medium">Ganhos do Condutor:</span>
+                        <span className="font-bold text-blue-700">
+                          {formatCurrency(settlingDriver.driver_earnings_reais)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-xs border-t border-zinc-200 pt-2">
+                        <span className="font-bold text-zinc-700">Líquido Devido à Base:</span>
+                        <span className="font-black text-amber-600 text-sm">
+                          {formatCurrency(settlingDriver.net_due_operator_reais)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Input Amount */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-zinc-600 mb-1.5">
+                        Valor a Quitar / Baixar (R$) *
+                      </label>
+                      <div className="relative rounded-xl border border-zinc-200 bg-zinc-50/60 focus-within:border-zinc-900 focus-within:bg-white transition-all">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400">
+                          R$
+                        </span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={settleAmount}
+                          onChange={(e) => setSettleAmount(e.target.value)}
+                          className="w-full bg-transparent pl-10 pr-4 py-3 text-sm font-bold text-zinc-900 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Notes */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-zinc-600 mb-1.5">
+                        Observações do Acerto (Opcional)
+                      </label>
+                      <textarea
+                        value={settleNotes}
+                        onChange={(e) => setSettleNotes(e.target.value)}
+                        placeholder="Ex: Entregue fisicamente na base pelo condutor..."
+                        rows={3}
+                        className="w-full text-xs bg-zinc-50/60 border border-zinc-200 rounded-xl p-3 text-zinc-900 focus:outline-none focus:bg-white focus:border-zinc-900 transition-all resize-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Standard Footer */}
+                  <div className="px-6 md:px-8 py-4 border-t border-zinc-200 bg-zinc-50/90 backdrop-blur-xs flex items-center justify-end gap-3 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setSettlingDriver(null)}
+                      disabled={isSubmittingSettle}
+                      className="px-5 py-2.5 text-xs font-bold text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/60 rounded-xl transition-all cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmSettle}
+                      disabled={isSubmittingSettle}
+                      className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      {isSubmittingSettle ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4" /> Confirmar Baixa
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </motion.div>
               </div>
-            </div>
-
-            {/* Notes */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-zinc-700 block">
-                Observações do Acerto (Opcional)
-              </label>
-              <textarea
-                value={settleNotes}
-                onChange={(e) => setSettleNotes(e.target.value)}
-                placeholder="Ex: Entregue fisicamente na base pelo condutor..."
-                className="w-full px-3.5 py-2 text-sm bg-white border border-zinc-300 rounded-xl text-zinc-800 focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 resize-none min-h-[70px]"
-              />
-            </div>
-
-            {/* Modal Buttons */}
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100">
-              <button
-                type="button"
-                onClick={() => setSettlingDriver(null)}
-                disabled={isSubmittingSettle}
-                className="px-4 py-2 border border-zinc-200 bg-white text-zinc-700 rounded-xl hover:bg-zinc-50 text-xs font-bold transition-all"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmSettle}
-                disabled={isSubmittingSettle}
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
-              >
-                {isSubmittingSettle ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <Check className="w-4 h-4" /> Confirmar Baixa
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            )}
+          </AnimatePresence>,
+          document.body
+        )}
     </div>
   );
 }

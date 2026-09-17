@@ -1,5 +1,7 @@
 import { logger } from "@/lib/logger";
 import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import { X, Map as MapIcon } from "lucide-react";
 import {
   MapContainer,
@@ -138,6 +140,17 @@ export function RideMapModal({ isOpen, onClose, corrida }: RideMapModalProps) {
     fetchRoute();
   }, [isOpen, corrida]);
 
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [isOpen]);
+
   if (!isOpen || !corrida) return null;
 
   const originLatLon: [number, number] = [
@@ -159,116 +172,155 @@ export function RideMapModal({ isOpen, onClose, corrida }: RideMapModalProps) {
     return "";
   })();
 
-  return (
-    <div className="fixed inset-0 z-[60] bg-gray-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white w-full max-w-4xl rounded-2xl shadow-xl overflow-hidden flex flex-col h-[80vh]">
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-white z-10">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-indigo-50 rounded-lg">
-              <MapIcon className="h-5 w-5 text-indigo-600" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-gray-900 leading-none">
-                Rota da Corrida #{corrida.id}
-              </h2>
-              <p className="text-sm text-gray-500 mt-1">
-                {motoboyName || "Sem motoboy"} • {corrida.empresa}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="flex-1 bg-gray-100 relative">
-          <ErrorBoundary>
-            <MapContainer
-              center={originLatLon}
-              zoom={13}
-              style={{ width: "100%", height: "100%" }}
-              zoomControl={false}
-            >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+  return typeof document !== "undefined"
+    ? createPortal(
+        <AnimatePresence>
+          <div className="fixed inset-0 z-[9999] overflow-hidden pointer-events-none">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={onClose}
+              className="fixed inset-0 bg-zinc-950/50 backdrop-blur-xs pointer-events-auto transition-all"
             />
-            {routeCoordinates.length > 0 && (
-              <>
-                <Polyline
-                  positions={routeCoordinates}
-                  color="#4f46e5"
-                  weight={5}
-                  opacity={0.8}
-                />
-                <MapBounds routeCoordinates={routeCoordinates} />
-              </>
-            )}
-            <Marker position={originLatLon} icon={storeIcon}>
-              <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>
-                Loja (Coleta)
-              </Tooltip>
-            </Marker>
-            <Marker position={destLatLon} icon={dropoffIcon}>
-              <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>
-                Entrega
-              </Tooltip>
-            </Marker>
-            </MapContainer>
-          </ErrorBoundary>
 
-          {isLoadingRoute && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white px-4 py-2 rounded-lg shadow-md text-sm font-medium text-gray-700 z-[1000]">
-              Calculando rota...
-            </div>
-          )}
-          {routeError && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-rose-100 text-rose-700 px-4 py-2 rounded-lg shadow-md text-sm font-medium z-[1000]">
-              {routeError}
-            </div>
-          )}
-        </div>
-
-        <div className="p-4 border-t border-gray-200 bg-gray-50 grid grid-cols-3 gap-4">
-          <div>
-            <span className="block text-xs font-medium text-gray-500 uppercase">
-              Distância Estimada
-            </span>
-            <span className="text-sm font-semibold text-gray-900">
-              {corrida.distancia}
-            </span>
-          </div>
-          <div>
-            <span className="block text-xs font-medium text-gray-500 uppercase">
-              Status
-            </span>
-            <span
-              className={`inline-flex items-center text-sm font-semibold ${
-                corrida.status === "Em andamento"
-                  ? "text-blue-600"
-                  : corrida.status === "Coletando"
-                    ? "text-amber-600"
-                    : corrida.status === "Concluída"
-                      ? "text-emerald-600"
-                      : "text-rose-600"
-              }`}
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 28, stiffness: 260 }}
+              className="fixed top-0 right-0 h-full w-full max-w-3xl lg:max-w-4xl bg-white shadow-2xl z-10 flex flex-col pointer-events-auto border-l border-zinc-200"
             >
-              {corrida.status}
-            </span>
+              {/* Header */}
+              <div className="px-6 md:px-8 py-5 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/80 backdrop-blur-xs shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-2xl shadow-sm shadow-indigo-500/20 text-white">
+                    <MapIcon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-200/60 px-2 py-0.5 rounded-full">
+                        Corridas & Rastreamento
+                      </span>
+                    </div>
+                    <h2 className="text-lg font-bold text-zinc-900 mt-0.5">
+                      Rota da Corrida #{corrida.id}
+                    </h2>
+                    <p className="text-xs text-zinc-500">
+                      {motoboyName || "Sem motoboy"} • {corrida.empresa}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-xl transition-colors cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Map Canvas */}
+              <div className="flex-1 bg-zinc-100 relative min-h-0">
+                <ErrorBoundary>
+                  <MapContainer
+                    center={originLatLon}
+                    zoom={13}
+                    style={{ width: "100%", height: "100%" }}
+                    zoomControl={false}
+                  >
+                    <TileLayer
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    />
+                    {routeCoordinates.length > 0 && (
+                      <>
+                        <Polyline
+                          positions={routeCoordinates}
+                          color="#4f46e5"
+                          weight={5}
+                          opacity={0.8}
+                        />
+                        <MapBounds routeCoordinates={routeCoordinates} />
+                      </>
+                    )}
+                    <Marker position={originLatLon} icon={storeIcon}>
+                      <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>
+                        Loja (Coleta)
+                      </Tooltip>
+                    </Marker>
+                    <Marker position={destLatLon} icon={dropoffIcon}>
+                      <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>
+                        Entrega
+                      </Tooltip>
+                    </Marker>
+                  </MapContainer>
+                </ErrorBoundary>
+
+                {isLoadingRoute && (
+                  <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-xs px-4 py-2 rounded-xl shadow-md text-xs font-bold text-zinc-800 z-[1000] border border-zinc-200">
+                    Calculando rota...
+                  </div>
+                )}
+                {routeError && (
+                  <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-rose-50 text-rose-700 px-4 py-2 rounded-xl shadow-md text-xs font-bold z-[1000] border border-rose-200">
+                    {routeError}
+                  </div>
+                )}
+              </div>
+
+              {/* Standard Footer */}
+              <div className="px-6 md:px-8 py-4 border-t border-zinc-200 bg-zinc-50/90 backdrop-blur-xs flex items-center justify-between gap-4 shrink-0">
+                <div className="grid grid-cols-3 gap-6 text-xs">
+                  <div>
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                      Distância
+                    </span>
+                    <span className="text-sm font-black text-zinc-900">
+                      {corrida.distancia || "—"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                      Status
+                    </span>
+                    <span
+                      className={`inline-flex items-center text-xs font-bold ${
+                        corrida.status === "Em andamento"
+                          ? "text-blue-600"
+                          : corrida.status === "Coletando"
+                            ? "text-amber-600"
+                            : corrida.status === "Concluída"
+                              ? "text-emerald-600"
+                              : "text-rose-600"
+                      }`}
+                    >
+                      {corrida.status}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                      Horário
+                    </span>
+                    <span className="text-sm font-bold text-zinc-900">
+                      {corrida.horario || "—"}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-6 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-sm"
+                >
+                  Fechar
+                </button>
+              </div>
+            </motion.div>
           </div>
-          <div>
-            <span className="block text-xs font-medium text-gray-500 uppercase">
-              Horário de Saída
-            </span>
-            <span className="text-sm font-semibold text-gray-900">
-              {corrida.horario}
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+        </AnimatePresence>,
+        document.body
+      )
+    : null;
 }

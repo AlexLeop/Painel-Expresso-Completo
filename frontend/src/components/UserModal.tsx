@@ -1,5 +1,6 @@
 import { logger } from "@/lib/logger";
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X, Check, Building2, User, Mail, Phone, Shield } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "../lib/utils";
@@ -89,7 +90,16 @@ export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
     }
   }, [user, isOpen]);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [isOpen]);
 
   const toggleCompany = (companyId: string) => {
     setFormData((prev) => ({
@@ -105,37 +115,70 @@ export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
     onSave(formData);
   };
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <>
+        <div className="fixed inset-0 z-[9999] overflow-hidden pointer-events-none">
+          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-zinc-900/40 backdrop-blur-sm z-[50]"
+            className="fixed inset-0 bg-zinc-950/50 backdrop-blur-xs pointer-events-auto transition-all"
             onClick={onClose}
           />
+
+          {/* Lateral Slide-Over Drawer */}
           <motion.div
-            initial={{ x: "100%", opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: "100%", opacity: 0 }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="fixed top-0 right-0 h-full w-full max-w-md bg-white shadow-2xl z-[51] flex flex-col border-l border-zinc-200"
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "spring", damping: 30, stiffness: 300 }}
+            className="fixed top-0 right-0 h-full w-full max-w-xl md:max-w-2xl bg-white shadow-2xl border-l border-zinc-200 z-10 flex flex-col pointer-events-auto overflow-hidden"
           >
-            <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/50">
-              <h2 className="text-lg font-bold text-zinc-900">
-                {user ? "Editar Usuário" : "Novo Usuário"}
-              </h2>
+            {/* Header */}
+            <div className="px-6 md:px-8 py-5 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/70 shrink-0">
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20 shrink-0">
+                  <User className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                      Controle de Acesso
+                    </span>
+                    {user && (
+                      <span
+                        className={cn(
+                          "text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border",
+                          formData.status === "Ativo"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : "bg-rose-50 text-rose-700 border-rose-200",
+                        )}
+                      >
+                        {formData.status}
+                      </span>
+                    )}
+                  </div>
+                  <h2 className="text-xl font-black text-zinc-900 tracking-tight mt-0.5">
+                    {user ? "Editar Usuário" : "Novo Usuário"}
+                  </h2>
+                  <p className="text-xs text-zinc-500 font-medium">
+                    {user
+                      ? `Edite os privilégios e vínculos de ${user.nome}`
+                      : "Cadastre um novo usuário com cargo e lojas atribuídas"}
+                  </p>
+                </div>
+              </div>
               <button
                 onClick={onClose}
-                className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-full transition-colors"
+                className="p-2 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 rounded-xl transition-all cursor-pointer"
               >
-                <X className="h-5 w-5" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-zinc-50/30">
               <form
                 id="user-form"
                 onSubmit={handleSubmit}
@@ -325,25 +368,27 @@ export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
               </form>
             </div>
 
-            <div className="p-4 border-t border-zinc-200 bg-zinc-50 flex gap-3">
+            {/* Standard Footer */}
+            <div className="px-6 md:px-8 py-4 border-t border-zinc-200 bg-zinc-50/90 backdrop-blur-xs flex items-center justify-between gap-4 shrink-0">
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-2 border border-zinc-200 bg-white text-zinc-700 rounded-lg hover:bg-zinc-50 text-sm font-bold transition-all"
+                className="px-5 py-2.5 text-xs font-bold text-zinc-700 bg-white border border-zinc-200 hover:bg-zinc-100 rounded-xl transition-all cursor-pointer shadow-xs"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
                 form="user-form"
-                className="flex-1 px-4 py-2 bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 text-sm font-bold shadow-sm transition-all"
+                className="px-6 py-2.5 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 text-xs font-bold shadow-sm transition-all cursor-pointer"
               >
                 Salvar Usuário
               </button>
             </div>
           </motion.div>
-        </>
+        </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

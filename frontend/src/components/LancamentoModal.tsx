@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   CalendarDays,
@@ -70,7 +71,16 @@ export function LancamentoModal({
     }
   }, [lancamento, isOpen, defaultCategoria]);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [isOpen]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,53 +89,79 @@ export function LancamentoModal({
 
   const isCredit = formData.categoria === "Crédito";
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <>
+        <div className="fixed inset-0 z-[9999] overflow-hidden pointer-events-none">
+          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-zinc-900/40 backdrop-blur-sm z-[50]"
+            className="fixed inset-0 bg-zinc-950/50 backdrop-blur-xs pointer-events-auto transition-all"
             onClick={onClose}
           />
+
+          {/* Lateral Slide-Over Drawer */}
           <motion.div
-            initial={{ x: "100%", opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: "100%", opacity: 0 }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="fixed top-0 right-0 h-full w-full max-w-md bg-white shadow-2xl z-[51] flex flex-col border-l border-zinc-200"
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "spring", damping: 30, stiffness: 300 }}
+            className="fixed top-0 right-0 h-full w-full max-w-lg md:max-w-xl bg-white shadow-2xl border-l border-zinc-200 z-10 flex flex-col pointer-events-auto overflow-hidden"
           >
-            <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/50">
-              <div className="flex items-center gap-3">
+            {/* Header */}
+            <div className="px-6 md:px-8 py-5 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/70 shrink-0">
+              <div className="flex items-center gap-3.5">
                 <div
                   className={cn(
-                    "p-2 rounded-lg border",
+                    "w-11 h-11 rounded-2xl flex items-center justify-center text-white shadow-md shrink-0",
                     isCredit
-                      ? "bg-emerald-50 border-emerald-100 text-emerald-600"
-                      : "bg-rose-50 border-rose-100 text-rose-600",
+                      ? "bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-emerald-500/20"
+                      : "bg-gradient-to-br from-rose-500 to-rose-600 shadow-rose-500/20",
                   )}
                 >
                   {isCredit ? (
-                    <ArrowUpRight className="h-5 w-5" />
+                    <ArrowUpRight className="w-6 h-6" />
                   ) : (
-                    <ArrowDownRight className="h-5 w-5" />
+                    <ArrowDownRight className="w-6 h-6" />
                   )}
                 </div>
-                <h2 className="text-lg font-bold text-zinc-900">
-                  {lancamento ? "Editar Lançamento" : `Novo Lançamento`}
-                </h2>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-700 border border-zinc-200">
+                      Financeiro Operacional
+                    </span>
+                    <span
+                      className={cn(
+                        "text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border",
+                        isCredit
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : "bg-rose-50 text-rose-700 border-rose-200",
+                      )}
+                    >
+                      {isCredit ? "Crédito (+)" : "Débito (-)"}
+                    </span>
+                  </div>
+                  <h2 className="text-xl font-black text-zinc-900 tracking-tight mt-0.5">
+                    {lancamento ? "Editar Lançamento" : "Novo Lançamento"}
+                  </h2>
+                  <p className="text-xs text-zinc-500 font-medium">
+                    {isCredit
+                      ? "Registro de valores a pagar/bonificar ao entregador"
+                      : "Registro de deduções, adiantamentos ou penalidades"}
+                  </p>
+                </div>
               </div>
               <button
                 onClick={onClose}
-                className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-full transition-colors"
+                className="p-2 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 rounded-xl transition-all cursor-pointer"
               >
-                <X className="h-5 w-5" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-zinc-50/30">
               <form
                 id="lancamento-form"
                 onSubmit={handleSubmit}
@@ -370,11 +406,12 @@ export function LancamentoModal({
               </form>
             </div>
 
-            <div className="p-4 border-t border-zinc-200 bg-zinc-50 flex gap-3">
+            {/* Standard Footer */}
+            <div className="px-6 md:px-8 py-4 border-t border-zinc-200 bg-zinc-50/90 backdrop-blur-xs flex items-center justify-between gap-4 shrink-0">
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 px-4 py-2 border border-zinc-200 bg-white text-zinc-700 rounded-lg hover:bg-zinc-50 text-sm font-bold transition-all"
+                className="px-5 py-2.5 text-xs font-bold text-zinc-700 bg-white border border-zinc-200 hover:bg-zinc-100 rounded-xl transition-all cursor-pointer shadow-xs"
               >
                 Cancelar
               </button>
@@ -382,18 +419,19 @@ export function LancamentoModal({
                 type="submit"
                 form="lancamento-form"
                 className={cn(
-                  "flex-1 px-4 py-2 text-white rounded-lg text-sm font-bold shadow-sm transition-all",
+                  "px-6 py-2.5 text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer",
                   isCredit
-                    ? "bg-emerald-600 hover:bg-emerald-700"
-                    : "bg-rose-600 hover:bg-rose-700",
+                    ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
+                    : "bg-rose-600 hover:bg-rose-700 shadow-rose-600/20",
                 )}
               >
                 Salvar Lançamento
               </button>
             </div>
           </motion.div>
-        </>
+        </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

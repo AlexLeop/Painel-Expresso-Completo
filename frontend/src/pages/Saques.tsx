@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowDownToLine,
   CheckCircle2,
@@ -21,6 +23,7 @@ import {
   ExternalLink,
   ChevronRight,
   Info,
+  X,
 } from "lucide-react";
 import { authFetch } from "../lib/api";
 import { formatCurrency, cn } from "../lib/utils";
@@ -91,6 +94,17 @@ export function Saques() {
 
   // Details Modal
   const [detailsModalItem, setDetailsModalItem] = useState<WithdrawalItem | null>(null);
+
+  useEffect(() => {
+    if (rejectModalOpen || detailsModalItem || policyModalOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [rejectModalOpen, detailsModalItem, policyModalOpen]);
 
   // Feedback Notification
   const [toastMessage, setToastMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -797,413 +811,517 @@ export function Saques() {
       </div>
 
       {/* Modal: Rejeitar com Motivo e Estorno Atômico */}
-      {rejectModalOpen && selectedWithdrawalForReject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-fadeIn">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 border border-zinc-200 space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 bg-rose-100 text-rose-600 rounded-xl">
-                <ShieldAlert className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-zinc-900">
-                  Rejeitar Saque & Estornar Carteira
-                </h3>
-                <p className="text-xs text-zinc-500 mt-0.5">
-                  O valor de{" "}
-                  <strong>
-                    {formatCurrency(selectedWithdrawalForReject.amount_cents / 100)}
-                  </strong>{" "}
-                  será desbloqueado e devolvido à carteira do entregador via transação contábil de estorno (REFUND).
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-700">
-                Motivo da Rejeição (Visível no App NevesGo) <span className="text-rose-500">*</span>
-              </label>
-              <textarea
-                rows={3}
-                required
-                value={rejectionReason}
-                onChange={(e) => setRejectionReason(e.target.value)}
-                placeholder="Ex: Chave PIX inexistente ou com titularidade divergente do cadastro."
-                className="w-full p-2.5 text-xs border border-zinc-300 rounded-lg focus:ring-2 focus:ring-zinc-900 focus:border-transparent resize-none"
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100">
-              <button
-                type="button"
+      {createPortal(
+        <AnimatePresence>
+          {rejectModalOpen && selectedWithdrawalForReject && (
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-zinc-950/50 backdrop-blur-xs pointer-events-auto transition-all"
                 onClick={() => {
                   setRejectModalOpen(false);
                   setSelectedWithdrawalForReject(null);
                   setRejectionReason("");
                 }}
-                className="px-3.5 py-2 text-xs font-medium text-zinc-600 hover:bg-zinc-100 rounded-lg transition"
+              />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                transition={{ type: "spring", damping: 25, stiffness: 250 }}
+                className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-zinc-200 space-y-4 z-10 pointer-events-auto"
               >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmReject}
-                disabled={processingAction || !rejectionReason.trim()}
-                className="px-4 py-2 text-xs font-medium text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition shadow-sm disabled:opacity-50 flex items-center gap-1.5"
-              >
-                {processingAction && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-                <span>Confirmar Rejeição & Estorno</span>
-              </button>
+                <div className="flex items-start gap-3.5">
+                  <div className="p-3 bg-rose-100 text-rose-600 rounded-2xl shrink-0">
+                    <ShieldAlert className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-900">
+                      Rejeitar Saque & Estornar Carteira
+                    </h3>
+                    <p className="text-xs text-zinc-500 mt-0.5 leading-relaxed">
+                      O valor de{" "}
+                      <strong>
+                        {formatCurrency(selectedWithdrawalForReject.amount_cents / 100)}
+                      </strong>{" "}
+                      será desbloqueado e devolvido à carteira do entregador via transação contábil de estorno (REFUND).
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-zinc-700">
+                    Motivo da Rejeição (Visível no App NevesGo) <span className="text-rose-500">*</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    required
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    placeholder="Ex: Chave PIX inexistente ou com titularidade divergente do cadastro."
+                    className="w-full p-3 text-xs border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 resize-none outline-none transition-all"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-zinc-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRejectModalOpen(false);
+                      setSelectedWithdrawalForReject(null);
+                      setRejectionReason("");
+                    }}
+                    className="px-4 py-2 text-xs font-bold text-zinc-700 bg-white border border-zinc-200 hover:bg-zinc-100 rounded-xl transition-all cursor-pointer shadow-xs"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmReject}
+                    disabled={processingAction || !rejectionReason.trim()}
+                    className="px-5 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-all shadow-sm disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-rose-600/20"
+                  >
+                    {processingAction && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                    <span>Confirmar Rejeição & Estorno</span>
+                  </button>
+                </div>
+              </motion.div>
             </div>
-          </div>
-        </div>
+          )}
+        </AnimatePresence>,
+        document.body,
       )}
 
-      {/* Modal: Detalhes do Saque & E2E ID */}
-      {detailsModalItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-fadeIn">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 border border-zinc-200 space-y-4">
-            <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-              <h3 className="text-base font-bold text-zinc-900">
-                Detalhes da Liquidação PIX
-              </h3>
-              <button
+      {/* Modal: Detalhes do Saque & E2E ID (Lateral Drawer) */}
+      {createPortal(
+        <AnimatePresence>
+          {detailsModalItem && (
+            <div className="fixed inset-0 z-[9999] overflow-hidden pointer-events-none">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-zinc-950/50 backdrop-blur-xs pointer-events-auto transition-all"
                 onClick={() => setDetailsModalItem(null)}
-                className="text-zinc-400 hover:text-zinc-600 p-1"
+              />
+
+              <motion.div
+                initial={{ x: "100%" }}
+                animate={{ x: 0 }}
+                exit={{ x: "100%" }}
+                transition={{ type: "spring", damping: 30, stiffness: 300 }}
+                className="fixed top-0 right-0 h-full w-full max-w-xl md:max-w-2xl bg-white shadow-2xl border-l border-zinc-200 z-10 flex flex-col pointer-events-auto overflow-hidden"
               >
-                ✕
-              </button>
+                {/* Header */}
+                <div className="px-6 md:px-8 py-5 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/70 shrink-0">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white shadow-md shadow-emerald-500/20 shrink-0">
+                      <DollarSign className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        BaaS & Liquidação PIX
+                      </span>
+                      <h2 className="text-xl font-black text-zinc-900 tracking-tight mt-0.5">
+                        Detalhes do Saque
+                      </h2>
+                      <p className="text-xs text-zinc-500 font-medium">
+                        Identificador Fim-a-Fim Banco Central e comprovante de liquidação
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setDetailsModalItem(null)}
+                    className="p-2 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 rounded-xl transition-all cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-5 bg-zinc-50/30 text-xs">
+                  {/* Summary Card */}
+                  <div className="bg-white p-5 rounded-2xl border border-zinc-200 shadow-xs space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <span className="text-zinc-400 block text-[11px] font-semibold">Entregador</span>
+                        <span className="font-bold text-sm text-zinc-900">
+                          {detailsModalItem.condutor_name || detailsModalItem.condutor_id}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-400 block text-[11px] font-semibold">Status</span>
+                        <span className="inline-block mt-0.5 px-2.5 py-0.5 rounded-full font-bold text-[10px] uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          {detailsModalItem.status}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-400 block text-[11px] font-semibold">Chave PIX Destino</span>
+                        <span className="font-mono font-bold text-zinc-800">
+                          {detailsModalItem.pix_key} ({detailsModalItem.pix_key_type})
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-400 block text-[11px] font-semibold">Valor Líquido Enviado</span>
+                        <span className="font-black text-base text-emerald-600">
+                          {formatCurrency(detailsModalItem.net_amount_cents / 100)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* E2E ID */}
+                  {detailsModalItem.baas_e2e_id && (
+                    <div className="bg-blue-50/60 border border-blue-200 p-4 rounded-2xl space-y-2">
+                      <span className="text-xs font-bold text-blue-900 block">
+                        Identificador Fim-a-Fim Banco Central (E2E ID)
+                      </span>
+                      <div className="flex items-center justify-between gap-3 bg-white p-2.5 rounded-xl border border-blue-100">
+                        <span className="font-mono text-xs text-blue-950 select-all font-semibold break-all">
+                          {detailsModalItem.baas_e2e_id}
+                        </span>
+                        <button
+                          onClick={() => handleCopyKey(detailsModalItem.baas_e2e_id!, "e2e")}
+                          className="p-2 text-blue-700 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                          title="Copiar Chave E2E"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TXID */}
+                  {detailsModalItem.baas_tx_id && (
+                    <div className="bg-white border border-zinc-200 p-4 rounded-2xl space-y-1 shadow-xs">
+                      <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold block">
+                        Efí Transaction ID (TXID)
+                      </span>
+                      <span className="font-mono text-xs text-zinc-800 block select-all break-all">
+                        {detailsModalItem.baas_tx_id}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Rejection Reason */}
+                  {detailsModalItem.rejection_reason && (
+                    <div className="bg-rose-50 border border-rose-200 p-4 rounded-2xl space-y-1">
+                      <span className="text-xs font-bold text-rose-900 block">
+                        Motivo da Rejeição Registrado
+                      </span>
+                      <p className="text-xs text-rose-800">
+                        {detailsModalItem.rejection_reason}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="text-[11px] text-zinc-500 pt-2 bg-zinc-50 p-3 rounded-xl border border-zinc-200">
+                    Solicitado em: {new Date(detailsModalItem.created_at).toLocaleString("pt-BR")}
+                    {detailsModalItem.paid_at && (
+                      <span> • Liquidado em: {new Date(detailsModalItem.paid_at).toLocaleString("pt-BR")}</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="px-6 md:px-8 py-4 border-t border-zinc-200 bg-zinc-50/90 backdrop-blur-xs flex justify-end shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setDetailsModalItem(null)}
+                    className="px-6 py-2.5 text-xs font-bold text-zinc-700 bg-white border border-zinc-200 hover:bg-zinc-100 rounded-xl transition-all cursor-pointer shadow-xs"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </motion.div>
             </div>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
 
-            <div className="space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-3 bg-zinc-50 p-3 rounded-lg border border-zinc-200">
-                <div>
-                  <span className="text-zinc-400 block text-[11px]">Entregador</span>
-                  <span className="font-semibold text-zinc-900">
-                    {detailsModalItem.condutor_name || detailsModalItem.condutor_id}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-zinc-400 block text-[11px]">Status</span>
-                  <span className="font-semibold text-zinc-900">
-                    {detailsModalItem.status}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-zinc-400 block text-[11px]">Chave PIX Destino</span>
-                  <span className="font-mono text-zinc-900">
-                    {detailsModalItem.pix_key} ({detailsModalItem.pix_key_type})
-                  </span>
-                </div>
-                <div>
-                  <span className="text-zinc-400 block text-[11px]">Valor Líquido Enviado</span>
-                  <span className="font-bold text-emerald-600">
-                    {formatCurrency(detailsModalItem.net_amount_cents / 100)}
-                  </span>
-                </div>
-              </div>
+      {/* Modal: Regras e Alçada de Saque (PolicyConfigModal - Lateral Drawer) */}
+      {createPortal(
+        <AnimatePresence>
+          {policyModalOpen && policyConfig && (
+            <div className="fixed inset-0 z-[9999] overflow-hidden pointer-events-none">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-zinc-950/50 backdrop-blur-xs pointer-events-auto transition-all"
+                onClick={() => setPolicyModalOpen(false)}
+              />
 
-              {detailsModalItem.baas_e2e_id && (
-                <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg space-y-1">
-                  <span className="text-[11px] font-semibold text-blue-900 block">
-                    Identificador Fim-a-Fim Banco Central (E2E ID)
-                  </span>
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-blue-950 select-all font-semibold">
-                      {detailsModalItem.baas_e2e_id}
-                    </span>
+              <motion.div
+                initial={{ x: "100%" }}
+                animate={{ x: 0 }}
+                exit={{ x: "100%" }}
+                transition={{ type: "spring", damping: 30, stiffness: 300 }}
+                className="fixed top-0 right-0 h-full w-full max-w-2xl md:max-w-3xl bg-white shadow-2xl border-l border-zinc-200 z-10 flex flex-col pointer-events-auto overflow-hidden"
+              >
+                {/* Header */}
+                <div className="px-6 md:px-8 py-5 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/70 shrink-0">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-zinc-800 to-zinc-950 flex items-center justify-center text-white shadow-md shrink-0">
+                      <Sliders className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-800 border border-zinc-200">
+                        Diretrizes Operacionais
+                      </span>
+                      <h2 className="text-xl font-black text-zinc-900 tracking-tight mt-0.5">
+                        Configuração de Alçada & BaaS
+                      </h2>
+                      <p className="text-xs text-zinc-500 font-medium">
+                        Defina limites automáticos, taxas e regras de aprovação de saques
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setPolicyModalOpen(false)}
+                    className="p-2 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 rounded-xl transition-all cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form
+                  id="policy-form"
+                  onSubmit={handleSavePolicy}
+                  className="flex-1 flex flex-col overflow-hidden text-xs"
+                >
+                  <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6 bg-zinc-50/30">
+                    {/* Modo de Alçada */}
+                    <div className="bg-white p-5 rounded-2xl border border-zinc-200 shadow-xs space-y-3">
+                      <label className="font-bold text-xs text-zinc-800 block">
+                        Modo de Aprovação de Saques
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPolicyConfig({ ...policyConfig, approval_mode: "HYBRID_THRESHOLD" })
+                          }
+                          className={cn(
+                            "p-3.5 rounded-xl border text-left transition-all cursor-pointer",
+                            policyConfig.approval_mode === "HYBRID_THRESHOLD"
+                              ? "border-zinc-900 bg-zinc-900 text-white shadow-xs"
+                              : "border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100"
+                          )}
+                        >
+                          <div className="font-bold text-xs">Híbrido (Limite Inteligente)</div>
+                          <div className={cn("text-[11px] mt-1 leading-relaxed", policyConfig.approval_mode === "HYBRID_THRESHOLD" ? "text-zinc-300" : "text-zinc-500")}>
+                            Saques abaixo do limite são automáticos via BaaS; acima exigem aprovação manual.
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPolicyConfig({ ...policyConfig, approval_mode: "MANUAL_ALL" })
+                          }
+                          className={cn(
+                            "p-3.5 rounded-xl border text-left transition-all cursor-pointer",
+                            policyConfig.approval_mode === "MANUAL_ALL"
+                              ? "border-zinc-900 bg-zinc-900 text-white shadow-xs"
+                              : "border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100"
+                          )}
+                        >
+                          <div className="font-bold text-xs">100% Manual</div>
+                          <div className={cn("text-[11px] mt-1 leading-relaxed", policyConfig.approval_mode === "MANUAL_ALL" ? "text-zinc-300" : "text-zinc-500")}>
+                            Todos os saques passam obrigatoriamente por autorização do operador no painel.
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Limites Financeiros */}
+                    <div className="bg-white p-5 rounded-2xl border border-zinc-200 shadow-xs space-y-4">
+                      <h4 className="text-xs font-bold text-zinc-800 uppercase tracking-wider">
+                        Limites Financeiros por Transação
+                      </h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="font-semibold text-xs text-zinc-700 block">
+                            Limite p/ Saque Automático (R$)
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-xs font-bold">R$</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              disabled={policyConfig.approval_mode === "MANUAL_ALL"}
+                              value={(policyConfig.auto_approval_threshold_cents / 100).toFixed(2)}
+                              onChange={(e) =>
+                                setPolicyConfig({
+                                  ...policyConfig,
+                                  auto_approval_threshold_cents: Math.round(parseFloat(e.target.value || "0") * 100),
+                                })
+                              }
+                              className="w-full pl-9 pr-3 py-2.5 border border-zinc-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 disabled:bg-zinc-100 disabled:text-zinc-400 transition-all"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="font-semibold text-xs text-zinc-700 block">
+                            Limite Diário por Entregador (R$)
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-xs font-bold">R$</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={(policyConfig.daily_limit_per_driver_cents / 100).toFixed(2)}
+                              onChange={(e) =>
+                                setPolicyConfig({
+                                  ...policyConfig,
+                                  daily_limit_per_driver_cents: Math.round(parseFloat(e.target.value || "0") * 100),
+                                })
+                              }
+                              className="w-full pl-9 pr-3 py-2.5 border border-zinc-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 transition-all"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Modalidade da Taxa de Saque */}
+                    <div className="bg-white p-5 rounded-2xl border border-zinc-200 shadow-xs space-y-3">
+                      <label className="font-bold text-xs text-zinc-800 block">
+                        Cobrança da Taxa de Saque
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPolicyConfig({ ...policyConfig, fee_mode: "ABSORBED_BY_PLATFORM" })
+                          }
+                          className={cn(
+                            "p-3 rounded-xl border text-left transition-all cursor-pointer",
+                            policyConfig.fee_mode === "ABSORBED_BY_PLATFORM"
+                              ? "border-emerald-600 bg-emerald-50 text-emerald-900 shadow-xs"
+                              : "border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100"
+                          )}
+                        >
+                          <div className="font-bold text-xs">Plataforma Absorve</div>
+                          <div className="text-[11px] text-zinc-500 mt-0.5">
+                            Saque 100% gratuito ao entregador parceiro.
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPolicyConfig({ ...policyConfig, fee_mode: "CHARGED_TO_DRIVER" })
+                          }
+                          className={cn(
+                            "p-3 rounded-xl border text-left transition-all cursor-pointer",
+                            policyConfig.fee_mode === "CHARGED_TO_DRIVER"
+                              ? "border-zinc-900 bg-zinc-900 text-white shadow-xs"
+                              : "border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100"
+                          )}
+                        >
+                          <div className="font-bold text-xs">Cobrar do Entregador</div>
+                          <div className={cn("text-[11px] mt-0.5", policyConfig.fee_mode === "CHARGED_TO_DRIVER" ? "text-zinc-300" : "text-zinc-500")}>
+                            Desconta taxa fixa do valor líquido transferido.
+                          </div>
+                        </button>
+                      </div>
+
+                      {policyConfig.fee_mode === "CHARGED_TO_DRIVER" && (
+                        <div className="mt-3 relative w-1/2">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-xs font-bold">R$</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={(policyConfig.payout_fee_cents / 100).toFixed(2)}
+                            onChange={(e) =>
+                              setPolicyConfig({
+                                ...policyConfig,
+                                payout_fee_cents: Math.round(parseFloat(e.target.value || "0") * 100),
+                              })
+                            }
+                            className="w-full pl-9 pr-3 py-2 border border-zinc-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 transition-all"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Notificações Independentes */}
+                    <div className="bg-white p-5 rounded-2xl border border-zinc-200 shadow-xs space-y-3">
+                      <label className="font-bold text-xs text-zinc-800 block">
+                        Notificações de Saque Concluído
+                      </label>
+                      
+                      <label className="flex items-center justify-between p-3 rounded-xl border border-zinc-200 hover:bg-zinc-50 cursor-pointer transition-all">
+                        <div className="flex items-center gap-3">
+                          <Smartphone className="w-5 h-5 text-zinc-600" />
+                          <div>
+                            <div className="font-bold text-xs text-zinc-900">Push Notification (App NevesGo)</div>
+                            <div className="text-[11px] text-zinc-500">Disparo via Firebase Cloud Messaging</div>
+                          </div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={policyConfig.notify_push_enabled}
+                          onChange={(e) =>
+                            setPolicyConfig({ ...policyConfig, notify_push_enabled: e.target.checked })
+                          }
+                          className="rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900 w-4 h-4 cursor-pointer"
+                        />
+                      </label>
+
+                      <label className="flex items-center justify-between p-3 rounded-xl border border-zinc-200 hover:bg-zinc-50 cursor-pointer transition-all">
+                        <div className="flex items-center gap-3">
+                          <MessageSquare className="w-5 h-5 text-emerald-600" />
+                          <div>
+                            <div className="font-bold text-xs text-zinc-900">WhatsApp Automático (Z-API)</div>
+                            <div className="text-[11px] text-zinc-500">Mensagem instantânea com comprovante PIX</div>
+                          </div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={policyConfig.notify_whatsapp_enabled}
+                          onChange={(e) =>
+                            setPolicyConfig({ ...policyConfig, notify_whatsapp_enabled: e.target.checked })
+                          }
+                          className="rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900 w-4 h-4 cursor-pointer"
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Standard Footer */}
+                  <div className="px-6 md:px-8 py-4 border-t border-zinc-200 bg-zinc-50/90 backdrop-blur-xs flex items-center justify-between gap-4 shrink-0">
                     <button
-                      onClick={() => handleCopyKey(detailsModalItem.baas_e2e_id!, "e2e")}
-                      className="text-blue-700 hover:text-blue-900"
+                      type="button"
+                      onClick={() => setPolicyModalOpen(false)}
+                      className="px-5 py-2.5 text-xs font-bold text-zinc-700 bg-white border border-zinc-200 hover:bg-zinc-100 rounded-xl transition-all cursor-pointer shadow-xs"
                     >
-                      <Copy className="w-3.5 h-3.5" />
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={savingPolicy}
+                      className="px-6 py-2.5 text-xs font-bold text-white bg-zinc-900 hover:bg-zinc-800 rounded-xl transition-all shadow-sm disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                    >
+                      {savingPolicy && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                      <span>Salvar Diretrizes</span>
                     </button>
                   </div>
-                </div>
-              )}
-
-              {detailsModalItem.baas_tx_id && (
-                <div className="bg-zinc-50 border border-zinc-200 p-2.5 rounded-lg space-y-0.5">
-                  <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold block">
-                    Efí Transaction ID (TXID)
-                  </span>
-                  <span className="font-mono text-zinc-700 block select-all">
-                    {detailsModalItem.baas_tx_id}
-                  </span>
-                </div>
-              )}
-
-              {detailsModalItem.rejection_reason && (
-                <div className="bg-rose-50 border border-rose-200 p-3 rounded-lg space-y-1">
-                  <span className="text-[11px] font-semibold text-rose-900 block">
-                    Motivo da Rejeição Registrado
-                  </span>
-                  <p className="text-rose-800">
-                    {detailsModalItem.rejection_reason}
-                  </p>
-                </div>
-              )}
-
-              <div className="text-[11px] text-zinc-400 pt-2">
-                Solicitado em: {new Date(detailsModalItem.created_at).toLocaleString("pt-BR")}
-                {detailsModalItem.paid_at && (
-                  <span> • Liquidado em: {new Date(detailsModalItem.paid_at).toLocaleString("pt-BR")}</span>
-                )}
-              </div>
+                </form>
+              </motion.div>
             </div>
-
-            <div className="pt-2 border-t border-zinc-100 text-right">
-              <button
-                type="button"
-                onClick={() => setDetailsModalItem(null)}
-                className="px-4 py-2 text-xs font-medium text-zinc-700 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition"
-              >
-                Fechar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Regras e Alçada de Saque (PolicyConfigModal) */}
-      {policyModalOpen && policyConfig && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-fadeIn">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 border border-zinc-200 space-y-5">
-            <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-              <div className="flex items-center gap-2">
-                <Sliders className="w-5 h-5 text-zinc-900" />
-                <h3 className="text-base font-bold text-zinc-900">
-                  Configuração de Alçada & BaaS
-                </h3>
-              </div>
-              <button
-                onClick={() => setPolicyModalOpen(false)}
-                className="text-zinc-400 hover:text-zinc-600 p-1"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleSavePolicy} className="space-y-4 text-xs">
-              {/* Modo de Alçada */}
-              <div className="space-y-1.5">
-                <label className="font-semibold text-zinc-800 block">
-                  Modo de Aprovação de Saques
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setPolicyConfig({ ...policyConfig, approval_mode: "HYBRID_THRESHOLD" })
-                    }
-                    className={cn(
-                      "p-3 rounded-lg border text-left transition",
-                      policyConfig.approval_mode === "HYBRID_THRESHOLD"
-                        ? "border-zinc-900 bg-zinc-900 text-white"
-                        : "border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100"
-                    )}
-                  >
-                    <div className="font-semibold text-xs">Híbrido (Limite)</div>
-                    <div className={cn("text-[11px] mt-0.5", policyConfig.approval_mode === "HYBRID_THRESHOLD" ? "text-zinc-300" : "text-zinc-400")}>
-                      Automático até o limite, manual acima
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setPolicyConfig({ ...policyConfig, approval_mode: "MANUAL_ALL" })
-                    }
-                    className={cn(
-                      "p-3 rounded-lg border text-left transition",
-                      policyConfig.approval_mode === "MANUAL_ALL"
-                        ? "border-zinc-900 bg-zinc-900 text-white"
-                        : "border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100"
-                    )}
-                  >
-                    <div className="font-semibold text-xs">100% Manual</div>
-                    <div className={cn("text-[11px] mt-0.5", policyConfig.approval_mode === "MANUAL_ALL" ? "text-zinc-300" : "text-zinc-400")}>
-                      Todos os saques passam por aprovação
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              {/* Limites Financeiros */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-semibold text-zinc-700 block">
-                    Limite por Saque Automático (R$)
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 text-xs">R$</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      disabled={policyConfig.approval_mode === "MANUAL_ALL"}
-                      value={(policyConfig.auto_approval_threshold_cents / 100).toFixed(2)}
-                      onChange={(e) =>
-                        setPolicyConfig({
-                          ...policyConfig,
-                          auto_approval_threshold_cents: Math.round(parseFloat(e.target.value || "0") * 100),
-                        })
-                      }
-                      className="w-full pl-8 pr-2.5 py-1.5 border border-zinc-300 rounded-lg text-xs focus:ring-2 focus:ring-zinc-900 disabled:bg-zinc-100 disabled:text-zinc-400"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-semibold text-zinc-700 block">
-                    Limite Diário por Entregador (R$)
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 text-xs">R$</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={(policyConfig.daily_limit_per_driver_cents / 100).toFixed(2)}
-                      onChange={(e) =>
-                        setPolicyConfig({
-                          ...policyConfig,
-                          daily_limit_per_driver_cents: Math.round(parseFloat(e.target.value || "0") * 100),
-                        })
-                      }
-                      className="w-full pl-8 pr-2.5 py-1.5 border border-zinc-300 rounded-lg text-xs focus:ring-2 focus:ring-zinc-900"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Modalidade da Taxa de Saque */}
-              <div className="space-y-1.5 pt-2 border-t border-zinc-100">
-                <label className="font-semibold text-zinc-800 block">
-                  Cobrança da Taxa de Saque
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setPolicyConfig({ ...policyConfig, fee_mode: "ABSORBED_BY_PLATFORM" })
-                    }
-                    className={cn(
-                      "p-2.5 rounded-lg border text-left transition",
-                      policyConfig.fee_mode === "ABSORBED_BY_PLATFORM"
-                        ? "border-emerald-600 bg-emerald-50 text-emerald-900"
-                        : "border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100"
-                    )}
-                  >
-                    <div className="font-semibold text-xs">Plataforma Absorve</div>
-                    <div className="text-[10px] text-zinc-500 mt-0.5">
-                      Saque 100% gratuito ao entregador
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setPolicyConfig({ ...policyConfig, fee_mode: "CHARGED_TO_DRIVER" })
-                    }
-                    className={cn(
-                      "p-2.5 rounded-lg border text-left transition",
-                      policyConfig.fee_mode === "CHARGED_TO_DRIVER"
-                        ? "border-zinc-900 bg-zinc-900 text-white"
-                        : "border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100"
-                    )}
-                  >
-                    <div className="font-semibold text-xs">Cobrar do Entregador</div>
-                    <div className={cn("text-[10px] mt-0.5", policyConfig.fee_mode === "CHARGED_TO_DRIVER" ? "text-zinc-300" : "text-zinc-500")}>
-                      Desconta taxa fixa do valor líquido
-                    </div>
-                  </button>
-                </div>
-
-                {policyConfig.fee_mode === "CHARGED_TO_DRIVER" && (
-                  <div className="mt-2 relative w-1/2">
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 text-xs">R$</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={(policyConfig.payout_fee_cents / 100).toFixed(2)}
-                      onChange={(e) =>
-                        setPolicyConfig({
-                          ...policyConfig,
-                          payout_fee_cents: Math.round(parseFloat(e.target.value || "0") * 100),
-                        })
-                      }
-                      className="w-full pl-8 pr-2.5 py-1.5 border border-zinc-300 rounded-lg text-xs focus:ring-2 focus:ring-zinc-900"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Notificações Independentes (Push e WhatsApp) */}
-              <div className="space-y-2 pt-2 border-t border-zinc-100">
-                <label className="font-semibold text-zinc-800 block">
-                  Notificações de Saque Concluído
-                </label>
-                
-                {/* Push Toggle */}
-                <label className="flex items-center justify-between p-2.5 rounded-lg border border-zinc-200 hover:bg-zinc-50 cursor-pointer transition">
-                  <div className="flex items-center gap-2.5">
-                    <Smartphone className="w-4 h-4 text-zinc-500" />
-                    <div>
-                      <div className="font-medium text-zinc-900">Push Notification (NevesGo App)</div>
-                      <div className="text-[10px] text-zinc-400">Disparo via Firebase Cloud Messaging</div>
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={policyConfig.notify_push_enabled}
-                    onChange={(e) =>
-                      setPolicyConfig({ ...policyConfig, notify_push_enabled: e.target.checked })
-                    }
-                    className="rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900 w-4 h-4"
-                  />
-                </label>
-
-                {/* WhatsApp Toggle */}
-                <label className="flex items-center justify-between p-2.5 rounded-lg border border-zinc-200 hover:bg-zinc-50 cursor-pointer transition">
-                  <div className="flex items-center gap-2.5">
-                    <MessageSquare className="w-4 h-4 text-emerald-600" />
-                    <div>
-                      <div className="font-medium text-zinc-900">WhatsApp Automático (Z-API)</div>
-                      <div className="text-[10px] text-zinc-400">Mensagem instantânea com comprovante PIX</div>
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={policyConfig.notify_whatsapp_enabled}
-                    onChange={(e) =>
-                      setPolicyConfig({ ...policyConfig, notify_whatsapp_enabled: e.target.checked })
-                    }
-                    className="rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900 w-4 h-4"
-                  />
-                </label>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-100">
-                <button
-                  type="button"
-                  onClick={() => setPolicyModalOpen(false)}
-                  className="px-3.5 py-2 text-xs font-medium text-zinc-600 hover:bg-zinc-100 rounded-lg transition"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingPolicy}
-                  className="px-4 py-2 text-xs font-medium text-white bg-zinc-900 hover:bg-zinc-800 rounded-lg transition shadow-sm disabled:opacity-50 flex items-center gap-1.5"
-                >
-                  {savingPolicy && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-                  <span>Salvar Diretrizes</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+          )}
+        </AnimatePresence>,
+        document.body,
       )}
     </div>
   );

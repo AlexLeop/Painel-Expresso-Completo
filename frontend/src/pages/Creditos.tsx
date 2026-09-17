@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   Wallet,
   Plus,
@@ -13,6 +14,7 @@ import {
   Receipt,
   CheckCircle2,
   ExternalLink,
+  X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { authFetch, getSession } from "../lib/api";
@@ -67,6 +69,17 @@ export function Creditos() {
   const [copied, setCopied] = useState(false);
   const [simulatingPayment, setSimulatingPayment] = useState(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isRechargeModalOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [isRechargeModalOpen]);
 
   const fetchBalanceAndHistory = async () => {
     try {
@@ -456,115 +469,145 @@ export function Creditos() {
       </div>
 
       {/* Modal de Pagamento PIX */}
-      <AnimatePresence>
-        {isRechargeModalOpen && rechargeData && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/40 backdrop-blur-xs">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white border border-zinc-200 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5"
-            >
-              <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="h-8 w-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-700">
-                    <QrCode className="h-4 w-4" />
-                  </div>
-                  <h3 className="font-bold text-zinc-900 text-base">
-                    Pagamento via PIX
-                  </h3>
-                </div>
-                <button
+      {typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {isRechargeModalOpen && rechargeData && (
+              <div className="fixed inset-0 z-[9999] overflow-hidden pointer-events-none">
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
                   onClick={() => setIsRechargeModalOpen(false)}
-                  className="text-zinc-400 hover:text-zinc-600 text-sm font-bold cursor-pointer p-1"
+                  className="fixed inset-0 bg-zinc-950/50 backdrop-blur-xs pointer-events-auto transition-all"
+                />
+
+                <motion.div
+                  initial={{ x: "100%" }}
+                  animate={{ x: 0 }}
+                  exit={{ x: "100%" }}
+                  transition={{ type: "spring", damping: 28, stiffness: 260 }}
+                  className="fixed top-0 right-0 h-full w-full max-w-lg md:max-w-xl bg-white shadow-2xl z-10 flex flex-col pointer-events-auto border-l border-zinc-200"
                 >
-                  ✕
-                </button>
-              </div>
-
-              {/* Detalhes do Valor */}
-              <div className="p-4 bg-zinc-50 border border-zinc-100 rounded-xl text-center space-y-1">
-                <span className="text-xs text-zinc-500 font-medium">Valor da Recarga</span>
-                <div className="text-2xl font-black text-zinc-900">
-                  {formatCurrency(rechargeData.amount_reais)}
-                </div>
-                <span className="text-[11px] text-zinc-400">
-                  Beneficiário: Expresso Neves Logística LTDA
-                </span>
-              </div>
-
-              {/* QR Code Container */}
-              <div className="flex flex-col items-center justify-center p-4 border border-zinc-200 rounded-xl bg-white">
-                {rechargeData.pix_qr_code_base64 ? (
-                  <img
-                    src={rechargeData.pix_qr_code_base64}
-                    alt="QR Code PIX"
-                    className="w-48 h-48 object-contain"
-                  />
-                ) : (
-                  <div className="w-48 h-48 bg-zinc-50 border border-zinc-100 rounded-lg flex flex-col items-center justify-center text-center p-2">
-                    <QrCode className="h-20 w-20 text-zinc-700 mb-2" />
-                    <span className="text-[10px] text-zinc-500">QR Code gerado para leitura</span>
+                  {/* Header */}
+                  <div className="px-6 md:px-8 py-5 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/80 backdrop-blur-xs shrink-0">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl shadow-sm shadow-emerald-500/20 text-white">
+                        <QrCode className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 rounded-full">
+                            Créditos & Recarga
+                          </span>
+                        </div>
+                        <h2 className="text-lg font-bold text-zinc-900 mt-0.5">
+                          Pagamento via PIX
+                        </h2>
+                        <p className="text-xs text-zinc-500">Recarga instantânea para conta pré-paga</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsRechargeModalOpen(false)}
+                      className="p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 rounded-xl transition-colors cursor-pointer"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
                   </div>
-                )}
-                <div className="flex items-center gap-1.5 mt-3 text-xs text-zinc-500">
-                  <Clock className="h-3.5 w-3.5 text-amber-500" />
-                  <span>Expira em 15 minutos</span>
-                </div>
-              </div>
 
-              {/* PIX Copia e Cola */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-zinc-700">
-                  PIX Copia e Cola:
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    readOnly
-                    value={rechargeData.pix_copy_paste}
-                    className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-2 text-xs text-zinc-800 font-mono pr-20 select-all"
-                  />
-                  <button
-                    onClick={handleCopyPix}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-zinc-900 text-white text-xs font-semibold rounded-lg hover:bg-zinc-800 transition-colors flex items-center gap-1 cursor-pointer"
-                  >
-                    {copied ? (
-                      <>
-                        <Check className="h-3.5 w-3.5 text-emerald-400" />
-                        <span>Copiado!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="h-3.5 w-3.5" />
-                        <span>Copiar</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
+                  {/* Body */}
+                  <div className="flex-1 overflow-y-auto px-6 md:px-8 py-6 space-y-6">
+                    {/* Detalhes do Valor */}
+                    <div className="p-5 bg-gradient-to-br from-zinc-50 to-zinc-100/70 border border-zinc-200/80 rounded-2xl text-center space-y-1.5 shadow-xs">
+                      <span className="text-xs text-zinc-500 font-semibold uppercase tracking-wider">Valor da Recarga</span>
+                      <div className="text-3xl font-black text-zinc-900 tracking-tight">
+                        {formatCurrency(rechargeData.amount_reais)}
+                      </div>
+                      <span className="text-xs text-zinc-500 block">
+                        Beneficiário: <strong className="text-zinc-700">Expresso Neves Logística LTDA</strong>
+                      </span>
+                    </div>
 
-              {/* Ações de simulação/verificação */}
-              <div className="pt-2 border-t border-zinc-100 space-y-2">
-                <button
-                  onClick={handleConfirmSimulation}
-                  disabled={simulatingPayment}
-                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  {simulatingPayment ? "Processando..." : "Confirmar Pagamento (Simulação Instantânea)"}
-                </button>
-                <button
-                  onClick={() => setIsRechargeModalOpen(false)}
-                  className="w-full py-2 text-xs font-medium text-zinc-500 hover:text-zinc-700 cursor-pointer"
-                >
-                  Fechar janela
-                </button>
+                    {/* QR Code Container */}
+                    <div className="flex flex-col items-center justify-center p-6 border border-zinc-200 rounded-2xl bg-white shadow-xs">
+                      {rechargeData.pix_qr_code_base64 ? (
+                        <img
+                          src={rechargeData.pix_qr_code_base64}
+                          alt="QR Code PIX"
+                          className="w-52 h-52 object-contain"
+                        />
+                      ) : (
+                        <div className="w-52 h-52 bg-zinc-50 border border-zinc-100 rounded-xl flex flex-col items-center justify-center text-center p-4">
+                          <QrCode className="h-20 w-20 text-zinc-400 mb-2" />
+                          <span className="text-xs text-zinc-500">QR Code gerado para leitura</span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 mt-4 px-3 py-1.5 bg-amber-50 border border-amber-200/60 rounded-full text-xs font-semibold text-amber-800">
+                        <Clock className="h-3.5 w-3.5 text-amber-600" />
+                        <span>Expira em 15 minutos</span>
+                      </div>
+                    </div>
+
+                    {/* PIX Copia e Cola */}
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-zinc-600">
+                        PIX Copia e Cola:
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          readOnly
+                          value={rechargeData.pix_copy_paste}
+                          className="w-full bg-zinc-50/70 border border-zinc-200 rounded-xl px-3.5 py-3 text-xs text-zinc-800 font-mono pr-28 select-all outline-none focus:border-zinc-900"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleCopyPix}
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-zinc-900 text-white text-xs font-bold rounded-lg hover:bg-zinc-800 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+                        >
+                          {copied ? (
+                            <>
+                              <Check className="h-3.5 w-3.5 text-emerald-400" />
+                              <span>Copiado!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="h-3.5 w-3.5" />
+                              <span>Copiar</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Standard Footer */}
+                  <div className="px-6 md:px-8 py-4 border-t border-zinc-200 bg-zinc-50/90 backdrop-blur-xs flex items-center justify-end gap-3 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setIsRechargeModalOpen(false)}
+                      className="px-5 py-2.5 text-xs font-bold text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/60 rounded-xl transition-all cursor-pointer"
+                    >
+                      Fechar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmSimulation}
+                      disabled={simulatingPayment}
+                      className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm disabled:opacity-50"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      {simulatingPayment ? "Processando..." : "Confirmar Pagamento (Simulação)"}
+                    </button>
+                  </div>
+                </motion.div>
               </div>
-            </motion.div>
-          </div>
+            )}
+          </AnimatePresence>,
+          document.body
         )}
-      </AnimatePresence>
     </div>
   );
 }

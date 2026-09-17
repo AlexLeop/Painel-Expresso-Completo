@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { createPortal } from "react-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Users,
   Search,
@@ -17,6 +19,7 @@ import {
   Check,
   Building2,
   ArrowUpDown,
+  UserPlus,
 } from "lucide-react";
 import { authFetch } from "../lib/api";
 import { formatCurrency, cn } from "../lib/utils";
@@ -69,6 +72,17 @@ export function Clientes() {
   useEffect(() => {
     fetchCustomers();
   }, [fetchCustomers]);
+
+  useEffect(() => {
+    if (isNewCustomerModalOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [isNewCustomerModalOpen]);
 
   const handleSaveCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -439,144 +453,179 @@ export function Clientes() {
       )}
 
       {/* Modal Cadastrar Cliente */}
-      {isNewCustomerModalOpen && (
-        <div className="fixed inset-0 bg-zinc-900/40 backdrop-blur-sm z-[1000] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-zinc-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 block">
-                  Novo Cadastro
-                </span>
-                <h3 className="text-base font-bold text-zinc-900">
-                  Cadastrar Cliente / Destinatário
-                </h3>
-              </div>
-              <button
+      {createPortal(
+        <AnimatePresence>
+          {isNewCustomerModalOpen && (
+            <div className="fixed inset-0 z-[9999] overflow-hidden pointer-events-none">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-zinc-950/50 backdrop-blur-xs pointer-events-auto transition-all"
                 onClick={() => setIsNewCustomerModalOpen(false)}
-                className="p-1.5 text-zinc-400 hover:text-zinc-600 rounded-lg hover:bg-zinc-100"
+              />
+
+              <motion.div
+                initial={{ x: "100%" }}
+                animate={{ x: 0 }}
+                exit={{ x: "100%" }}
+                transition={{ type: "spring", damping: 30, stiffness: 300 }}
+                className="fixed top-0 right-0 h-full w-full max-w-xl md:max-w-2xl bg-white shadow-2xl border-l border-zinc-200 z-10 flex flex-col pointer-events-auto overflow-hidden"
               >
-                <X className="w-5 h-5" />
-              </button>
+                {/* Header */}
+                <div className="px-6 md:px-8 py-5 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/70 shrink-0">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 shrink-0">
+                      <UserPlus className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        Base de Clientes
+                      </span>
+                      <h2 className="text-xl font-black text-zinc-900 tracking-tight mt-0.5">
+                        Cadastrar Cliente / Destinatário
+                      </h2>
+                      <p className="text-xs text-zinc-500 font-medium">
+                        Adicione um cliente ou destinatário frequente para agilizar pedidos
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsNewCustomerModalOpen(false)}
+                    className="p-2 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 rounded-xl transition-all cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form
+                  id="new-customer-form"
+                  onSubmit={handleSaveCustomer}
+                  className="flex-1 flex flex-col overflow-hidden"
+                >
+                  <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-5 bg-zinc-50/30">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-zinc-700 mb-1">
+                          Nome Completo *
+                        </label>
+                        <input
+                          required
+                          type="text"
+                          placeholder="Ex: Maria Oliveira"
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          className="w-full px-3.5 py-2.5 text-xs font-semibold bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 transition-all"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-zinc-700 mb-1">
+                          Telefone / WhatsApp
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="(11) 98888-7777"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          className="w-full px-3.5 py-2.5 text-xs font-semibold bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-zinc-700 mb-1">
+                        Endereço *
+                      </label>
+                      <AddressAutocomplete
+                        required
+                        value={address}
+                        onChange={setAddress}
+                        placeholder="Rua, Avenida, Praça..."
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-zinc-700 mb-1">
+                          Número
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="123"
+                          value={number}
+                          onChange={(e) => setNumber(e.target.value)}
+                          className="w-full px-3.5 py-2.5 text-xs font-semibold bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 transition-all"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-zinc-700 mb-1">
+                          Complemento
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Apto 102"
+                          value={complement}
+                          onChange={(e) => setComplement(e.target.value)}
+                          className="w-full px-3.5 py-2.5 text-xs font-semibold bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 transition-all"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-zinc-700 mb-1">
+                          Bairro
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Centro"
+                          value={neighborhood}
+                          onChange={(e) => setNeighborhood(e.target.value)}
+                          className="w-full px-3.5 py-2.5 text-xs font-semibold bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-zinc-700 mb-1">
+                        Instruções de Entrega / Notas
+                      </label>
+                      <textarea
+                        placeholder="Ex: Tocar o interfone 102, portão preto..."
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        className="w-full p-3 text-xs font-semibold bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 min-h-[80px] resize-none transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Standard Footer */}
+                  <div className="px-6 md:px-8 py-4 border-t border-zinc-200 bg-zinc-50/90 backdrop-blur-xs flex items-center justify-between gap-4 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setIsNewCustomerModalOpen(false)}
+                      disabled={isSaving}
+                      className="px-5 py-2.5 border border-zinc-200 text-zinc-700 bg-white hover:bg-zinc-100 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSaving}
+                      className="px-6 py-2.5 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      {isSaving ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4" /> Salvar Cliente
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
             </div>
-
-            <form onSubmit={handleSaveCustomer} className="p-6 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-zinc-700 mb-1">
-                    Nome Completo *
-                  </label>
-                  <input
-                    required
-                    type="text"
-                    placeholder="Ex: Maria Oliveira"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-zinc-700 mb-1">
-                    Telefone / WhatsApp
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="(11) 98888-7777"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-zinc-700 mb-1">
-                  Endereço *
-                </label>
-                <AddressAutocomplete
-                  required
-                  value={address}
-                  onChange={setAddress}
-                  placeholder="Rua, Avenida, Praça..."
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-zinc-700 mb-1">
-                    Número
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="123"
-                    value={number}
-                    onChange={(e) => setNumber(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-zinc-700 mb-1">
-                    Complemento
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Apto 102"
-                    value={complement}
-                    onChange={(e) => setComplement(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-zinc-700 mb-1">
-                    Bairro
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Centro"
-                    value={neighborhood}
-                    onChange={(e) => setNeighborhood(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-zinc-700 mb-1">
-                  Instruções de Entrega / Notas
-                </label>
-                <textarea
-                  placeholder="Ex: Tocar o interfone 102, portão preto..."
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 min-h-[60px] resize-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100">
-                <button
-                  type="button"
-                  onClick={() => setIsNewCustomerModalOpen(false)}
-                  disabled={isSaving}
-                  className="px-4 py-2 border border-zinc-200 text-zinc-700 rounded-xl text-xs font-bold hover:bg-zinc-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="px-5 py-2 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
-                >
-                  {isSaving ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <Check className="w-4 h-4" /> Salvar Cliente
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+          )}
+        </AnimatePresence>,
+        document.body,
       )}
     </div>
   );

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   MapPin,
@@ -537,46 +538,70 @@ export function CreateRideModal({
     }
   };
 
-  return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-zinc-900/40 backdrop-blur-sm z-[1000] flex items-center justify-center p-4 xl:p-0"
-        onClick={onClose}
-      >
-        <motion.div
-          initial={{ scale: 0.95, y: 20 }}
-          animate={{ scale: 1, y: 0 }}
-          exit={{ scale: 0.95, y: 20 }}
-          onClick={(e) => e.stopPropagation()}
-          className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden border border-zinc-200/80 flex flex-col max-h-[90vh]"
-        >
-          {/* Header */}
-          <div className="px-6 py-5 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/50 shrink-0">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase bg-zinc-900 text-white">
-                  Despacho
-                </span>
-                <span className="text-xs font-semibold text-zinc-500">
-                  Nova Entrega Manual
-                </span>
-              </div>
-              <h2 className="text-xl font-bold text-zinc-900 tracking-tight">
-                Criar Nova Solicitação
-              </h2>
-            </div>
-            <button
-              onClick={onClose}
-              className="p-2 text-zinc-400 hover:text-zinc-600 rounded-xl hover:bg-zinc-100 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [isOpen]);
 
-          {/* Stepper Progress */}
+  return createPortal(
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-[9999] overflow-hidden pointer-events-none">
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-zinc-950/50 backdrop-blur-xs pointer-events-auto transition-all"
+            onClick={onClose}
+          />
+
+          {/* Lateral Slide-Over Drawer */}
+          <motion.div
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "spring", damping: 30, stiffness: 300 }}
+            className="fixed top-0 right-0 h-full w-full max-w-3xl lg:max-w-4xl bg-white shadow-2xl border-l border-zinc-200 z-10 flex flex-col pointer-events-auto overflow-hidden"
+          >
+            {/* Header */}
+            <div className="px-6 md:px-8 py-5 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/70 shrink-0">
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-zinc-800 to-zinc-950 flex items-center justify-center text-white shadow-md shrink-0">
+                  <MapPin className="w-6 h-6 text-emerald-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-zinc-900 text-white">
+                      Despacho Operacional
+                    </span>
+                    <span className="text-xs font-semibold text-zinc-500">
+                      Nova Entrega Manual
+                    </span>
+                  </div>
+                  <h2 className="text-xl font-black text-zinc-900 tracking-tight mt-0.5">
+                    Criar Nova Solicitação
+                  </h2>
+                  <p className="text-xs text-zinc-500 font-medium">
+                    Preencha os endereços de coleta, destinatários e forma de pagamento
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={onClose}
+                className="p-2 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 rounded-xl transition-all cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Stepper Progress */}
           <div className="grid grid-cols-2 border-b border-zinc-200 bg-zinc-50/30 text-xs font-bold uppercase tracking-wider shrink-0">
             <div
               className={cn(
@@ -1160,14 +1185,14 @@ export function CreateRideModal({
             </div>
           )}
 
-          {/* Footer Actions */}
-          <div className="p-4 border-t border-zinc-200 bg-zinc-50 flex justify-end gap-3 shrink-0">
+          {/* Standard Footer */}
+          <div className="px-6 md:px-8 py-4 border-t border-zinc-200 bg-zinc-50/90 backdrop-blur-xs flex items-center justify-between gap-4 shrink-0">
             {step === 1 ? (
               <>
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-5 py-2.5 border border-zinc-200 bg-white text-zinc-700 rounded-xl hover:bg-zinc-50 text-sm font-bold transition-all"
+                  className="px-5 py-2.5 border border-zinc-200 bg-white text-zinc-700 rounded-xl hover:bg-zinc-100 text-xs font-bold transition-all cursor-pointer shadow-xs"
                 >
                   Cancelar
                 </button>
@@ -1175,24 +1200,25 @@ export function CreateRideModal({
                   type="submit"
                   form="step-1-form"
                   disabled={isEstimating}
-                  className="px-6 py-2.5 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-white rounded-xl text-sm font-bold shadow-sm transition-all flex items-center gap-2"
+                  className="px-6 py-2.5 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-2 cursor-pointer"
                 >
                   {isEstimating ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <>
-                      Avançar <ChevronRight className="w-4 h-4" />
+                      <span>Avançar</span>
+                      <ChevronRight className="w-4 h-4" />
                     </>
                   )}
                 </button>
               </>
             ) : (
-              <div className="flex w-full sm:w-auto gap-3">
+              <>
                 <button
                   type="button"
                   onClick={() => setStep(1)}
                   disabled={isSubmitting}
-                  className="px-5 py-2.5 border border-zinc-200 bg-white text-zinc-700 rounded-xl hover:bg-zinc-50 text-sm font-bold transition-all"
+                  className="px-5 py-2.5 border border-zinc-200 bg-white text-zinc-700 rounded-xl hover:bg-zinc-100 text-xs font-bold transition-all cursor-pointer shadow-xs"
                 >
                   Voltar
                 </button>
@@ -1212,10 +1238,10 @@ export function CreateRideModal({
                       onClick={handleSubmit}
                       disabled={isSubmitting || isEstimating || isBlocked}
                       className={cn(
-                        "flex-1 sm:flex-none px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2",
+                        "px-6 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer",
                         isBlocked
                           ? "bg-zinc-200 text-zinc-400 cursor-not-allowed border border-zinc-300"
-                          : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-[0_0_15px_rgba(5,150,105,0.3)]",
+                          : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-600/20",
                       )}
                     >
                       {isSubmitting ? (
@@ -1232,11 +1258,13 @@ export function CreateRideModal({
                     </button>
                   );
                 })()}
-              </div>
+              </>
             )}
           </div>
         </motion.div>
-      </motion.div>
-    </AnimatePresence>
-  );
+      </div>
+    )}
+  </AnimatePresence>,
+  document.body,
+);
 }
