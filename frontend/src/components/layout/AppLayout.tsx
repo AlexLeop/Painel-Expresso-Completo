@@ -23,10 +23,13 @@ import {
   X,
   Activity,
   History,
+  Plus,
+  CreditCard,
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { cn } from "../../lib/utils";
+import { cn, formatCurrency } from "../../lib/utils";
 import { useAuth } from "../../contexts/AuthContext";
+import { authFetch } from "../../lib/api";
 
 // ─── 3-Tier Access Control Hierarchy ─────────────────────────
 // superadmin      → SuperAdmin Master (Plataforma). Acesso total, incluindo /operadores, /gerencial, /snapshots, /sync, /usuarios
@@ -70,6 +73,12 @@ const navigationGroups = [
         roles: ["superadmin", "operador_admin", "operador_staff", "lojista"],
       },
       {
+        name: "Meus Clientes",
+        href: "/clientes",
+        icon: Users,
+        roles: ["superadmin", "operador_admin", "operador_staff", "lojista"],
+      },
+      {
         name: "Escala",
         href: "/escala",
         icon: CalendarDays,
@@ -104,10 +113,22 @@ const navigationGroups = [
     title: "Financeiro & Dados",
     items: [
       {
+        name: "Créditos & Cobrança",
+        href: "/creditos",
+        icon: Wallet,
+        roles: ["superadmin", "operador_admin", "lojista"],
+      },
+      {
+        name: "Extrato Financeiro",
+        href: "/extrato",
+        icon: FileSpreadsheet,
+        roles: ["superadmin", "operador_admin", "lojista"],
+      },
+      {
         name: "Lançamentos",
         href: "/lancamentos",
         icon: FileSpreadsheet,
-        roles: ["superadmin", "operador_admin", "lojista"],
+        roles: ["superadmin", "operador_admin"],
       },
       {
         name: "Financeiro",
@@ -224,6 +245,27 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   const isSupervisor = SUPERVISOR_ROLES.includes(role);
   const isMobileOpen = sidebarOpen;
+
+  const [storeBalance, setStoreBalance] = useState<{
+    balance_reais: number;
+    status: "DISPONIVEL" | "ZERADO" | "DEVEDOR";
+  } | null>(null);
+
+  useEffect(() => {
+    if (role === "lojista" || Boolean(user?.client_id)) {
+      authFetch("/api/v1/client/balance")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data) {
+            setStoreBalance({
+              balance_reais: data.balance_reais ?? (data.balance_cents / 100),
+              status: data.status,
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [role, user?.client_id, location.pathname]);
 
   // Shortcut ⌘K / Ctrl+K
   useEffect(() => {
@@ -583,7 +625,49 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </span>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              {/* Saldo em Conta para Lojistas */}
+              {(role === "lojista" || Boolean(user?.client_id)) && (
+                <div className="flex items-center gap-2 mr-1">
+                  <Link
+                    to="/creditos"
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-[#F5F5F7] dark:bg-zinc-800/80 hover:bg-zinc-200/60 dark:hover:bg-zinc-800 transition-colors shadow-xs group"
+                    title="Clique para gerenciar créditos e recargas"
+                  >
+                    <Wallet className="h-4 w-4 text-zinc-500 group-hover:text-zinc-900 dark:group-hover:text-zinc-100 transition-colors" />
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span className="text-zinc-500 font-medium hidden sm:inline">Saldo:</span>
+                      <span className="font-extrabold text-zinc-900 dark:text-zinc-100">
+                        {storeBalance ? formatCurrency(storeBalance.balance_reais) : "R$ 0,00"}
+                      </span>
+                    </div>
+                    {storeBalance?.status === "DISPONIVEL" && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                        DISPONÍVEL
+                      </span>
+                    )}
+                    {storeBalance?.status === "ZERADO" && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                        ZERADO
+                      </span>
+                    )}
+                    {storeBalance?.status === "DEVEDOR" && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                        DEVEDOR
+                      </span>
+                    )}
+                  </Link>
+
+                  <Link
+                    to="/creditos"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors shadow-xs"
+                    title="Recarregar saldo via PIX"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span className="hidden md:inline">Recarregar</span>
+                  </Link>
+                </div>
+              )}
               {user?.companies && user.companies.length > 1 && (
                 <div className="relative mr-2">
                   <Store

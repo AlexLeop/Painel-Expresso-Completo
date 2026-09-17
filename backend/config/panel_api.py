@@ -53,15 +53,25 @@ def get_rides(
     data_hora_solicitacao_max: Optional[str] = None
 ):
     from logistics.models import Order
+    from django.core.exceptions import ValidationError
+
+    auth = getattr(request, "auth", None) or {}
+    is_admin = auth.get("is_platform_admin", False)
+    auth_op_id = auth.get("operator_id")
+    client_id = auth.get("client_id")
     
-    qs = Order.objects.select_related('driver').all().order_by("-requestedAt")
-    
-    if empresa_id and empresa_id != "global":
-        from django.core.exceptions import ValidationError
+    qs = Order.objects.select_related('driver', 'store').all().order_by("-requestedAt")
+    if client_id:
+        qs = qs.filter(store__client_id=client_id)
+    elif not is_admin and auth_op_id:
+        qs = qs.filter(operator_id=auth_op_id)
+    elif empresa_id and empresa_id != "global":
         try:
             qs = qs.filter(operator_id=empresa_id)
         except ValidationError:
             qs = qs.none()
+    elif not is_admin:
+        qs = qs.none()
         
     if status_solicitacao:
         # Mapeamento basico do Taxi Machine status para o OrderStatus local
@@ -75,10 +85,10 @@ def get_rides(
         if mapped_status:
             qs = qs.filter(status=mapped_status)
             
-    if data_hora_solicitacao_min:
-        qs = qs.filter(requestedAt__gte=data_hora_solicitacao_min)
-    if data_hora_solicitacao_max:
-        qs = qs.filter(requestedAt__lte=data_hora_solicitacao_max)
+        if data_hora_solicitacao_min:
+            qs = qs.filter(requestedAt__gte=data_hora_solicitacao_min)
+        if data_hora_solicitacao_max:
+            qs = qs.filter(requestedAt__lte=data_hora_solicitacao_max)
 
     # Paginação manual
     offset = (pagina - 1) * limite
@@ -104,12 +114,22 @@ def get_rides(
 def get_schedules(request, company_id: Optional[str] = None):
     from django.core.exceptions import ValidationError
     from logistics.models import ScheduleEntry
+
+    auth = getattr(request, "auth", None) or {}
+    is_admin = auth.get("is_platform_admin", False)
+    auth_op_id = auth.get("operator_id")
+
     qs = ScheduleEntry.objects.all()
-    if company_id:
+    if not is_admin and auth_op_id:
+        qs = qs.filter(operator_id=auth_op_id)
+    elif company_id and company_id != "global":
         try:
             qs = qs.filter(operator_id=company_id)
         except ValidationError:
             return []
+    elif not is_admin:
+        return []
+
     # Limita pra não explodir
     entries = qs.order_by("-date")[:100]
     return [
@@ -149,12 +169,21 @@ def get_machine_companies(request):
 @panel_api.get("/machine/drivers")
 def get_machine_drivers(request, company_id: Optional[str] = None):
     from django.core.exceptions import ValidationError
+
+    auth = getattr(request, "auth", None) or {}
+    is_admin = auth.get("is_platform_admin", False)
+    auth_op_id = auth.get("operator_id")
+
     qs = Driver.objects.filter(active=True)
-    if company_id:
+    if not is_admin and auth_op_id:
+        qs = qs.filter(operator_id=auth_op_id)
+    elif company_id and company_id != "global":
         try:
             qs = qs.filter(operator_id=company_id)
         except ValidationError:
             return {"drivers": []}
+    elif not is_admin:
+        return {"drivers": []}
     return {"drivers": [
         {
             "id": str(d.id),

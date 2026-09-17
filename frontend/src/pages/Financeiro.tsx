@@ -19,6 +19,9 @@ import { authFetch } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import CreditQueuePanel from "../components/CreditQueuePanel";
 import AcertoInLoco from "../components/AcertoInLoco";
+import { StoreBalancesTab } from "../components/financeiro/StoreBalancesTab";
+import { DreTab } from "../components/financeiro/DreTab";
+import { CashReconciliationTab } from "../components/financeiro/CashReconciliationTab";
 import {
   TrendingUp,
   Clock,
@@ -32,6 +35,9 @@ import {
   Play,
   RefreshCw,
   Calculator,
+  Store,
+  PieChart,
+  Banknote,
 } from "lucide-react";
 
 interface DriverBalance {
@@ -57,8 +63,8 @@ export function Financeiro() {
     user?.role === "administrador";
 
   const [activeTab, setActiveTab] = useState<
-    "overview" | "queue" | "log" | "balances" | "acerto"
-  >("acerto");
+    "store_balances" | "dre" | "cash_reconciliation" | "overview" | "queue" | "log" | "balances" | "acerto"
+  >("store_balances");
   const [creditLog, setCreditLog] = useState<CreditLogEntry[]>([]);
   const [driverBalances, setDriverBalances] = useState<DriverBalance[]>([]);
   const [loadingBalances, setLoadingBalances] = useState(false);
@@ -260,11 +266,14 @@ export function Financeiro() {
   };
 
   const tabs = [
+    { key: "store_balances", label: "Saldo das Lojas", icon: Store },
+    { key: "dre", label: "DRE Operacional", icon: PieChart },
+    { key: "cash_reconciliation", label: "Conferência de Caixa", icon: Banknote },
     { key: "acerto", label: "Acerto In-Loco", icon: Calculator },
-    { key: "overview", label: "Resumo", icon: Info },
+    { key: "overview", label: "Regras", icon: Info },
     { key: "queue", label: "Fila de Créditos", icon: ListChecks },
     { key: "log", label: "Log de Créditos", icon: History },
-    ...(isAdmin ? [{ key: "balances", label: "Saldos", icon: Wallet }] : []),
+    ...(isAdmin ? [{ key: "balances", label: "Saldos Motoboys", icon: Wallet }] : []),
   ];
 
   return (
@@ -631,6 +640,9 @@ export function Financeiro() {
           </div>
         )}
 
+        {activeTab === "store_balances" && <StoreBalancesTab />}
+        {activeTab === "dre" && <DreTab />}
+        {activeTab === "cash_reconciliation" && <CashReconciliationTab />}
         {activeTab === "acerto" && <AcertoInLoco />}
       </div>
     </div>

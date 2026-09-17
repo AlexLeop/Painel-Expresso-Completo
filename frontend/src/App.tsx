@@ -53,6 +53,15 @@ const Gerencial = React.lazy(() =>
 const Historico = React.lazy(() =>
   import("./pages/Historico").then((m) => ({ default: m.Historico })),
 );
+const Creditos = React.lazy(() =>
+  import("./pages/Creditos").then((m) => ({ default: m.Creditos })),
+);
+const Extrato = React.lazy(() =>
+  import("./pages/Extrato").then((m) => ({ default: m.Extrato })),
+);
+const Clientes = React.lazy(() =>
+  import("./pages/Clientes").then((m) => ({ default: m.Clientes })),
+);
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { session, isLoading } = useAuth();
@@ -145,6 +154,30 @@ export default function App() {
             element={
               <PrivateRoute>
                 <Financeiro />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/creditos"
+            element={
+              <PrivateRoute>
+                <Creditos />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/extrato"
+            element={
+              <PrivateRoute>
+                <Extrato />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/clientes"
+            element={
+              <PrivateRoute>
+                <Clientes />
               </PrivateRoute>
             }
           />

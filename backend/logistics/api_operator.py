@@ -684,3 +684,28 @@ def get_proof_url(request, proof_id: UUID):
             return 403, {"error": f"Falha ao gerar URL assinada: {resp.text}"}
     except Exception as e:
         return 403, {"error": f"Erro interno ao gerar URL: {str(e)}"}
+
+
+# ==============================================================================
+# MÓDULOS DE SALDO DAS LOJAS, DRE, CONFERÊNCIA DE DINHEIRO E DESPACHO PELA LOJA
+# ==============================================================================
+
+from config.db_api import (
+    get_operator_store_balances,
+    adjust_store_balance,
+    get_operator_financial_dashboard,
+    get_cash_reconciliation,
+    settle_cash_balance,
+    dispatch_store_ride,
+    AdjustStoreBalancePayload,
+    SettleCashPayload,
+    DispatchStoreRidePayload,
+)
+
+router.get("/store-balances")(get_operator_store_balances)
+router.post("/adjust-store-balance")(adjust_store_balance)
+router.get("/financial-dashboard")(get_operator_financial_dashboard)
+router.get("/cash-reconciliation")(get_cash_reconciliation)
+router.post("/settle-cash")(settle_cash_balance)
+router.post("/dispatch-store-ride")(dispatch_store_ride)
+

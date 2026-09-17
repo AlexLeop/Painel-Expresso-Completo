@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   X,
   MapPin,
@@ -7,11 +7,20 @@ import {
   ChevronRight,
   Check,
   Loader2,
+  AlertCircle,
+  ExternalLink,
+  Store,
+  Wallet,
+  Banknote,
+  CreditCard,
+  QrCode,
+  Receipt,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn, formatCurrency } from "../lib/utils";
 import { AddressAutocomplete } from "./AddressAutocomplete";
 import { authFetch } from "../lib/api";
+import { useAuth } from "../contexts/AuthContext";
 
 interface CreateRideModalProps {
   isOpen: boolean;
@@ -82,6 +91,14 @@ export function CreateRideModal({
   currentCompany,
   initialData,
 }: CreateRideModalProps) {
+  const { session } = useAuth();
+  const isLojista = session?.user?.role === "lojista";
+  const [partnerStores, setPartnerStores] = useState<any[]>([]);
+  const [selectedStoreId, setSelectedStoreId] = useState<string>("");
+  const [selectedStore, setSelectedStore] = useState<any>(null);
+  const [trocoPara, setTrocoPara] = useState<string>("");
+  const [balanceError, setBalanceError] = useState<string | null>(null);
+
   const [step, setStep] = useState(1);
   const [pickupAddress, setPickupAddress] = useState(
     initialData?.coleta?.endereco || "",
@@ -117,7 +134,7 @@ export function CreateRideModal({
   const [categoriaCondutor, setCategoriaCondutor] = useState(
     initialData?.tipo || "Entrega padrão",
   );
-  const [formaPagamento, setFormaPagamento] = useState("Faturado");
+  const [formaPagamento, setFormaPagamento] = useState("JA_PAGO");
   const [observacaoGeral, setObservacaoGeral] = useState("");
 
   const [isEstimating, setIsEstimating] = useState(false);
@@ -128,10 +145,49 @@ export function CreateRideModal({
   } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  React.useEffect(() => {
+  // Carregar lojas parceiras para despacho centralizado
+  useEffect(() => {
+    if (!isOpen) return;
+    authFetch("/api/v1/db/companies")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        const list = Array.isArray(data) ? data : data?.response || [];
+        setPartnerStores(list);
+        if (list.length > 0) {
+          const matched =
+            list.find((s: any) => String(s.id) === String(currentCompany?.id)) ||
+            list[0];
+          setSelectedStoreId(String(matched.id));
+          setSelectedStore(matched);
+          if (!initialData?.coleta?.endereco && (matched.endereco || matched.nome)) {
+            setPickupAddress(matched.endereco || matched.nome);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [isOpen, currentCompany]);
+
+  const handleStoreChange = (id: string) => {
+    setSelectedStoreId(id);
+    const store = partnerStores.find((s) => String(s.id) === String(id));
+    if (store) {
+      setSelectedStore(store);
+      setPickupAddress(store.endereco || store.nome || "");
+      setBalanceError(null);
+    }
+  };
+
+  useEffect(() => {
     if (isOpen) {
       setStep(1);
-      setPickupAddress(initialData?.coleta?.endereco || "");
+      setPickupAddress(
+        initialData?.coleta?.endereco ||
+          selectedStore?.endereco ||
+          selectedStore?.nome ||
+          "",
+      );
+      setBalanceError(null);
+      setTrocoPara("");
       if (initialData?.entrega?.endereco) {
         setDeliveries([
           {
@@ -158,6 +214,7 @@ export function CreateRideModal({
         ]);
       }
       setCategoriaCondutor(initialData?.tipo || "Entrega padrão");
+      setFormaPagamento("JA_PAGO");
       setObservacaoGeral("");
       setEstimativa(null);
     }
@@ -319,12 +376,15 @@ export function CreateRideModal({
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
+    setBalanceError(null);
     try {
       const defaultLat =
-        currentCompany?.lat ?? currentCompany?.latitude ?? "-23.5505";
+        selectedStore?.lat ?? currentCompany?.lat ?? currentCompany?.latitude ?? "-23.5505";
       const defaultLng =
-        currentCompany?.lng ?? currentCompany?.longitude ?? "-46.6333";
+        selectedStore?.lng ?? currentCompany?.lng ?? currentCompany?.longitude ?? "-46.6333";
       const defaultEnd =
+        selectedStore?.endereco ??
+        selectedStore?.nome ??
         currentCompany?.endereco ??
         currentCompany?.address ??
         currentCompany?.nome ??
@@ -348,62 +408,61 @@ export function CreateRideModal({
         lng: pickupResult?.lon || defaultLng,
       };
 
-      const machineEmpId =
-        currentCompany?.machineEmpresaId ||
-        currentCompany?.machine_empresa_id ||
-        (!isNaN(Number(currentCompany?.id))
-          ? Number(currentCompany?.id)
-          : 112905);
+      const estimatedVal = estimativa?.valor || deliveries.length * 9.0;
+      const estimatedKm = estimativa?.distancia || deliveries.length * 5.0;
+      const estimatedCents = Math.round(estimatedVal * 100);
 
-      const payload = {
-        empresa_id: String(machineEmpId),
-        forma_pagamento: formaPagamento === "Faturado" ? "F" : "D",
-        endereco_partida: pickup.endereco || "",
-        bairro_partida: pickup.bairro || defaultBairro,
-        cidade_partida: pickup.cidade || defaultCidade,
-        estado_partida: getStateAbbr(pickup.estado || defaultUF),
-        lat_partida: String(pickup.lat || ""),
-        lng_partida: String(pickup.lng || ""),
-        complemento_partida: "",
-        nome_cliente_partida: currentCompany?.nome || "",
-        telefone_cliente_partida: "",
-        observacao_partida: observacaoGeral || "",
-        pontos: deliveries.map((d) => ({
-          endereco_parada: `${d.address || ""}${d.number ? ", " + d.number : ""}`,
-          bairro_parada: d.bairro || defaultBairro,
-          cidade_parada: d.cidade || defaultCidade,
-          estado_parada: getStateAbbr(d.estado || defaultUF),
-          lat_parada: String(d.lat || ""),
-          lng_parada: String(d.lng || ""),
-          complemento_parada: d.complement || "",
-          nome_cliente_parada: d.name || "",
-          telefone_cliente_parada: d.phone || "",
-          observacao_parada: d.notes || observacaoGeral || "",
+      // Despacho nativo via backend operator router (com validação pré-pago e PostGIS seguro)
+      const dispatchPayload = {
+        store_id: selectedStore?.id || currentCompany?.id || "default",
+        coleta_endereco: pickup.endereco || "",
+        coleta_lat: Number(pickup.lat) || undefined,
+        coleta_lng: Number(pickup.lng) || undefined,
+        destinos: deliveries.map((d) => ({
+          endereco: d.address || "",
+          numero: d.number || "",
+          complemento: d.complement || "",
+          cliente: d.name || "",
+          telefone: d.phone || "",
+          notas: d.notes || "",
+          lat: Number(d.lat) || undefined,
+          lng: Number(d.lng) || undefined,
         })),
-        valor_estimado: null,
-        distancia_estimada: null,
+        forma_pagamento: formaPagamento,
+        troco_para:
+          formaPagamento === "DINHEIRO" && trocoPara ? Number(trocoPara) : null,
+        valor_estimado_cents: estimatedCents,
+        distancia_metros: Math.round(estimatedKm * 1000),
+        observacao: observacaoGeral || "",
       };
 
-      const res = await authFetch("/api/v1/db/orders/create", {
+      const res = await authFetch("/api/v1/operator/dispatch-store-ride", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(dispatchPayload),
       });
 
       const data = await res.json().catch(() => ({}));
 
-      if (!res.ok || data.error || data.sucesso === false || data.success === false) {
-        throw new Error(
-          data.msg || data.error || "Erro ao agrupar corrida na Machine API",
-        );
+      if (!res.ok || data.success === false) {
+        if (data.insufficient_balance) {
+          setBalanceError(data.error);
+          return;
+        }
+        throw new Error(data.error || data.msg || "Erro ao despachar entrega pela loja");
       }
 
       const id =
-        data?.response?.id ||
+        data?.order_id ||
         data?.id ||
         Math.floor(1000 + Math.random() * 9000);
-      const val = estimativa?.valor || deliveries.length * 9.0;
-      const km = estimativa?.distancia || deliveries.length * 5.0;
+
+      const storeName =
+        selectedStore?.nome ||
+        selectedStore?.name ||
+        currentCompany?.name ||
+        currentCompany?.nome ||
+        "Loja Parceira";
 
       const newRide = {
         id,
@@ -413,7 +472,7 @@ export function CreateRideModal({
         tipo: categoriaCondutor,
         cliente: deliveries[0]?.name || "Cliente",
         telefoneCliente: deliveries[0]?.phone || "",
-        empresa: currentCompany?.name || currentCompany?.nome || "Empresa",
+        empresa: storeName,
         motoboy: {
           nome: "Aguardando...",
           foto: "?",
@@ -434,7 +493,7 @@ export function CreateRideModal({
           hora: "--:--",
           endereco: `${deliveries[0].address}, ${deliveries[0].number}`,
         },
-        valor: val,
+        valor: estimatedVal,
         horario: new Date().toLocaleTimeString("pt-BR", {
           hour: "2-digit",
           minute: "2-digit",
@@ -443,7 +502,7 @@ export function CreateRideModal({
         updated_at: new Date().toISOString(),
         lastLoc: pickup.endereco,
         lastStop: "Nenhuma",
-        distancia: `${km.toFixed(1)} km`,
+        distancia: `${estimatedKm.toFixed(1)} km`,
         speed: "0 km/h",
       };
 
@@ -465,8 +524,10 @@ export function CreateRideModal({
           },
         ]);
         setCategoriaCondutor("Entrega padrão");
-        setFormaPagamento("Faturado");
+        setFormaPagamento("JA_PAGO");
         setObservacaoGeral("");
+        setTrocoPara("");
+        setBalanceError(null);
         setEstimativa(null);
       }, 300);
     } catch (err: any) {
@@ -567,6 +628,47 @@ export function CreateRideModal({
                 onSubmit={handleNextStep}
                 className="space-y-6"
               >
+                {/* Seleção de Loja Parceira Solicitante (Módulo 03 - Despacho Centralizado) */}
+                {!isLojista && partnerStores.length > 0 && (
+                  <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-xl p-4 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-indigo-950 flex items-center gap-1.5 uppercase tracking-wider">
+                        <Store className="w-4 h-4 text-indigo-600" />
+                        Loja Parceira Solicitante *
+                      </label>
+                      {selectedStore && (
+                        <span
+                          className={cn(
+                            "text-[11px] font-bold px-2.5 py-0.5 rounded-full border",
+                            String(selectedStore.billing_mode || "").toUpperCase().includes("PRE")
+                              ? "bg-amber-100/90 text-amber-900 border-amber-300"
+                              : "bg-emerald-100/90 text-emerald-900 border-emerald-300",
+                          )}
+                        >
+                          {String(selectedStore.billing_mode || "").toUpperCase().includes("PRE")
+                            ? "Pré-Pago"
+                            : "Pós-Pago"}{" "}
+                          • Saldo: {formatCurrency((selectedStore.balance_cents || 0) / 100)}
+                        </span>
+                      )}
+                    </div>
+                    <select
+                      value={selectedStoreId}
+                      onChange={(e) => handleStoreChange(e.target.value)}
+                      className="w-full px-3.5 py-2 text-sm bg-white border border-indigo-200 rounded-lg font-semibold text-zinc-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 shadow-sm"
+                    >
+                      {partnerStores.map((s) => {
+                        const isPre = String(s.billing_mode || "").toUpperCase().includes("PRE");
+                        return (
+                          <option key={s.id} value={s.id}>
+                            {s.nome || s.name} {isPre ? `(Pré-Pago: ${formatCurrency((s.balance_cents || 0) / 100)})` : "(Pós-Pago / Faturado)"}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                )}
+
                 {/* Coleta */}
                 <div className="space-y-4 bg-zinc-50 p-4 rounded-xl border border-zinc-200/60">
                   <h3 className="text-sm font-bold text-zinc-800 flex items-center gap-2 uppercase tracking-wide">
@@ -809,10 +911,29 @@ export function CreateRideModal({
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-sm">
-                    <span className="text-zinc-500 font-medium">Empresa</span>
-                    <span className="font-bold text-zinc-900">
-                      {currentCompany?.nome || "Empresa teste"}
-                    </span>
+                    <span className="text-zinc-500 font-medium">Empresa Solicitante</span>
+                    <div className="text-right">
+                      <span className="font-bold text-zinc-900 block">
+                        {selectedStore?.nome || currentCompany?.nome || "Empresa"}
+                      </span>
+                      <span
+                        className={cn(
+                          "text-[10px] font-bold px-2 py-0.5 rounded-full inline-block mt-0.5",
+                          String(selectedStore?.billing_mode || "")
+                            .toUpperCase()
+                            .includes("PRE")
+                            ? "bg-amber-100 text-amber-900"
+                            : "bg-emerald-100 text-emerald-900",
+                        )}
+                      >
+                        {String(selectedStore?.billing_mode || "")
+                          .toUpperCase()
+                          .includes("PRE")
+                          ? "Pré-Pago"
+                          : "Pós-Pago"}{" "}
+                        • Saldo: {formatCurrency((selectedStore?.balance_cents || 0) / 100)}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -883,29 +1004,90 @@ export function CreateRideModal({
                 </div>
               </div>
 
-              {/* Categoria and PG */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2">
-                    Categoria do Condutor
-                  </h3>
-                  <div className="inline-flex">
-                    <button className="px-4 py-2 border border-zinc-300 rounded-lg text-sm font-bold text-zinc-800 bg-white shadow-sm flex items-center gap-2">
-                      {categoriaCondutor}
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2">
-                    Forma de Pagamento
-                  </h3>
-                  <div className="inline-flex">
-                    <button className="px-4 py-2 border border-zinc-300 rounded-lg text-sm font-bold text-zinc-900 bg-zinc-50 shadow-sm flex items-center gap-2">
-                      {formaPagamento}
-                    </button>
-                  </div>
+              {/* Categoria do Condutor */}
+              <div>
+                <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2">
+                  Categoria do Condutor
+                </h3>
+                <div className="inline-flex">
+                  <button
+                    type="button"
+                    className="px-4 py-2 border border-zinc-300 rounded-lg text-sm font-bold text-zinc-800 bg-white shadow-sm flex items-center gap-2"
+                  >
+                    {categoriaCondutor}
+                  </button>
                 </div>
               </div>
+
+              {/* Forma de Pagamento (Padrão MotorK) */}
+              <div>
+                <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2.5">
+                  Forma de Pagamento
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  {[
+                    { id: "JA_PAGO", label: "Já Pago", desc: "No App / Loja", icon: Receipt },
+                    { id: "DINHEIRO", label: "Dinheiro", desc: "Na Entrega", icon: Banknote },
+                    { id: "PIX", label: "PIX", desc: "Na Entrega", icon: QrCode },
+                    { id: "CARTAO", label: "Cartão", desc: "Maquininha", icon: CreditCard },
+                  ].map((m) => {
+                    const Icon = m.icon;
+                    const isSelected = formaPagamento === m.id;
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => {
+                          setFormaPagamento(m.id);
+                          setBalanceError(null);
+                        }}
+                        className={cn(
+                          "p-3 rounded-xl border text-left flex flex-col justify-between transition-all",
+                          isSelected
+                            ? "bg-zinc-900 text-white border-zinc-900 shadow-sm"
+                            : "bg-white text-zinc-800 border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50/50",
+                        )}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <Icon className={cn("w-4 h-4", isSelected ? "text-white" : "text-zinc-500")} />
+                          {isSelected && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold">{m.label}</div>
+                          <div className={cn("text-[10px]", isSelected ? "text-zinc-300" : "text-zinc-400")}>
+                            {m.desc}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Troco para Dinheiro */}
+              {formaPagamento === "DINHEIRO" && (
+                <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3.5 space-y-1.5">
+                  <label className="text-xs font-bold text-zinc-700 block">
+                    Troco para quanto? (Opcional)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400">
+                      R$
+                    </span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="Ex: 50,00"
+                      value={trocoPara}
+                      onChange={(e) => setTrocoPara(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 text-sm bg-white border border-zinc-200 rounded-lg focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900"
+                    />
+                  </div>
+                  <p className="text-[10px] text-zinc-500">
+                    Deixe em branco se o cliente tiver o valor exato em espécie.
+                  </p>
+                </div>
+              )}
 
               {/* Observação Geral */}
               <div>
@@ -916,9 +1098,65 @@ export function CreateRideModal({
                   value={observacaoGeral}
                   onChange={(e) => setObservacaoGeral(e.target.value)}
                   placeholder="Instrução para o motoboy (opcional)"
-                  className="w-full px-4 py-3 bg-white border border-zinc-200 rounded-xl text-sm focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 min-h-[80px] resize-none"
+                  className="w-full px-4 py-3 bg-white border border-zinc-200 rounded-xl text-sm focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 min-h-[70px] resize-none"
                 />
               </div>
+
+              {/* Validação de Saldo Pré-Pago (Módulo 03 / MotorK Benchmark) */}
+              {(() => {
+                const isPre = String(selectedStore?.billing_mode || "")
+                  .toUpperCase()
+                  .includes("PRE");
+                const estimatedCents = Math.round(
+                  (estimativa?.valor || deliveries.length * 9.0) * 100,
+                );
+                const balCents = selectedStore?.balance_cents ?? 0;
+                const isBlocked = isPre && balCents < estimatedCents;
+
+                if (isBlocked || balanceError) {
+                  return (
+                    <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3 text-amber-950">
+                      <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="space-y-1.5 flex-1">
+                        <h4 className="font-bold text-sm text-amber-900">
+                          Saldo Pré-Pago Insuficiente
+                        </h4>
+                        <p className="text-xs text-amber-800 leading-relaxed">
+                          {balanceError || (
+                            <>
+                              A loja parceira{" "}
+                              <strong>
+                                {selectedStore?.nome || "selecionada"}
+                              </strong>{" "}
+                              possui saldo disponível de{" "}
+                              <span className="font-bold">
+                                {formatCurrency(balCents / 100)}
+                              </span>
+                              , porém o valor estimado desta entrega é de{" "}
+                              <span className="font-bold">
+                                {formatCurrency(estimatedCents / 100)}
+                              </span>
+                              . Para liberar o despacho, realize uma recarga via PIX.
+                            </>
+                          )}
+                        </p>
+                        <div className="pt-1.5">
+                          <a
+                            href="/creditos"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm"
+                          >
+                            <Wallet className="w-3.5 h-3.5" /> Recarregar Créditos{" "}
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </div>
           )}
 
@@ -958,20 +1196,42 @@ export function CreateRideModal({
                 >
                   Voltar
                 </button>
-                <button
-                  type="button"
-                  onClick={handleSubmit}
-                  disabled={isSubmitting || isEstimating}
-                  className="flex-1 sm:flex-none px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-sm font-bold shadow-[0_0_15px_rgba(5,150,105,0.3)] transition-all flex items-center justify-center gap-2"
-                >
-                  {isSubmitting ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <Check className="w-4 h-4" /> Solicitar Entrega
-                    </>
-                  )}
-                </button>
+                {(() => {
+                  const isPre = String(selectedStore?.billing_mode || "")
+                    .toUpperCase()
+                    .includes("PRE");
+                  const estimatedCents = Math.round(
+                    (estimativa?.valor || deliveries.length * 9.0) * 100,
+                  );
+                  const isBlocked =
+                    isPre && (selectedStore?.balance_cents ?? 0) < estimatedCents;
+
+                  return (
+                    <button
+                      type="button"
+                      onClick={handleSubmit}
+                      disabled={isSubmitting || isEstimating || isBlocked}
+                      className={cn(
+                        "flex-1 sm:flex-none px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2",
+                        isBlocked
+                          ? "bg-zinc-200 text-zinc-400 cursor-not-allowed border border-zinc-300"
+                          : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-[0_0_15px_rgba(5,150,105,0.3)]",
+                      )}
+                    >
+                      {isSubmitting ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : isBlocked ? (
+                        <>
+                          <AlertCircle className="w-4 h-4" /> Saldo Insuficiente
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4" /> Solicitar Entrega
+                        </>
+                      )}
+                    </button>
+                  );
+                })()}
               </div>
             )}
           </div>

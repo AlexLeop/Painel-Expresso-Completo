@@ -29,3 +29,6 @@ mobile/*.jks
 .planning/
 # Logs
 *.log
+
+# Scratch scripts
+scratch/

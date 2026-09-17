@@ -282,9 +282,7 @@ def handle_login(request, payload: LoginPayload):
         except Exception:
             companies_list = []
 
-        if not companies_list:
-            op_name = staff.operator.name if staff.operator else "Operação Principal"
-            companies_list = [{"id": str(staff.operator_id), "nome": op_name}]
+        op_name = staff.operator.name if staff.operator else "Operação Principal"
 
         return 200, {
             "access_token": access_token,
@@ -432,9 +430,7 @@ def handle_me(request):
     except Exception:
         companies_list = []
 
-    if not companies_list:
         op_name = staff.operator.name if staff.operator else "Operação Principal"
-        companies_list = [{"id": str(staff.operator_id), "nome": op_name}]
 
     return {
         "authenticated": True,

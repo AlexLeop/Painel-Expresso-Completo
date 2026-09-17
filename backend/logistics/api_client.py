@@ -388,8 +388,33 @@ def send_client_thread_message(
     )
     thread.updatedAt = django_tz.now()
     thread.save(update_fields=["updatedAt"])
-
     return 201, {
         "thread_id": str(thread.id),
         "message_id": str(message.id),
     }
+
+
+# ==============================================================================
+# MÓDULOS DE CRÉDITOS, RECARGAS E EXTRATO CONTÁBIL DO LOJISTA
+# ==============================================================================
+
+from config.db_api import (
+    get_client_balance,
+    client_recharge,
+    confirm_recharge_simulation,
+    get_financial_statement,
+    get_billing_history,
+    list_client_customers,
+    create_client_customer,
+    ClientRechargePayload,
+)
+
+router.get("/balance")(get_client_balance)
+router.post("/recharge")(client_recharge)
+router.post("/recharge/confirm-simulation")(confirm_recharge_simulation)
+router.get("/financial-statement")(get_financial_statement)
+router.get("/billing-history")(get_billing_history)
+router.get("/customers")(list_client_customers)
+router.post("/customers")(create_client_customer)
+
+

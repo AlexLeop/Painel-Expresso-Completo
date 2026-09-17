@@ -1184,9 +1184,10 @@ export function Corridas() {
                     setRedistributeRideData(null);
                     setIsCreateModalOpen(true);
                   }}
+                  title="Lançar corrida avulsa ou despachar pela loja parceira"
                   className="flex items-center gap-2 px-4 py-2 bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 text-sm font-bold shadow-md transition-all focus:ring-2 focus:ring-zinc-900/20 active:scale-95"
                 >
-                  <Plus strokeWidth={2.5} className="h-4 w-4" /> Nova Entrega
+                  <Plus strokeWidth={2.5} className="h-4 w-4" /> Lançar Corrida / Despacho
                 </button>
               </div>
               <div className="flex gap-2">
