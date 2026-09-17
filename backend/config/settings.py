@@ -19,7 +19,14 @@ SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "django-insecure-development-ke
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
 
-ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
+_raw_allowed_hosts = os.environ.get("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
+ALLOWED_HOSTS = [
+    h.strip().replace("https://", "").replace("http://", "").rstrip("/")
+    for h in _raw_allowed_hosts
+    if h.strip()
+]
+if "*" in ALLOWED_HOSTS:
+    ALLOWED_HOSTS = ["*"]
 
 # Application definition
 INSTALLED_APPS = [
@@ -65,6 +72,18 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
     "x-user-email",
     "x-tenant-id",
 ]
+
+_csrf_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
+CSRF_TRUSTED_ORIGINS = [
+    o.strip() for o in _csrf_origins if o.strip() and (o.startswith("http://") or o.startswith("https://"))
+]
+if not CSRF_TRUSTED_ORIGINS:
+    CSRF_TRUSTED_ORIGINS = [
+        "https://expresso-neves-frontend.a3rpjn.easypanel.host",
+        "https://expresso-neves-django.a3rpjn.easypanel.host",
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ]
 
 TEMPLATES = [
     {
