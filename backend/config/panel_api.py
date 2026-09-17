@@ -8,10 +8,44 @@ from accounts.api import handle_login, handle_me, handle_refresh, handle_logout,
 
 class OperatorCreateSchema(Schema):
     name: str
-    cnpj: str = ""
+    cnpj: Optional[str] = ""
+    phone: Optional[str] = ""
+    city: Optional[str] = ""
+    state: Optional[str] = ""
+    billingPlanType: str = "PERCENT_PER_DELIVERY"
+    billingRateValue: float = 0.0
+    billingCycle: str = "MENSAL"
+    dueDay: int = 10
+    trialDays: int = 14
+    gracePeriodDays: int = 5
+    notes: Optional[str] = ""
     managerName: str
     managerEmail: str
     managerPassword: str = "123456"
+
+
+class OperatorUpdateSchema(Schema):
+    name: Optional[str] = None
+    cnpj: Optional[str] = None
+    phone: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    billingPlanType: Optional[str] = None
+    billingRateValue: Optional[float] = None
+    billingCycle: Optional[str] = None
+    dueDay: Optional[int] = None
+    trialDays: Optional[int] = None
+    gracePeriodDays: Optional[int] = None
+    notes: Optional[str] = None
+    status: Optional[str] = None
+
+
+class OperatorStatusSchema(Schema):
+    status: str
+
+
+class OperatorPasswordResetSchema(Schema):
+    newPassword: str = "123456"
 
 
 panel_api = NinjaAPI(urls_namespace="panel_api", auth=NativeJWTAuth())
@@ -451,52 +485,142 @@ def get_machine_rides_receipt(request, solicitacao_id: str):
         return panel_api.create_response(request, {"error": "Order not found"}, status=404)
 
 
+def is_request_platform_admin(request):
+    is_admin = request.auth.get("is_platform_admin", False)
+    uid = request.auth.get("sub")
+    if is_admin:
+        return True
+    if PlatformAdmin.objects.filter(id=uid).exists() or PlatformAdmin.objects.filter(supabase_uid=uid).exists():
+        return True
+    return False
+
+
 @panel_api.get("/admin/operators", auth=auth_bearer)
 def get_operators(request):
     """
     Retorna a lista de Operadores (apenas para PlatformAdmin).
     """
-    is_admin = request.auth.get("is_platform_admin", False)
-    uid = request.auth.get("sub")
-    if not is_admin and not PlatformAdmin.objects.filter(id=uid).exists() and not PlatformAdmin.objects.filter(supabase_uid=uid).exists():
+    if not is_request_platform_admin(request):
         return panel_api.create_response(request, {"error": "Acesso Negado"}, status=403)
         
     ops = Operator.objects.all().order_by("-createdAt")
     res = []
+    from logistics.models import Store, Driver
     for o in ops:
+        manager = StaffMember.objects.filter(operator=o, role=StaffMember.RoleType.ADMIN).order_by("createdAt").first()
+        try:
+            stores_count = Store.objects.filter(operator_id=o.id).count()
+        except Exception:
+            stores_count = 0
+        try:
+            drivers_count = Driver.objects.filter(operator_id=o.id).count()
+        except Exception:
+            drivers_count = 0
+
         res.append({
             "id": str(o.id),
             "name": o.name,
-            "cnpj": o.cnpj,
-            "status": o.status
+            "cnpj": o.cnpj or "",
+            "phone": getattr(o, "phone", "") or "",
+            "city": getattr(o, "city", "") or "",
+            "state": getattr(o, "state", "") or "",
+            "billingPlanType": getattr(o, "billingPlanType", "PERCENT_PER_DELIVERY"),
+            "billingRateValue": float(getattr(o, "billingRateValue", 0.0) or 0.0),
+            "billingCycle": getattr(o, "billingCycle", "MENSAL"),
+            "dueDay": getattr(o, "dueDay", 10) or 10,
+            "trialDays": getattr(o, "trialDays", 14) or 14,
+            "gracePeriodDays": getattr(o, "gracePeriodDays", 5) or 5,
+            "notes": getattr(o, "notes", "") or "",
+            "status": o.status,
+            "createdAt": o.createdAt.isoformat() if hasattr(o, "createdAt") and o.createdAt else None,
+            "managerName": manager.name if manager else None,
+            "managerEmail": manager.email if manager else None,
+            "storesCount": stores_count,
+            "driversCount": drivers_count,
         })
     return res
+
+
+@panel_api.get("/admin/operators/{operator_id}", auth=auth_bearer)
+def get_operator_detail(request, operator_id: str):
+    """
+    Retorna os detalhes completos de um Operador específico.
+    """
+    if not is_request_platform_admin(request):
+        return panel_api.create_response(request, {"error": "Acesso Negado"}, status=403)
+
+    try:
+        o = Operator.objects.get(id=operator_id)
+    except Operator.DoesNotExist:
+        return panel_api.create_response(request, {"error": "Operador não encontrado"}, status=404)
+
+    manager = StaffMember.objects.filter(operator=o, role=StaffMember.RoleType.ADMIN).order_by("createdAt").first()
+    from logistics.models import Store, Driver
+    try:
+        stores_count = Store.objects.filter(operator_id=o.id).count()
+    except Exception:
+        stores_count = 0
+    try:
+        drivers_count = Driver.objects.filter(operator_id=o.id).count()
+    except Exception:
+        drivers_count = 0
+
+    return {
+        "id": str(o.id),
+        "name": o.name,
+        "cnpj": o.cnpj or "",
+        "phone": getattr(o, "phone", "") or "",
+        "city": getattr(o, "city", "") or "",
+        "state": getattr(o, "state", "") or "",
+        "billingPlanType": getattr(o, "billingPlanType", "PERCENT_PER_DELIVERY"),
+        "billingRateValue": float(getattr(o, "billingRateValue", 0.0) or 0.0),
+        "billingCycle": getattr(o, "billingCycle", "MENSAL"),
+        "dueDay": getattr(o, "dueDay", 10) or 10,
+        "trialDays": getattr(o, "trialDays", 14) or 14,
+        "gracePeriodDays": getattr(o, "gracePeriodDays", 5) or 5,
+        "notes": getattr(o, "notes", "") or "",
+        "status": o.status,
+        "createdAt": o.createdAt.isoformat() if hasattr(o, "createdAt") and o.createdAt else None,
+        "updatedAt": o.updatedAt.isoformat() if hasattr(o, "updatedAt") and o.updatedAt else None,
+        "managerName": manager.name if manager else None,
+        "managerEmail": manager.email if manager else None,
+        "storesCount": stores_count,
+        "driversCount": drivers_count,
+    }
+
 
 @panel_api.post("/admin/operators", auth=auth_bearer)
 def create_operator(request, payload: OperatorCreateSchema):
     """
-    Cria um novo Operador Logístico e o seu primeiro Gerente (Owner) de forma 100% nativa.
+    Cria um novo Operador Logístico com plano SaaS e o seu primeiro Gerente (Owner) de forma 100% nativa.
     """
     import uuid
     
-    is_admin = request.auth.get("is_platform_admin", False)
-    uid = request.auth.get("sub")
-    if not is_admin and not PlatformAdmin.objects.filter(id=uid).exists():
+    if not is_request_platform_admin(request):
         return panel_api.create_response(request, {"error": "Acesso Negado: requer privilégios de Superadmin."}, status=403)
         
     if not payload.name or not payload.managerName or not payload.managerEmail:
         return panel_api.create_response(request, {"error": "Dados obrigatórios faltando"}, status=400)
         
     try:
-        # 1. Create Operator
+        initial_status = Operator.OperatorStatus.TRIAL if payload.trialDays > 0 else Operator.OperatorStatus.ACTIVE
         operator = Operator.objects.create(
             id=uuid.uuid4(),
             name=payload.name,
-            cnpj=payload.cnpj,
-            status=Operator.OperatorStatus.ACTIVE
+            cnpj=payload.cnpj or "",
+            phone=payload.phone or "",
+            city=payload.city or "",
+            state=payload.state or "",
+            billingPlanType=payload.billingPlanType or "PERCENT_PER_DELIVERY",
+            billingRateValue=payload.billingRateValue or 0.0,
+            billingCycle=payload.billingCycle or "MENSAL",
+            dueDay=payload.dueDay or 10,
+            trialDays=payload.trialDays if payload.trialDays is not None else 14,
+            gracePeriodDays=payload.gracePeriodDays if payload.gracePeriodDays is not None else 5,
+            notes=payload.notes or "",
+            status=initial_status
         )
         
-        # 2. Create StaffMember natively with hashed password
         staff = StaffMember(
             id=uuid.uuid4(),
             operator=operator,
@@ -505,12 +629,105 @@ def create_operator(request, payload: OperatorCreateSchema):
             role=StaffMember.RoleType.ADMIN,
             active=True
         )
-        staff.set_password(payload.managerPassword)
+        staff.set_password(payload.managerPassword or "123456")
         staff.save()
         
         return {"success": True, "operatorId": str(operator.id), "staffId": str(staff.id)}
     except Exception as e:
         return panel_api.create_response(request, {"success": False, "error": str(e)}, status=500)
+
+
+@panel_api.put("/admin/operators/{operator_id}", auth=auth_bearer)
+def update_operator(request, operator_id: str, payload: OperatorUpdateSchema):
+    """
+    Atualiza os dados cadastrais e as configurações de faturamento SaaS de um Operador.
+    """
+    if not is_request_platform_admin(request):
+        return panel_api.create_response(request, {"error": "Acesso Negado"}, status=403)
+
+    try:
+        o = Operator.objects.get(id=operator_id)
+    except Operator.DoesNotExist:
+        return panel_api.create_response(request, {"error": "Operador não encontrado"}, status=404)
+
+    try:
+        if payload.name is not None:
+            o.name = payload.name
+        if payload.cnpj is not None:
+            o.cnpj = payload.cnpj
+        if payload.phone is not None:
+            o.phone = payload.phone
+        if payload.city is not None:
+            o.city = payload.city
+        if payload.state is not None:
+            o.state = payload.state
+        if payload.billingPlanType is not None:
+            o.billingPlanType = payload.billingPlanType
+        if payload.billingRateValue is not None:
+            o.billingRateValue = payload.billingRateValue
+        if payload.billingCycle is not None:
+            o.billingCycle = payload.billingCycle
+        if payload.dueDay is not None:
+            o.dueDay = payload.dueDay
+        if payload.trialDays is not None:
+            o.trialDays = payload.trialDays
+        if payload.gracePeriodDays is not None:
+            o.gracePeriodDays = payload.gracePeriodDays
+        if payload.notes is not None:
+            o.notes = payload.notes
+        if payload.status is not None:
+            o.status = payload.status
+        o.save()
+        return {"success": True, "operatorId": str(o.id)}
+    except Exception as e:
+        return panel_api.create_response(request, {"success": False, "error": str(e)}, status=500)
+
+
+@panel_api.patch("/admin/operators/{operator_id}/status", auth=auth_bearer)
+def update_operator_status(request, operator_id: str, payload: OperatorStatusSchema):
+    """
+    Atualiza o status de assinatura/operação de um Operador (ACTIVE, TRIAL, SUSPENDED, CANCELED).
+    """
+    if not is_request_platform_admin(request):
+        return panel_api.create_response(request, {"error": "Acesso Negado"}, status=403)
+
+    try:
+        o = Operator.objects.get(id=operator_id)
+    except Operator.DoesNotExist:
+        return panel_api.create_response(request, {"error": "Operador não encontrado"}, status=404)
+
+    valid_statuses = [c[0] for c in Operator.OperatorStatus.choices]
+    if payload.status not in valid_statuses:
+        return panel_api.create_response(request, {"error": f"Status inválido. Escolha entre: {valid_statuses}"}, status=400)
+
+    o.status = payload.status
+    o.save(update_fields=["status"])
+    return {"success": True, "operatorId": str(o.id), "newStatus": o.status}
+
+
+@panel_api.post("/admin/operators/{operator_id}/reset-password", auth=auth_bearer)
+def reset_operator_manager_password(request, operator_id: str, payload: OperatorPasswordResetSchema):
+    """
+    Redefine a senha do Gerente Master do Operador Logístico.
+    """
+    if not is_request_platform_admin(request):
+        return panel_api.create_response(request, {"error": "Acesso Negado"}, status=403)
+
+    try:
+        o = Operator.objects.get(id=operator_id)
+    except Operator.DoesNotExist:
+        return panel_api.create_response(request, {"error": "Operador não encontrado"}, status=404)
+
+    manager = StaffMember.objects.filter(operator=o, role=StaffMember.RoleType.ADMIN).order_by("createdAt").first()
+    if not manager:
+        return panel_api.create_response(request, {"error": "Nenhum gerente administrativo encontrado para este operador"}, status=404)
+
+    if not payload.newPassword or len(payload.newPassword) < 4:
+        return panel_api.create_response(request, {"error": "A senha deve ter pelo menos 4 caracteres"}, status=400)
+
+    manager.set_password(payload.newPassword)
+    manager.save(update_fields=["passwordHash"])
+    return {"success": True, "managerEmail": manager.email, "message": "Senha redefinida com sucesso!"}
 
 
 

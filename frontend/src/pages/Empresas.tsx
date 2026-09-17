@@ -26,10 +26,17 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn, formatCurrency } from "../lib/utils";
 import { EmpresaModal, EmpresaType } from "../components/EmpresaModal";
 import { ConfirmModal } from "../components/ConfirmModal";
+import { Navigate } from "react-router-dom";
 import { authFetch, getSession } from "../lib/api";
 
 export function Empresas() {
   const session = getSession();
+
+  // Superadmin Master does not manage individual stores directly; they manage logistic operators
+  if (session?.user?.role === "superadmin") {
+    return <Navigate to="/operadores" replace />;
+  }
+
   const companyId = session?.user?.machine_empresa_id || session?.user?.company_id;
 
   const [empresas, setEmpresas] = useState<EmpresaType[]>([]);

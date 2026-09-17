@@ -31,6 +31,18 @@ class Operator(models.Model):
         SUSPENDED = "SUSPENDED", "Suspended"
         CANCELED = "CANCELED", "Canceled"
 
+    class BillingPlanType(models.TextChoices):
+        PERCENT_PER_DELIVERY = "PERCENT_PER_DELIVERY", "Percentual por Entrega"
+        PERCENT_REVENUE = "PERCENT_REVENUE", "Percentual sobre Faturamento"
+        FIXED_MONTHLY = "FIXED_MONTHLY", "Fixo Mensal"
+        FIXED_WEEKLY = "FIXED_WEEKLY", "Fixo Semanal"
+        FIXED_PER_DELIVERY = "FIXED_PER_DELIVERY", "Fixo por Corrida"
+
+    class BillingCycle(models.TextChoices):
+        MENSAL = "MENSAL", "Mensal"
+        QUINZENAL = "QUINZENAL", "Quinzenal"
+        SEMANAL = "SEMANAL", "Semanal"
+
     id = models.UUIDField(primary_key=True, editable=False)
     name = models.CharField(
         max_length=255, help_text="Razão Social ou Nome Fantasia do Operador Logístico."
@@ -40,6 +52,54 @@ class Operator(models.Model):
         null=True,
         blank=True,
         help_text="CNPJ da operadora para emissão de Notas e cobranças.",
+    )
+    phone = models.CharField(
+        max_length=50, null=True, blank=True, help_text="Telefone ou WhatsApp de contato."
+    )
+    city = models.CharField(
+        max_length=100, null=True, blank=True, help_text="Cidade sede do operador."
+    )
+    state = models.CharField(
+        max_length=10, null=True, blank=True, help_text="UF / Estado."
+    )
+    billingPlanType = models.CharField(
+        max_length=50,
+        choices=BillingPlanType.choices,
+        default=BillingPlanType.PERCENT_PER_DELIVERY,
+        db_column="billingPlanType",
+        help_text="Modalidade de cobrança do operador.",
+    )
+    billingRateValue = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0.00,
+        db_column="billingRateValue",
+        help_text="Valor fixo (R$) ou percentual (%) cobrado do operador.",
+    )
+    billingCycle = models.CharField(
+        max_length=30,
+        choices=BillingCycle.choices,
+        default=BillingCycle.MENSAL,
+        db_column="billingCycle",
+        help_text="Ciclo de cobrança/faturamento.",
+    )
+    dueDay = models.IntegerField(
+        default=10,
+        db_column="dueDay",
+        help_text="Dia de vencimento da fatura (1 a 31).",
+    )
+    trialDays = models.IntegerField(
+        default=14,
+        db_column="trialDays",
+        help_text="Dias de carência/degustação gratuita.",
+    )
+    gracePeriodDays = models.IntegerField(
+        default=5,
+        db_column="gracePeriodDays",
+        help_text="Dias de tolerância antes do bloqueio por inadimplência.",
+    )
+    notes = models.TextField(
+        null=True, blank=True, help_text="Termos contratuais e observações financeiras."
     )
     status = models.CharField(
         max_length=20,

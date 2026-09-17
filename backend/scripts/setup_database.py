@@ -105,10 +105,22 @@ def run_migrations():
                 ALTER TABLE "ClientPortalUser" ALTER COLUMN supabase_uid DROP NOT NULL;
                 ALTER TABLE "ClientPortalUser" ALTER COLUMN supabase_uid SET DEFAULT uuid_generate_v4();
                 ALTER TABLE "ClientPortalUser" ADD COLUMN IF NOT EXISTS "passwordHash" VARCHAR(255);
+
+                -- Operator SaaS & Billing Configuration
+                ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS phone VARCHAR(50);
+                ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS city VARCHAR(100);
+                ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS state VARCHAR(10);
+                ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS "billingPlanType" VARCHAR(50) DEFAULT 'PERCENT_PER_DELIVERY';
+                ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS "billingRateValue" NUMERIC(10,2) DEFAULT 0.00;
+                ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS "billingCycle" VARCHAR(30) DEFAULT 'MENSAL';
+                ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS "dueDay" INTEGER DEFAULT 10;
+                ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS "trialDays" INTEGER DEFAULT 14;
+                ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS "gracePeriodDays" INTEGER DEFAULT 5;
+                ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS notes TEXT;
             """
             with conn.transaction():
                 cur.execute(native_auth_patches)
-            print("[+] Native Auth Patches successfully applied!")
+            print("[+] Native Auth & Operator SaaS Patches successfully applied!")
 
             # 5. Schema verification summary
             cur.execute("""

@@ -105,7 +105,7 @@ const navigationGroups = [
         name: "Lojas Parceiras",
         href: "/empresas",
         icon: Store,
-        roles: ["superadmin", "operador_admin"],
+        roles: ["operador_admin"],
       },
       {
         name: "Usuários",
