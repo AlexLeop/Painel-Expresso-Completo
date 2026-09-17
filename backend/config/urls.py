@@ -19,9 +19,11 @@ from django.contrib import admin
 from django.urls import path
 from config.api import api
 from config.panel_api import panel_api
+from finance.webhooks import efi_pix_webhook
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("api/v1/webhooks/efi/pix", efi_pix_webhook, name="efi_pix_webhook"),
     path("api/v1/", api.urls),  # O core da nossa arquitetura transacional
     path("api/", panel_api.urls),  # API de compatibilidade para o React
 ]

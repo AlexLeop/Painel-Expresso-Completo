@@ -69,13 +69,28 @@ def get_balance(request):
 def request_withdrawal(request, payload: WithdrawalRequestPayload):
     driver_uid = request.auth.get("sub")
     from django.shortcuts import get_object_or_404
+    from ninja.errors import HttpError
+    from finance.baas_client import EfiBaasClient
+    from finance.services import PayoutPolicyEngine
+    from finance.tasks import execute_pix_payout_task
 
     driver = get_object_or_404(Driver, supabase_uid=driver_uid)
 
     if not driver.active:
-        from ninja.errors import HttpError
-
         raise HttpError(403, "Motorista inativo.")
+
+    # 1. Avalia política de saque, alçada e taxa
+    pix_key_type = payload.pixKeyType or "CPF"
+    try:
+        evaluation = PayoutPolicyEngine.evaluate_payout(
+            operator=driver.operator,
+            driver=driver,
+            amount_cents=payload.amountCents,
+        )
+    except ValueError as exc:
+        raise HttpError(400, str(exc))
+
+    sanitized_key = EfiBaasClient.sanitize_pix_key(payload.pixKey, pix_key_type)
 
     with transaction.atomic():
         from finance.models import OperatorInternalWallet
@@ -93,16 +108,26 @@ def request_withdrawal(request, payload: WithdrawalRequestPayload):
         wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
 
         if wallet.balanceCents < payload.amountCents:
-            from ninja.errors import HttpError
-
             raise HttpError(400, "Saldo insuficiente.")
+
+        # Define status inicial: se automático vai para PROCESSING para envio imediato;
+        # se manual fica em PENDING aguardando despachante.
+        initial_status = (
+            WithdrawalRequest.WithdrawalStatus.PROCESSING
+            if evaluation.approval_mode == WithdrawalRequest.ApprovalMode.AUTO_INSTANT
+            else WithdrawalRequest.WithdrawalStatus.PENDING
+        )
 
         withdrawal = WithdrawalRequest.objects.create(
             operator=driver.operator,
             driver=driver,
             amountCents=payload.amountCents,
-            pixKey=payload.pixKey,
-            status=WithdrawalRequest.WithdrawalStatus.PENDING,
+            feeAmountCents=evaluation.fee_amount_cents,
+            netAmountCents=evaluation.net_amount_cents,
+            pixKey=sanitized_key,
+            pixKeyType=pix_key_type,
+            approvalMode=evaluation.approval_mode,
+            status=initial_status,
         )
 
         # Cria a transação deduzindo o saldo imediatamente para evitar double spending
@@ -115,7 +140,13 @@ def request_withdrawal(request, payload: WithdrawalRequestPayload):
             taxCategory=WalletTransaction.TaxCategory.NON_TAXABLE_REIMBURSEMENT,
         )
 
+        # Se for liberação automática instantânea, agenda o envio PIX via worker no commit
+        if evaluation.approval_mode == WithdrawalRequest.ApprovalMode.AUTO_INSTANT:
+            w_id = str(withdrawal.id)
+            transaction.on_commit(lambda: execute_pix_payout_task.delay(w_id))
+
         return withdrawal
+
 
 
 @router.post("/manual-entry", response=ManualEntryResponse)

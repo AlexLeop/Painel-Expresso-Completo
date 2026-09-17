@@ -29,7 +29,8 @@ def test_mock_mode_send_pix():
     assert isinstance(result, BaasPayoutResult)
     assert result.success is True
     assert result.tx_id is not None
-    assert result.e2e_id is not None and result.e2e_id.startswith("E00038166")
+    assert result.e2e_id is not None
+    assert result.e2e_id.startswith("E00038166")
     assert result.raw_response.get("status") == "REALIZADO"
 
 
@@ -47,7 +48,8 @@ def test_send_pix_zero_or_negative():
     client = EfiBaasClient(mock_mode=True)
     res_zero = client.send_pix_to_key(0, "12345678900", "CPF")
     assert res_zero.success is False
-    assert res_zero.error_message is not None and "inválido" in res_zero.error_message
+    assert res_zero.error_message is not None
+    assert "inválido" in res_zero.error_message
 
 
 @patch("finance.baas_client.httpx.Client")
@@ -122,4 +124,5 @@ def test_real_http_send_pix_transient_error(mock_client_class):
 
     assert result.success is False
     assert result.is_transient_error is True
-    assert result.error_message is not None and "503" in result.error_message
+    assert result.error_message is not None
+    assert "503" in result.error_message
