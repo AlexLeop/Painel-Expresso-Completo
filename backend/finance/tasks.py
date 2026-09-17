@@ -580,7 +580,7 @@ def process_return_file_ret(file_path: str):
                             # Simulação: se tudo OK (código de retorno 00), COMPLETED.
                             # Para simplificar, assumiremos sucesso para todos encontrados.
                             withdrawal.status = (
-                                WithdrawalRequest.WithdrawalStatus.COMPLETED
+                                WithdrawalRequest.WithdrawalStatus.PAID
                             )
                             withdrawal.save(update_fields=["status"])
                         except WithdrawalRequest.DoesNotExist:
@@ -661,7 +661,7 @@ def execute_pix_payout_task(self, withdrawal_id: str):
                 )
 
                 # Dispara notificação assíncrona
-                notify_payout_success_task.delay(str(w.id))
+                notify_payout_success_task.delay(str(w.id))  # type: ignore
                 return {
                     "status": "SUCCESS",
                     "withdrawal_id": str(w.id),
@@ -749,7 +749,7 @@ def notify_payout_success_task(withdrawal_id: str):
         or "N/A"
     )
 
-    results = {"push": None, "whatsapp": None}
+    results: dict = {"push": None, "whatsapp": None}
 
     # 1. Notificação Push no App NevesGo
     if push_enabled:

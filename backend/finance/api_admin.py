@@ -135,7 +135,7 @@ def list_contracts(request):
     operator_id = request.auth.get("operator_id")
     with tenant_context(operator_id):
         contracts = Contract.objects.filter(operator_id=operator_id)
-        return [{"id": str(c.id), "store_id": str(c.store_id)} for c in contracts]
+        return [{"id": str(c.id), "store_id": str(c.store.id if c.store else "")} for c in contracts]
 
 
 def _resolve_operator(request):
@@ -242,7 +242,7 @@ def approve_withdrawal(request, withdrawal_id: UUID):
         withdrawal.save(update_fields=["status", "approvedBy", "approvedAt", "updatedAt"])
 
         w_id = str(withdrawal.id)
-        transaction.on_commit(lambda: execute_pix_payout_task.delay(w_id))
+        transaction.on_commit(lambda: execute_pix_payout_task.delay(w_id))  # type: ignore
 
     return {
         "success": True,
@@ -274,7 +274,7 @@ def bulk_approve_withdrawals(request, payload: BulkApprovalPayload):
                 w.save(update_fields=["status", "approvedBy", "approvedAt", "updatedAt"])
 
                 w_id_str = str(w.id)
-                transaction.on_commit(lambda wid=w_id_str: execute_pix_payout_task.delay(wid))
+                transaction.on_commit(lambda wid=w_id_str: execute_pix_payout_task.delay(wid))  # type: ignore
                 approved_ids.append(w_id_str)
             except WithdrawalRequest.DoesNotExist:
                 continue

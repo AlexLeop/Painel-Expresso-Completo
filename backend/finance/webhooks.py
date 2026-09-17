@@ -85,7 +85,7 @@ def efi_pix_webhook(request):
                         withdrawal.id,
                     )
 
-                    notify_payout_success_task.delay(str(withdrawal.id))
+                    notify_payout_success_task.delay(str(withdrawal.id))  # type: ignore
                     processed_count += 1
 
         except Exception as exc:

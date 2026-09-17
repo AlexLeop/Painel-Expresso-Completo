@@ -143,7 +143,7 @@ def request_withdrawal(request, payload: WithdrawalRequestPayload):
         # Se for liberação automática instantânea, agenda o envio PIX via worker no commit
         if evaluation.approval_mode == WithdrawalRequest.ApprovalMode.AUTO_INSTANT:
             w_id = str(withdrawal.id)
-            transaction.on_commit(lambda: execute_pix_payout_task.delay(w_id))
+            transaction.on_commit(lambda: execute_pix_payout_task.delay(w_id))  # type: ignore
 
         return withdrawal
 
