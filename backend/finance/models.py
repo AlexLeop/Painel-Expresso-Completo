@@ -84,6 +84,23 @@ class Contract(TenantModel):
     )
     cutoffMinute = models.IntegerField(default=0, db_column="cutoffMinute")
     returnFeeBps = models.IntegerField(default=5000, db_column="returnFeeBps")
+    overridePayoutPolicy = models.BooleanField(
+        default=False,
+        db_column="overridePayoutPolicy",
+        help_text="Se True, aplica as regras customizadas de saque da loja ao invés da política global do operador.",
+    )
+    customPayoutMode = models.CharField(
+        max_length=30, null=True, blank=True, db_column="customPayoutMode"
+    )
+    customAutoThresholdCents = models.BigIntegerField(
+        null=True, blank=True, db_column="customAutoThresholdCents"
+    )
+    customFeeMode = models.CharField(
+        max_length=30, null=True, blank=True, db_column="customFeeMode"
+    )
+    customFeeCents = models.BigIntegerField(
+        null=True, blank=True, db_column="customFeeCents"
+    )
 
     class Meta:
         db_table = "Contract"
@@ -457,8 +474,8 @@ class WeeklyInvoiceLineItem(TimeStampedTenantModel):
 class WithdrawalRequest(TimeStampedTenantModel):
     """
     Pedido de Saque.
-    Comando assíncrono acionado pelo aplicativo do Motoboy para disparar
-    PIX em lote esvaziando a carteira corrente.
+    Comando acionado pelo aplicativo do Motoboy para disparar
+    PIX imediato via BaaS Efí Pay ou enfileirar para aprovação do despachante.
     """
 
     class WithdrawalStatus(models.TextChoices):
@@ -466,6 +483,17 @@ class WithdrawalRequest(TimeStampedTenantModel):
         PROCESSING = "PROCESSING", "Processing"
         PAID = "PAID", "Paid"
         FAILED = "FAILED", "Failed"
+
+    class PixKeyType(models.TextChoices):
+        CPF = "CPF", "CPF"
+        CNPJ = "CNPJ", "CNPJ"
+        EMAIL = "EMAIL", "E-mail"
+        PHONE = "PHONE", "Telefone"
+        EVP = "EVP", "Chave Aleatória (EVP)"
+
+    class ApprovalMode(models.TextChoices):
+        AUTO_INSTANT = "AUTO_INSTANT", "Automático Imediato"
+        MANUAL_PENDING = "MANUAL_PENDING", "Aprovação Manual"
 
     operator = models.ForeignKey(
         Operator, on_delete=models.CASCADE, db_column="operator_id"
@@ -478,10 +506,114 @@ class WithdrawalRequest(TimeStampedTenantModel):
         default=WithdrawalStatus.PENDING,
     )
     pixKey = models.CharField(max_length=255, db_column="pixKey")
+    pixKeyType = models.CharField(
+        max_length=20,
+        choices=PixKeyType.choices,
+        default=PixKeyType.CPF,
+        db_column="pixKeyType",
+    )
+    approvalMode = models.CharField(
+        max_length=30,
+        choices=ApprovalMode.choices,
+        default=ApprovalMode.AUTO_INSTANT,
+        db_column="approvalMode",
+    )
+    feeAmountCents = models.BigIntegerField(default=0, db_column="feeAmountCents")
+    netAmountCents = models.BigIntegerField(default=0, db_column="netAmountCents")
+    approvedBy = models.ForeignKey(
+        StaffMember,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        db_column="approved_by_id",
+    )
+    approvedAt = models.DateTimeField(null=True, blank=True, db_column="approvedAt")
+    rejectionReason = models.TextField(null=True, blank=True, db_column="rejectionReason")
+    baasProvider = models.CharField(
+        max_length=50, default="EFI_PAY", db_column="baasProvider"
+    )
+    baasTransactionId = models.CharField(
+        max_length=255, null=True, blank=True, db_column="baasTransactionId"
+    )
+    baasRawResponse = models.JSONField(
+        default=dict, blank=True, db_column="baasRawResponse"
+    )
+    failureReason = models.TextField(null=True, blank=True, db_column="failureReason")
+    processedAt = models.DateTimeField(null=True, blank=True, db_column="processedAt")
 
     class Meta:
         db_table = "WithdrawalRequest"
         managed = False
+        verbose_name = "Pedido de Saque"
+        verbose_name_plural = "Pedidos de Saque"
+
+
+class PayoutPolicyConfig(TimeStampedTenantModel):
+    """
+    Configuração Global da Política de Saques e BaaS PIX para o Operador.
+    Define se saques são liberados instantaneamente dentro de um teto (HYBRID_THRESHOLD)
+    ou se todos exigem aprovação humana (MANUAL_ALL), além de limites e tarifas.
+    """
+
+    class PayoutMode(models.TextChoices):
+        HYBRID_THRESHOLD = "HYBRID_THRESHOLD", "Híbrido (Alçada)"
+        MANUAL_ALL = "MANUAL_ALL", "Aprovação Manual para Todos"
+
+    class PayoutFeeMode(models.TextChoices):
+        ABSORBED_BY_PLATFORM = "ABSORBED_BY_PLATFORM", "Absorvida pela Plataforma"
+        CHARGED_TO_DRIVER = "CHARGED_TO_DRIVER", "Cobrada do Entregador"
+
+    operator = models.OneToOneField(
+        Operator, on_delete=models.CASCADE, db_column="operator_id"
+    )
+    mode = models.CharField(
+        max_length=30,
+        choices=PayoutMode.choices,
+        default=PayoutMode.HYBRID_THRESHOLD,
+        db_column="mode",
+    )
+    autoThresholdCents = models.BigIntegerField(
+        default=15000,
+        db_column="autoThresholdCents",
+        help_text="Valor máximo em centavos para liberação automática de PIX (ex: 15000 = R$ 150,00).",
+    )
+    dailyLimitPerDriverCents = models.BigIntegerField(
+        default=50000,
+        db_column="dailyLimitPerDriverCents",
+        help_text="Teto diário acumulado de saque por motoboy nas últimas 24h.",
+    )
+    minWithdrawalCents = models.BigIntegerField(
+        default=1000,
+        db_column="minWithdrawalCents",
+        help_text="Valor mínimo por solicitação de saque.",
+    )
+    payoutFeeMode = models.CharField(
+        max_length=30,
+        choices=PayoutFeeMode.choices,
+        default=PayoutFeeMode.ABSORBED_BY_PLATFORM,
+        db_column="payoutFeeMode",
+    )
+    payoutFeeCents = models.BigIntegerField(
+        default=0,
+        db_column="payoutFeeCents",
+        help_text="Taxa fixa retida do entregador quando payoutFeeMode = CHARGED_TO_DRIVER.",
+    )
+    notifyPushEnabled = models.BooleanField(
+        default=True,
+        db_column="notifyPushEnabled",
+        help_text="Disparar notificação Push via FCM no NevesGo ao concluir PIX.",
+    )
+    notifyWhatsappEnabled = models.BooleanField(
+        default=True,
+        db_column="notifyWhatsappEnabled",
+        help_text="Enviar mensagem e comprovante PIX via Z-API WhatsApp.",
+    )
+
+    class Meta:
+        db_table = "PayoutPolicyConfig"
+        managed = False
+        verbose_name = "Configuração de Política de Saque"
+        verbose_name_plural = "Configurações de Políticas de Saque"
 
 
 class DriverExpense(TimeStampedTenantModel):
