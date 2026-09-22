@@ -697,7 +697,11 @@ from config.db_api import (
     get_cash_reconciliation,
     settle_cash_balance,
     dispatch_store_ride,
+    get_operator_driver_wallets,
+    adjust_driver_wallet,
+    get_driver_wallet_transactions,
     AdjustStoreBalancePayload,
+    AdjustDriverWalletPayload,
     SettleCashPayload,
     DispatchStoreRidePayload,
 )
@@ -708,4 +712,8 @@ router.get("/financial-dashboard")(get_operator_financial_dashboard)
 router.get("/cash-reconciliation")(get_cash_reconciliation)
 router.post("/settle-cash")(settle_cash_balance)
 router.post("/dispatch-store-ride")(dispatch_store_ride)
+router.get("/driver-wallets")(get_operator_driver_wallets)
+router.post("/driver-wallet/adjust")(adjust_driver_wallet)
+router.get("/driver-wallet/transactions")(get_driver_wallet_transactions)
+
 

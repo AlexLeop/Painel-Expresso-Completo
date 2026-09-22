@@ -2415,5 +2415,292 @@ def get_dashboard_stats(
     }
 
 
+# ==============================================================================
+# GESTÃO DA CARTEIRA DOS MOTOBOYS (DUPLA-CONTRAPARTIDA, AUDITORIA & EXTRATO)
+# ==============================================================================
+
+class AdjustDriverWalletPayload(BaseModel):
+    driver_id: str
+    amount_cents: int
+    direction: str = "CREDIT"  # "CREDIT" (Operador paga motoboy) ou "DEBIT" (Operador desconta do motoboy)
+    category: Optional[str] = "ADJUSTMENT"  # "ADVANCE", "BONUS", "PENALTY", "ADJUSTMENT", "DAILY_SETTLEMENT"
+    reason: str
+
+
+@router.get("/operator/driver-wallets")
+def get_operator_driver_wallets(request, company_id: Optional[str] = None):
+    """
+    Retorna a listagem de todos os motoboys e o saldo atual de suas carteiras (Wallet),
+    além de indicadores (KPIs) agregados para o Operador Logístico ou Superadmin.
+    """
+    from logistics.models import Driver, Vehicle
+    from finance.models import Wallet
+    from django.core.exceptions import ValidationError
+
+    auth = getattr(request, "auth", None) or {}
+    is_admin = auth.get("is_platform_admin", False)
+    auth_op_id = auth.get("operator_id")
+
+    if not is_admin and auth_op_id:
+        drivers_qs = Driver.objects.filter(operator_id=auth_op_id)
+    elif company_id and company_id != "global":
+        try:
+            drivers_qs = Driver.objects.filter(operator_id=company_id)
+        except (ValidationError, ValueError):
+            drivers_qs = Driver.objects.none()
+    elif is_admin:
+        drivers_qs = Driver.objects.all()
+    else:
+        drivers_qs = Driver.objects.none()
+
+    drivers_list = []
+    total_a_pagar_cents = 0
+    total_em_debito_cents = 0
+    motoboys_com_saldo = 0
+
+    for d in drivers_qs.order_by("name"):
+        wallet, _ = Wallet.objects.get_or_create(
+            driver_id=d.id,
+            defaults={"operator_id": d.operator_id, "balanceCents": 0}
+        )
+        bal_cents = wallet.balanceCents or 0
+        bal_reais = round(bal_cents / 100.0, 2)
+
+        if bal_cents > 0:
+            total_a_pagar_cents += bal_cents
+            motoboys_com_saldo += 1
+            st_badge = "CREDOR"
+        elif bal_cents < 0:
+            total_em_debito_cents += abs(bal_cents)
+            motoboys_com_saldo += 1
+            st_badge = "DEVEDOR"
+        else:
+            st_badge = "ZERADO"
+
+        veh = Vehicle.objects.filter(operator=d.operator).first()
+
+        drivers_list.append({
+            "id": str(d.id),
+            "driver_id": str(d.id),
+            "name": d.name,
+            "phone": d.phone or "",
+            "document": d.document or "",
+            "plate": veh.plate if veh else "",
+            "vehicle_type": veh.type if veh else "Motocicleta",
+            "pixKey": d.pixKey or "",
+            "pixKeyType": d.pixKeyType or "CPF",
+            "balance_cents": bal_cents,
+            "balance_reais": bal_reais,
+            "status": st_badge,
+            "active": d.active,
+        })
+
+    return {
+        "kpis": {
+            "total_a_pagar_cents": total_a_pagar_cents,
+            "total_a_pagar_reais": round(total_a_pagar_cents / 100.0, 2),
+            "total_em_debito_cents": total_em_debito_cents,
+            "total_em_debito_reais": round(total_em_debito_cents / 100.0, 2),
+            "total_motoboys": len(drivers_list),
+            "motoboys_com_saldo": motoboys_com_saldo,
+        },
+        "drivers": drivers_list,
+    }
+
+
+@router.post("/operator/driver-wallet/adjust")
+def adjust_driver_wallet(request, payload: AdjustDriverWalletPayload):
+    """
+    Realiza lançamento manual e auditado na carteira do motoboy.
+    Suporta:
+    - CREDIT: Bônus, Diária extra, Ajuste a favor do motoboy (Operador -> Motoboy).
+    - DEBIT: Adiantamento (Vale), Penalidade/Avaria, Desconto (Motoboy -> Operador).
+    Usa dupla-contrapartida contábil acionando trigger nativa no PostgreSQL.
+    """
+    from logistics.models import Driver
+    from finance.models import Wallet, OperatorInternalWallet, WalletTransaction, ManualEntry
+    from django.db import transaction
+    from ninja.errors import HttpError
+    import uuid
+
+    auth = getattr(request, "auth", None) or {}
+    is_admin = auth.get("is_platform_admin", False)
+    auth_op_id = auth.get("operator_id")
+    staff_id = auth.get("user_id") or auth.get("sub")
+
+    if payload.amount_cents <= 0:
+        raise HttpError(400, "O valor do lançamento deve ser maior que zero.")
+
+    if not payload.reason or not payload.reason.strip():
+        raise HttpError(400, "A justificativa/motivo é obrigatória para fins de auditoria.")
+
+    direction = payload.direction.upper()
+    if direction not in ["CREDIT", "DEBIT"]:
+        raise HttpError(400, "Direção inválida. Use 'CREDIT' ou 'DEBIT'.")
+
+    category = (payload.category or "ADJUSTMENT").upper()
+    valid_categories = ["ADVANCE", "BONUS", "PENALTY", "ADJUSTMENT", "DAILY_SETTLEMENT", "REFUND"]
+    if category not in valid_categories:
+        category = "ADJUSTMENT"
+
+    try:
+        driver = Driver.objects.select_related("operator").get(id=payload.driver_id)
+    except Driver.DoesNotExist:
+        raise HttpError(404, "Motoboy não encontrado.")
+
+    # Verifica permissão de tenant
+    if not is_admin and auth_op_id and str(driver.operator_id) != str(auth_op_id):
+        raise HttpError(403, "Sem permissão para alterar carteira deste motoboy.")
+
+
+    with transaction.atomic():
+        # 1. Garante a Carteira do Motorista
+        driver_wallet, _ = Wallet.objects.select_for_update().get_or_create(
+            driver_id=driver.id,
+            defaults={"operator_id": driver.operator_id, "balanceCents": 0}
+        )
+
+        # 2. Garante a Carteira Interna do Operador (Contrapartida)
+        operator_wallet, _ = OperatorInternalWallet.objects.select_for_update().get_or_create(
+            operator_id=driver.operator_id,
+            defaults={"balanceCents": 0}
+        )
+
+        # 3. Mapeia fluxo de Dupla-Contrapartida
+        if direction == "CREDIT":
+            # Operador transfere dinheiro para o motoboy (crédito)
+            src_drv = None
+            dest_drv = driver_wallet
+            src_op = operator_wallet
+            dest_op = None
+            tax_cat = "TAXABLE_INCOME"
+        else:
+            # Motoboy tem saldo debitado (adiantamento/desconto para o operador)
+            src_drv = driver_wallet
+            dest_drv = None
+            src_op = None
+            dest_op = operator_wallet
+            tax_cat = "DEDUCTION"
+
+        # 4. Criação da WalletTransaction (aciona a trigger no PostgreSQL)
+        w_tx = WalletTransaction.objects.create(
+            id=uuid.uuid4(),
+            operator=driver.operator,
+            source_driver_wallet=src_drv,
+            destination_driver_wallet=dest_drv,
+            source_operator_wallet=src_op,
+            destination_operator_wallet=dest_op,
+            amountCents=payload.amount_cents,
+            category=category,
+            taxCategory=tax_cat,
+        )
+
+        # 5. Registro complementar no ManualEntry para auditoria
+        entry_amount = payload.amount_cents if direction == "CREDIT" else -payload.amount_cents
+        try:
+            ManualEntry.objects.create(
+                id=uuid.uuid4(),
+                operator=driver.operator,
+                driver=driver,
+                amountCents=entry_amount,
+                category=category,
+                status="APPROVED",
+                notes=payload.reason.strip(),
+                created_by_staff_id=staff_id if (staff_id and not is_admin) else None,
+            )
+        except Exception:
+            pass
+
+        # Recarrega o saldo atualizado pela trigger
+        driver_wallet.refresh_from_db()
+
+        return {
+            "success": True,
+            "transaction_id": str(w_tx.id),
+            "driver_id": str(driver.id),
+            "driver_name": driver.name,
+            "direction": direction,
+            "category": category,
+            "amount_cents": payload.amount_cents,
+            "amount_reais": round(payload.amount_cents / 100.0, 2),
+            "new_balance_cents": driver_wallet.balanceCents,
+            "new_balance_reais": round(driver_wallet.balanceCents / 100.0, 2),
+            "message": f"Lançamento de R$ {payload.amount_cents / 100.0:.2f} registrado com sucesso na carteira de {driver.name}!",
+        }
+
+
+@router.get("/operator/driver-wallet/transactions")
+def get_driver_wallet_transactions(request, driver_id: str, limit: int = 50):
+    """
+    Retorna o extrato cronológico detalhado de movimentações da carteira do motoboy.
+    """
+    from logistics.models import Driver
+    from finance.models import Wallet, WalletTransaction, ManualEntry
+    from django.db.models import Q
+    from ninja.errors import HttpError
+
+    auth = getattr(request, "auth", None) or {}
+    is_admin = auth.get("is_platform_admin", False)
+    auth_op_id = auth.get("operator_id")
+
+    try:
+        driver = Driver.objects.get(id=driver_id)
+    except Driver.DoesNotExist:
+        raise HttpError(404, "Motoboy não encontrado.")
+
+    if not is_admin and auth_op_id and str(driver.operator_id) != str(auth_op_id):
+        raise HttpError(403, "Sem permissão para consultar extrato deste motoboy.")
+
+
+    wallet, _ = Wallet.objects.get_or_create(
+        driver_id=driver.id,
+        defaults={"operator_id": driver.operator_id, "balanceCents": 0}
+    )
+
+    tx_qs = WalletTransaction.objects.filter(
+        Q(source_driver_wallet=wallet) | Q(destination_driver_wallet=wallet)
+    ).order_by("-createdAt")[:limit]
+
+    # Mapeia justificativas de ManualEntry por data aproximada / categoria
+    manual_entries = list(
+        ManualEntry.objects.filter(driver=driver).order_by("-createdAt")[:limit]
+    )
+
+    transactions_list = []
+    for tx in tx_qs:
+        is_credit = tx.destination_driver_wallet_id == wallet.id
+        direction = "CREDIT" if is_credit else "DEBIT"
+
+        # Tenta correlacionar nota de ManualEntry
+        matched_note = ""
+        for me in manual_entries:
+            if me.category == tx.category and abs(abs(me.amountCents) - tx.amountCents) < 5:
+                matched_note = me.notes or ""
+                break
+
+        transactions_list.append({
+            "id": str(tx.id),
+            "created_at": tx.createdAt.isoformat() if tx.createdAt else "",
+            "category": tx.category,
+            "tax_category": tx.taxCategory,
+            "direction": direction,
+            "amount_cents": tx.amountCents,
+            "amount_reais": round(tx.amountCents / 100.0, 2),
+            "description": matched_note or f"Lançamento {tx.category}",
+        })
+
+    return {
+        "driver": {
+            "id": str(driver.id),
+            "name": driver.name,
+            "phone": driver.phone or "",
+            "balance_cents": wallet.balanceCents,
+            "balance_reais": round(wallet.balanceCents / 100.0, 2),
+        },
+        "transactions": transactions_list,
+    }
+
+
+
 
 

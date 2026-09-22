@@ -20,6 +20,7 @@ import { useAuth } from "../contexts/AuthContext";
 import CreditQueuePanel from "../components/CreditQueuePanel";
 import AcertoInLoco from "../components/AcertoInLoco";
 import { StoreBalancesTab } from "../components/financeiro/StoreBalancesTab";
+import { DriverWalletsTab } from "../components/financeiro/DriverWalletsTab";
 import { DreTab } from "../components/financeiro/DreTab";
 import { CashReconciliationTab } from "../components/financeiro/CashReconciliationTab";
 import {
@@ -58,9 +59,14 @@ export function Financeiro() {
   );
   const companyName = currentCompany?.nome || "Empresa";
   const isAdmin =
+    user?.role === "superadmin" ||
+    user?.role === "operador_admin" ||
+    user?.role === "operador_staff" ||
     user?.role === "admin" ||
     user?.role === "master" ||
-    user?.role === "administrador";
+    user?.role === "administrador" ||
+    user?.is_platform_admin === true;
+
 
   const [activeTab, setActiveTab] = useState<
     "store_balances" | "dre" | "cash_reconciliation" | "overview" | "queue" | "log" | "balances" | "acerto"
@@ -540,105 +546,7 @@ export function Financeiro() {
           </div>
         )}
 
-        {activeTab === "balances" && (
-          <div className="bg-white rounded-xl shadow-sm ring-1 ring-zinc-950/5 overflow-hidden">
-            <div className="p-5 border-b border-zinc-200 flex justify-between items-center bg-zinc-50/50">
-              <div>
-                <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider">
-                  Saldos na Plataforma
-                </h3>
-                <p className="text-xs text-zinc-500 mt-1">
-                  Saldos atualizados em tempo real na carteira da Machine.
-                </p>
-              </div>
-              <button
-                onClick={loadDriverBalances}
-                disabled={loadingBalances}
-                className="flex items-center gap-2 px-3 py-1.5 bg-white border border-zinc-200 text-zinc-700 rounded-lg hover:bg-zinc-50 text-xs font-semibold shadow-sm transition-all disabled:opacity-50"
-              >
-                <RefreshCw
-                  className={cn(
-                    "h-3.5 w-3.5",
-                    loadingBalances && "animate-spin",
-                  )}
-                />
-                Atualizar
-              </button>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left whitespace-nowrap text-sm">
-                <thead className="bg-zinc-50/80 border-b border-zinc-200 text-zinc-500 text-[10px] font-bold uppercase tracking-wider">
-                  <tr>
-                    <th className="px-6 py-4">Motoboy</th>
-                    <th className="px-6 py-4 text-right">
-                      Saldo Atual (Machine)
-                    </th>
-                    <th className="px-6 py-4 text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {driverBalances.length === 0 && !loadingBalances ? (
-                    <tr>
-                      <td
-                        colSpan={3}
-                        className="px-6 py-12 text-center text-zinc-400 text-sm"
-                      >
-                        Nenhum motoboy encontrado.
-                      </td>
-                    </tr>
-                  ) : (
-                    driverBalances.map((driver) => (
-                      <tr
-                        key={driver.id}
-                        className="hover:bg-zinc-50/50 transition-colors"
-                      >
-                        <td className="px-6 py-4 font-bold text-zinc-900">
-                          {driver.name}
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          {driver.loading ? (
-                            <span className="text-zinc-400 font-medium text-xs flex items-center justify-end gap-2">
-                              <RefreshCw className="h-3 w-3 animate-spin" />{" "}
-                              Carregando...
-                            </span>
-                          ) : driver.error ? (
-                            <span className="text-rose-500 font-medium text-xs">
-                              {driver.error}
-                            </span>
-                          ) : (
-                            <span
-                              className={cn(
-                                "font-mono font-bold text-base",
-                                (driver.balance || 0) >= 0
-                                  ? "text-zinc-900"
-                                  : "text-rose-600",
-                              )}
-                            >
-                              {formatCurrency(driver.balance || 0)}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          {!driver.loading && !driver.error && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-100">
-                              Sincronizado
-                            </span>
-                          )}
-                          {driver.error && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-100">
-                              Falha na Leitura
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        {activeTab === "balances" && <DriverWalletsTab />}
 
         {activeTab === "store_balances" && <StoreBalancesTab />}
         {activeTab === "dre" && <DreTab />}

@@ -61,8 +61,13 @@ def tenant_context(operator_id: uuid.UUID):
             cursor.execute(
                 "SELECT set_config('request.jwt.claims', %s, true);", [claims]
             )
-            # 2. Dropa Privilégios (SET LOCAL morre ao fechar o atomic block)
-            cursor.execute("SET LOCAL ROLE authenticated;")
+            # 2. Dropa Privilégios de forma segura caso a role exista (SAVEPOINT isola erro)
+            try:
+                cursor.execute("SAVEPOINT check_authenticated_role;")
+                cursor.execute("SET LOCAL ROLE authenticated;")
+                cursor.execute("RELEASE SAVEPOINT check_authenticated_role;")
+            except Exception:
+                cursor.execute("ROLLBACK TO SAVEPOINT check_authenticated_role;")
 
         # O yield acontece DENTRO do atomic, garantindo que RLS sobrevive
         yield
