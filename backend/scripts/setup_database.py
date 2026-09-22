@@ -8,6 +8,7 @@ and applies native authentication schema patches.
 import os
 import sys
 from pathlib import Path
+from typing import cast, LiteralString
 from urllib.parse import urlparse, unquote
 import psycopg
 
@@ -80,7 +81,7 @@ def run_migrations():
                 sql_content = sql_file.read_text(encoding="utf-8")
 
                 with conn.transaction():
-                    cur.execute(psycopg.sql.SQL(sql_content))
+                    cur.execute(cast(LiteralString, sql_content))
                     cur.execute('INSERT INTO "_migrations" (name) VALUES (%s);', (sql_file.name,))
 
                 print(f"  [+] Success: {sql_file.name}")
@@ -121,7 +122,7 @@ def run_migrations():
                 ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS notes TEXT;
             """
             with conn.transaction():
-                cur.execute(psycopg.sql.SQL(native_auth_patches))
+                cur.execute(cast(LiteralString, native_auth_patches))
             print("[+] Native Auth & Operator SaaS Patches successfully applied!")
 
             # 5. Schema verification summary
