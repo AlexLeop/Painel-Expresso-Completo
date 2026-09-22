@@ -13,7 +13,7 @@ import psycopg
 
 # Resolve root directory
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-MIGRATIONS_DIR = BASE_DIR / "supabase" / "migrations"
+MIGRATIONS_DIR = BASE_DIR / "database" / "migrations"
 
 
 def get_connection_url() -> str:

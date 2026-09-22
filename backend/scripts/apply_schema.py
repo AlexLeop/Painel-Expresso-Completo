@@ -13,8 +13,8 @@ direct_url = os.environ.get("DIRECT_URL")
 
 
 def apply_schema(conn):
-    project_root = Path(__file__).resolve().parent.parent
-    migrations_dir = project_root / "supabase" / "migrations"
+    project_root = Path(__file__).resolve().parent.parent.parent
+    migrations_dir = project_root / "database" / "migrations"
     migration_paths = sorted(migrations_dir.glob("*.sql"))
 
     if not migration_paths:
