@@ -46,9 +46,11 @@ def run_migrations():
             cur.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";')
             cur.execute('CREATE EXTENSION IF NOT EXISTS "postgis";')
             cur.execute("SELECT version(), PostGIS_Version();")
-            pg_ver, postgis_ver = cur.fetchone()
-            print(f"[+] PostgreSQL Version: {pg_ver.split(',')[0]}")
-            print(f"[+] PostGIS Version: {postgis_ver}")
+            ver_row = cur.fetchone()
+            if ver_row:
+                pg_ver, postgis_ver = ver_row
+                print(f"[+] PostgreSQL Version: {str(pg_ver).split(',')[0]}")
+                print(f"[+] PostGIS Version: {postgis_ver}")
 
             # 2. Setup migrations tracking table
             cur.execute("""
@@ -78,7 +80,7 @@ def run_migrations():
                 sql_content = sql_file.read_text(encoding="utf-8")
 
                 with conn.transaction():
-                    cur.execute(sql_content)
+                    cur.execute(psycopg.sql.SQL(sql_content))
                     cur.execute('INSERT INTO "_migrations" (name) VALUES (%s);', (sql_file.name,))
 
                 print(f"  [+] Success: {sql_file.name}")
@@ -119,7 +121,7 @@ def run_migrations():
                 ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS notes TEXT;
             """
             with conn.transaction():
-                cur.execute(native_auth_patches)
+                cur.execute(psycopg.sql.SQL(native_auth_patches))
             print("[+] Native Auth & Operator SaaS Patches successfully applied!")
 
             # 5. Schema verification summary
@@ -128,7 +130,8 @@ def run_migrations():
                 FROM information_schema.tables 
                 WHERE table_schema = 'public';
             """)
-            table_count = cur.fetchone()[0]
+            count_row = cur.fetchone()
+            table_count = count_row[0] if count_row else 0
             print(f"\n[OK] VPS Database Migration Complete! Total public tables: {table_count}")
 
 
