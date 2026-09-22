@@ -177,6 +177,10 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+# Media / Uploaded files (Local volume storage in Docker/EasyPanel)
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
 if sys.platform == "win32":
     # Desabilita o GIS no Windows nativo para evitar crash por falta de GDAL
     if "django.contrib.gis" in INSTALLED_APPS:

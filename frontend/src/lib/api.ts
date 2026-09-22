@@ -17,21 +17,18 @@ export async function authFetch(url: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers || {});
   headers.set("Authorization", `Bearer ${token}`);
 
-  // Injetar X-Tenant-Id buscando do localStorage, caso a API precise
+  // Injetar X-Tenant-Id opcional se selecionado pelo operador/admin (apenas contexto de tenant, nunca papéis ou e-mail de cliente)
   const storedSessionStr = localStorage.getItem("nevesgo:session");
   if (storedSessionStr) {
     try {
       const storedSession = JSON.parse(storedSessionStr);
-      if (storedSession?.user?.company_id) {
-        headers.set("X-Tenant-Id", String(storedSession.user.company_id));
+      if (storedSession?.selected_company_id || storedSession?.user?.company_id) {
+        headers.set(
+          "X-Tenant-Id",
+          String(storedSession.selected_company_id || storedSession.user.company_id),
+        );
       }
-      if (storedSession?.user?.role) {
-        headers.set("X-User-Role", storedSession.user.role);
-      }
-      if (storedSession?.user?.email) {
-        headers.set("X-User-Email", storedSession.user.email);
-      }
-    } catch (e) {
+    } catch {
       // Ignora erro de parse
     }
   }

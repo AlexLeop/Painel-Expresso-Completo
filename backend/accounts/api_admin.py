@@ -1,10 +1,10 @@
-from ninja import Router
-from typing import List
+import uuid
+import secrets
+from ninja import Router, Schema
+from typing import List, Optional
 from accounts.models import StaffMember, Operator
-from ninja import Schema
 from config.core_models import tenant_context
 from ninja.errors import HttpError
-from config.supabase_client import get_supabase_admin
 
 router = Router(tags=["Admin - Accounts"])
 
@@ -28,66 +28,59 @@ class CreateOperatorSchema(Schema):
     subdomain: str
     admin_name: str
     admin_email: str
+    admin_password: Optional[str] = None
 
 
 class CreateStaffSchema(Schema):
     name: str
     email: str
     role: str
+    password: Optional[str] = None
 
 
 @router.post("/operator", response=OperatorSchemaOut)
 def create_operator(request, data: CreateOperatorSchema):
     """
     [Flow 1] PlatformAdmin cria Operator e seu primeiro StaffMember(ADMIN).
-    Acessível APENAS por token JWT com claim role='platform_admin'
+    Acessível APENAS por token JWT com claim role='platform_admin' ou 'superadmin'
     """
-    if request.auth.get("role") != "platform_admin":
+    role = request.auth.get("role")
+    if role not in ["platform_admin", "superadmin"] and not request.auth.get("is_platform_admin"):
         raise HttpError(
             403, "Acesso negado. Apenas PlatformAdmin pode criar Operadores."
         )
 
-    # Validação de Subdomínio seria inserida aqui para Nginx proxy pass
+    # 1. Criar Operator no PostgreSQL
+    operator = Operator.objects.create(id=uuid.uuid4(), name=data.name, status="TRIAL")
 
-    # Criar Operator
-    operator = Operator.objects.create(name=data.name, status="TRIAL")
-
-    # A integração com Supabase.inviteUserByEmail ocorre aqui
-    supabase_admin = get_supabase_admin()
-    try:
-        res = supabase_admin.auth.admin.invite_user_by_email(
-            data.admin_email,
-            options={"data": {"role": "ADMIN", "operator_id": str(operator.id)}}
-        )
-        supabase_uid = res.user.id
-    except Exception as e:
-        # Fallback or proper error handling in a real app
-        raise HttpError(500, f"Falha ao convidar usuário via Supabase: {str(e)}")
-
-    # Criar Staff Admin
+    # 2. Criar Staff Admin nativo com PBKDF2
+    admin_pass = data.admin_password or secrets.token_urlsafe(12)
     with tenant_context(operator.id):
-        StaffMember.objects.create(
+        staff = StaffMember(
+            id=uuid.uuid4(),
             operator=operator,
             name=data.admin_name,
-            email=data.admin_email,
+            email=data.admin_email.strip().lower(),
             role="ADMIN",
-            supabase_uid=supabase_uid,
+            active=True,
         )
+        staff.set_password(admin_pass)
+        staff.save()
     return operator
 
 
 @router.post("/staff", response=StaffMemberSchemaOut)
 def create_staff(request, data: CreateStaffSchema):
     """
-    [Flow 2] Criação de StaffMember com hierarquia de regras:
+    [Flow 2] Criação de StaffMember com hierarquia de regras nativa:
     - ADMIN cria ADMIN, MANAGER, OPERATOR_ROLE, VIEWER
     - MANAGER cria OPERATOR_ROLE, VIEWER
     - OPERATOR_ROLE / VIEWER não cria ninguém
     """
     operator_id = request.auth.get("operator_id")
-    creator_role = request.auth.get("role")  # Lemos a role do JWT validado pelo gateway
+    creator_role = request.auth.get("role")  # Lemos a role do JWT validado nativo
 
-    if creator_role not in ["ADMIN", "MANAGER"]:
+    if creator_role not in ["ADMIN", "MANAGER", "operador_admin"]:
         raise HttpError(403, "Permissão insuficiente para criar Staff.")
 
     if creator_role == "MANAGER" and data.role in ["ADMIN", "MANAGER"]:
@@ -96,23 +89,17 @@ def create_staff(request, data: CreateStaffSchema):
     with tenant_context(operator_id):
         operator = Operator.objects.get(id=operator_id)
 
-        supabase_admin = get_supabase_admin()
-        try:
-            res = supabase_admin.auth.admin.invite_user_by_email(
-                data.email,
-                options={"data": {"role": data.role, "operator_id": str(operator.id)}}
-            )
-            supabase_uid = res.user.id
-        except Exception as e:
-            raise HttpError(500, f"Falha ao convidar usuário via Supabase: {str(e)}")
-
-        staff = StaffMember.objects.create(
+        staff_pass = data.password or secrets.token_urlsafe(12)
+        staff = StaffMember(
+            id=uuid.uuid4(),
             operator=operator,
             name=data.name,
-            email=data.email,
+            email=data.email.strip().lower(),
             role=data.role,
-            supabase_uid=supabase_uid,
+            active=True,
         )
+        staff.set_password(staff_pass)
+        staff.save()
         return staff
 
 

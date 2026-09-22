@@ -116,18 +116,9 @@ def create_driver(request, data: CreateDriverSchema):
     with tenant_context(operator_id):
         operator = Operator.objects.get(id=operator_id)
 
-        from config.supabase_client import get_supabase_admin
-        supabase_admin = get_supabase_admin()
-        try:
-            # We create the user with phone. Supabase OTP will be used to login.
-            res = supabase_admin.auth.admin.create_user({
-                "phone": data.phone,
-                "user_metadata": {"role": "DRIVER", "operator_id": str(operator.id)}
-            })
-            supabase_uid = res.user.id
-        except Exception as e:
-            raise HttpError(500, f"Falha ao registrar motorista no Supabase: {str(e)}")
+        import uuid
         driver = Driver.objects.create(
+            id=uuid.uuid4(),
             operator=operator,
             name=data.name,
             phone=data.phone,
@@ -135,8 +126,8 @@ def create_driver(request, data: CreateDriverSchema):
             pixKey=data.pixKey,
             tax_classification=data.tax_classification,
             document=data.document,
-            supabase_uid=supabase_uid,
             onboarding_status="INVITED",
+            active=True,
         )
         return driver
 

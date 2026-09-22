@@ -167,9 +167,8 @@ def _order_claim_key(order_id) -> str:
 
 
 def upload_to_storage(namespace: str, entity_id: UUID, file) -> str:
-    import os
     from uuid import uuid4
-    from config.supabase_client import get_supabase_client
+    from django.conf import settings
 
     MAX_SIZE = 10 * 1024 * 1024  # 10MB
     if getattr(file, "size", 0) > MAX_SIZE:
@@ -183,29 +182,22 @@ def upload_to_storage(namespace: str, entity_id: UUID, file) -> str:
         ext = ".bin"  # Fallback
 
     filename = f"{uuid4().hex}{ext}"
-    path = f"{namespace}/{entity_id}/{filename}"
-
-    supabase_client = get_supabase_client()
-    if supabase_client is None:
-        from ninja.errors import HttpError
-
-        raise HttpError(
-            503, "Serviço de Armazenamento Temporariamente Indisponível (Offline)."
-        )
+    media_root = getattr(settings, "MEDIA_ROOT", os.path.join(settings.BASE_DIR, "media"))
+    dest_dir = os.path.join(str(media_root), namespace, str(entity_id))
+    os.makedirs(dest_dir, exist_ok=True)
+    file_path = os.path.join(dest_dir, filename)
 
     try:
         file_bytes = file.read()
-        supabase_client.storage.from_(namespace).upload(
-            path, file_bytes, {"content-type": "application/octet-stream"}
-        )
-        return supabase_client.storage.from_(namespace).get_public_url(path)
+        with open(file_path, "wb") as f:
+            f.write(file_bytes)
+        media_url = getattr(settings, "MEDIA_URL", "/media/")
+        return f"{media_url.rstrip('/')}/{namespace}/{entity_id}/{filename}"
     except Exception as e:
         import logging
-
-        logging.error(f"Failed to upload to supabase: {e}")
+        logging.error(f"Failed to save upload to local media storage: {e}")
         from ninja.errors import HttpError
-
-        raise HttpError(503, "Falha ao enviar arquivo para o Storage na Nuvem.")
+        raise HttpError(500, "Falha ao gravar arquivo no armazenamento local do servidor.")
 
 
 def _point_from_lat_lng(lat: Optional[float], lng: Optional[float]):

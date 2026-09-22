@@ -1,16 +1,18 @@
-# Plano de Implementação Avançado para Prontidão em Produção
+# SUPERSEDED — HISTÓRICO — NÃO AUTORIZA GO-LIVE
 
-> **Artigo de referência:** `docs/PLANO_IMPLEMENTACAO_PRODUCAO.md` (este arquivo)
+> **AVISO DE AUTORIDADE:** Este documento foi **SUPERSEDED** e é mantido estritamente como registro histórico.
+> A **ÚNICA AUTORIDADE NORMATIVA ATIVA** para ordem de execução, critérios, gates (G0–G10), piloto, homologação e go-live é [`docs/PLANO_IMPLEMENTACAO_PRONTIDAO_PRODUCAO_V2.md`](file:///c:/Users/lxleo/Documents/Expresso%20Neves/Painel%20Expresso%20Neves%20e%20Django%20DRF/docs/PLANO_IMPLEMENTACAO_PRONTIDAO_PRODUCAO_V2.md).
+> Nenhuma afirmação ou checklist neste arquivo histórico autoriza implantação em produção.
+
+---
+
+# Plano de Implementação Avançado para Prontidão em Produção (Histórico)
+
+> **Artigo de referência:** `docs/PLANO_IMPLEMENTACAO_PRODUCAO.md` (este arquivo - HISTÓRICO)
 > **Derivado de:** Análise completa de prontidão (60+ lacunas mapeadas, 21 de criticidade alta)
-> **Veredito base:** Sistema NÃO pronto para produção. As perícias `PERICIA_INFRA_DEPLOY.md`,
-> `PERICIA_PRONTIDAO_FUNCIONAL.md` e `NEVESGO_AUDITORIA_E_PLANO_TATICO.md` concluem "não apto";
-> `matriz_homologacao.md` diverge afirmando "apto" — conflito não resolvido.
-> **Estratégia:** Ondas sequenciais. Onda 0 (bloqueadores de segurança) e Onda 1 (resiliência
-> financeira/deploy) são pré-requisitos para go-live controlado. As demais ondas reduzem risco
-> operacional e elevam qualidade e devem ter SLA definido pós-implantação.
-> **Convenção de exemplos:** Todos os snippets em Python usam `# ...` para indicar contexto
-> preservado; snippets em Kotlin/TypeScript/YAML seguem o mesmo princípio. Nenhum snippet deve ser
-> aplicado cegamente — cada tarefa lista arquivos afetados e validação esperada.
+> **Veredito base:** Sistema NÃO pronto para produção.
+> **Estratégia:** Documento arquivado/substituído pelo V2.
+
 
 ---
 

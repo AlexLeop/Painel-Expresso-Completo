@@ -442,22 +442,28 @@ def generate_pending_invoices_pdfs():
     """
     from finance.models import WeeklyStoreInvoice
     from finance.pdf_generator import InvoicePDFBuilder
-    from config.supabase_client import supabase
+    from django.conf import settings
+    import os
 
     invoices = WeeklyStoreInvoice.objects.filter(
         status=WeeklyStoreInvoice.InvoiceStatus.FINALIZED, pdfUrl__isnull=True
     )
 
     generated = 0
+    media_root = getattr(settings, "MEDIA_ROOT", os.path.join(settings.BASE_DIR, "media"))
+    media_url = getattr(settings, "MEDIA_URL", "/media/")
     for invoice in invoices:
         builder = InvoicePDFBuilder(invoice)
         pdf_bytes = builder.build()
 
-        if supabase:
-            file_path = f"invoices/{invoice.operator.id}/{invoice.id}.pdf"
-            supabase.storage.from_("invoices").upload(file_path, pdf_bytes)
-            invoice.pdfUrl = file_path
-            invoice.save(update_fields=["pdfUrl"])
+        inv_dir = os.path.join(str(media_root), "invoices", str(invoice.operator.id))
+        os.makedirs(inv_dir, exist_ok=True)
+        file_path = os.path.join(inv_dir, f"{invoice.id}.pdf")
+        with open(file_path, "wb") as f:
+            f.write(pdf_bytes)
+
+        invoice.pdfUrl = f"{media_url.rstrip('/')}/invoices/{invoice.operator.id}/{invoice.id}.pdf"
+        invoice.save(update_fields=["pdfUrl"])
 
         generated += 1
 
@@ -518,20 +524,22 @@ def process_withdrawal_remessas():
         if not locked_withdrawals or not cnab_string:
             continue
 
-        # 2. I/O DE REDE (SUPABASE): Fora da transação
+        # 2. Persistência de arquivo local (MEDIA_ROOT/remessas)
         upload_success = False
         try:
-            if supabase:
-                file_path = f"remessas/{operator.id}/{datetime.now().strftime('%Y%m%d%H%M%S')}.rem"
-                supabase.storage.from_("financial").upload(
-                    file_path, cnab_string.encode("utf-8")
-                )
-                upload_success = True
-            else:
-                upload_success = True # Modo sem supabase
+            from django.conf import settings
+            import os
+            media_root = getattr(settings, "MEDIA_ROOT", os.path.join(settings.BASE_DIR, "media"))
+            rem_dir = os.path.join(str(media_root), "financial", "remessas", str(operator.id))
+            os.makedirs(rem_dir, exist_ok=True)
+            filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}.rem"
+            file_path = os.path.join(rem_dir, filename)
+            with open(file_path, "wb") as f:
+                f.write(cnab_string.encode("utf-8"))
+            upload_success = True
         except Exception as e:
             from logging import getLogger
-            getLogger(__name__).error(f"Erro ao enviar remessa Supabase (Operator {operator.id}): {e}")
+            getLogger(__name__).error(f"Erro ao salvar remessa CNAB localmente (Operator {operator.id}): {e}")
             
             # Rollback dos status se a rede caiu (Compensating Transaction)
             with transaction.atomic():

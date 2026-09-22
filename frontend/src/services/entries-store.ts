@@ -1,11 +1,11 @@
 import { logger } from "@/lib/logger";
 /**
- * Entries Store — Supabase-primary pattern
- * Primary: Supabase via /api/db/entries (source of truth)
+ * Entries Store — Native Backend API pattern
+ * Primary: Django Ninja via /api/v1/db/entries (PostgreSQL source of truth)
  * Cache: localStorage (for instant reads + offline fallback)
  *
- * All writes go to Supabase first, then update local cache.
- * Reads use local cache when available, with background refresh from Supabase.
+ * All writes go to Backend API first, then update local cache.
+ * Reads use local cache when available, with background refresh from Backend.
  */
 
 import { authFetch } from "../lib/api";
@@ -90,23 +90,6 @@ function saveManualEntriesCache(entries: ManualEntry[]) {
 // ============================================================
 
 export async function setDailyEntry(entry: DailyEntry): Promise<boolean> {
-  // 1. Update local cache immediately (optimistic)
-  const all = getDailiesCache();
-  const idx = all.findIndex(
-    (e) =>
-      e.driverId === entry.driverId &&
-      e.date === entry.date &&
-      e.companyId === entry.companyId &&
-      e.turnoId === entry.turnoId,
-  );
-  if (idx >= 0) {
-    all[idx] = entry;
-  } else {
-    all.push(entry);
-  }
-  saveDailiesCache(all);
-
-  // 2. Persist to Supabase (awaited)
   try {
     const res = await authFetch("/api/v1/db/entries", {
       method: "POST",
@@ -122,25 +105,57 @@ export async function setDailyEntry(entry: DailyEntry): Promise<boolean> {
         description: entry.diariaOverride ? "Diária manual" : "Diária",
       }),
     });
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      logger.error("[EntriesStore] Daily write failed:", res.status, errData);
-      return false;
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === false) {
+      const errorMsg = data.error || data.detail || `Falha ao salvar diária (${res.status})`;
+      logger.error("[EntriesStore] Daily write failed:", res.status, errorMsg);
+      throw new Error(errorMsg);
     }
+
+    // Atualiza cache local apenas em caso de sucesso
+    const all = getDailiesCache();
+    const idx = all.findIndex(
+      (e) =>
+        e.driverId === entry.driverId &&
+        e.date === entry.date &&
+        e.companyId === entry.companyId &&
+        e.turnoId === entry.turnoId,
+    );
+    if (idx >= 0) {
+      all[idx] = entry;
+    } else {
+      all.push(entry);
+    }
+    saveDailiesCache(all);
     return true;
-  } catch (err) {
+  } catch (err: any) {
     logger.error("[EntriesStore] Daily write error:", err);
-    return false;
+    throw err;
   }
 }
 
-export function removeDailyEntry(
+export async function removeDailyEntry(
   driverId: string,
   date: string,
   companyId: number | string,
   turnoId?: string,
-) {
-  // 1. Remove from local cache
+): Promise<boolean> {
+  let url = `/api/v1/db/entries?driver_id=${driverId}&date=${date}&company_id=${companyId}`;
+  if (turnoId) url += `&turno_id=${turnoId}`;
+
+  const res = await authFetch(url, {
+    method: "DELETE",
+  });
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    const msg = errData.error || `Falha ao remover diária (${res.status})`;
+    logger.warn("[EntriesStore] Daily delete failed:", msg);
+    throw new Error(msg);
+  }
+
+  // Remove do cache apenas em caso de sucesso
   const all = getDailiesCache().filter(
     (e) =>
       !(
@@ -151,14 +166,7 @@ export function removeDailyEntry(
       ),
   );
   saveDailiesCache(all);
-
-  // 2. Delete from Supabase
-  let url = `/api/v1/db/entries?driver_id=${driverId}&date=${date}&company_id=${companyId}`;
-  if (turnoId) url += `&turno_id=${turnoId}`;
-
-  authFetch(url, {
-    method: "DELETE",
-  }).catch((err) => logger.warn("[EntriesStore] Daily delete failed:", err));
+  return true;
 }
 
 export function getDailyEntriesForWeek(
@@ -197,52 +205,59 @@ export function getDailyEntryForDriver(
 export async function addManualEntry(
   entry: Omit<ManualEntry, "id" | "createdAt">,
 ): Promise<ManualEntry> {
+  // 1. Persiste no backend primeiro (autoridade)
+  const res = await authFetch("/api/v1/db/entries", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      companyId: entry.companyId,
+      driverId: entry.driverId,
+      driverName: entry.driverName,
+      date: entry.date,
+      type: entry.type,
+      amount: entry.amount,
+      description: entry.description,
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok || data.success === false) {
+    const errorMsg = data.error || data.detail || `Erro ao salvar lançamento manual (${res.status})`;
+    logger.error("[EntriesStore] Manual write failed:", res.status, errorMsg);
+    throw new Error(errorMsg);
+  }
+
   const newEntry: ManualEntry = {
     ...entry,
-    id: `me_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-    createdAt: new Date().toISOString(),
+    id: data.id || data.entry_id || `me_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    createdAt: data.createdAt || new Date().toISOString(),
   };
 
-  // 1. Add to local cache
+  // 2. Atualiza cache local apenas após confirmação
   const all = getManualEntriesCache();
   all.unshift(newEntry);
   saveManualEntriesCache(all);
 
-  // 2. Persist to Supabase (awaited)
-  try {
-    const res = await authFetch("/api/v1/db/entries", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        companyId: entry.companyId,
-        driverId: entry.driverId,
-        driverName: entry.driverName,
-        date: entry.date,
-        type: entry.type,
-        amount: entry.amount,
-        description: entry.description,
-      }),
-    });
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      logger.error("[EntriesStore] Manual write failed:", res.status, errData);
-    }
-  } catch (err) {
-    logger.error("[EntriesStore] Manual write error:", err);
-  }
-
   return newEntry;
 }
 
-export function deleteManualEntry(id: string) {
-  // 1. Remove from cache
+export async function deleteManualEntry(id: string): Promise<boolean> {
+  const res = await authFetch(`/api/v1/db/entries?id=${id}`, {
+    method: "DELETE",
+  });
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    const msg = errData.error || `Erro ao excluir lançamento (${res.status})`;
+    logger.warn("[EntriesStore] Manual delete failed:", msg);
+    throw new Error(msg);
+  }
+
+  // Remove do cache apenas em caso de sucesso confirmado
   const all = getManualEntriesCache().filter((e) => e.id !== id);
   saveManualEntriesCache(all);
-
-  // 2. Delete from Supabase
-  authFetch(`/api/v1/db/entries?id=${id}`, {
-    method: "DELETE",
-  }).catch((err) => logger.warn("[EntriesStore] Manual delete failed:", err));
+  return true;
 }
 
 export function getManualEntriesForWeek(
@@ -546,10 +561,10 @@ export function getCreditStats(
 }
 
 // ============================================================
-// Supabase → Local Cache Sync (pull on mount)
+// Backend API → Local Cache Sync (pull on mount)
 // ============================================================
 
-export async function pullEntriesFromSupabase(
+export async function pullEntriesFromBackend(
   companyId: number | string,
   weekStart: string,
   weekEnd: string,
@@ -635,3 +650,6 @@ export async function pullEntriesFromSupabase(
     return false;
   }
 }
+
+/** @deprecated Supabase foi descontinuado. Use pullEntriesFromBackend */
+export const pullEntriesFromSupabase = pullEntriesFromBackend;

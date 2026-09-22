@@ -3,10 +3,22 @@ Limpa TODAS as tabelas do schema public no Supabase via REST API.
 Usa service_role key + cria funcao RPC temporaria para executar DDL.
 """
 
+import os
+from pathlib import Path
 import httpx
 
-SUPABASE_URL = "https://mdrutawgropwgsmwygtz.supabase.co"
-SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1kcnV0YXdncm9wd2dzbXd5Z3R6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MTc0NTI3NSwiZXhwIjoyMDk3MzIxMjc1fQ.yOnMaVfpwksz_9TdufDMOVVDHIeZHTuuJGsM7uPiLMY"
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+env_file = BASE_DIR / ".env"
+if env_file.exists():
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line.startswith("SUPABASE_URL=") and not os.environ.get("SUPABASE_URL"):
+            os.environ["SUPABASE_URL"] = line.split("=", 1)[1].strip().strip('"').strip("'")
+        elif line.startswith("SUPABASE_SERVICE_ROLE_KEY=") and not os.environ.get("SUPABASE_SERVICE_ROLE_KEY"):
+            os.environ["SUPABASE_SERVICE_ROLE_KEY"] = line.split("=", 1)[1].strip().strip('"').strip("'")
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
 HEADERS = {
     "apikey": SERVICE_ROLE_KEY,

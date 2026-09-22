@@ -1,53 +1,61 @@
-# Matriz de Homologação: NevesGo (App do Entregador & Painel Web)
-**Atualização:** 26 de Junho de 2026 — Pós-Auditoria e Refatoração Completa
+# SUPERSEDED — HISTÓRICO — NÃO APTO — G0–G10 PENDENTES
 
-Com base na inspeção e nas extensas correções do código-fonte (Backend, Mobile e Frontend), esta matriz reflete o estado **real** de cada módulo para efeito de decisão de Go-Live. Todas as 13 FALHAS CRÍTICAS, MOCKS e VULNERABILIDADES que impediam o lançamento em produção foram sumariamente corrigidas e substituídas por implementações reais e robustas.
+> **AVISO DE AUTORIDADE DOCUMENTAL (DOC-001):**
+> Este documento foi auditado e **SUPERSEDED**. Nenhuma aprovação ou declaração de aptidão abaixo constitui autorização ativa de produção ou go-live.
+> A **ÚNICA AUTORIDADE NORMATIVA ATIVA** para gates, critérios e validação é [`docs/PLANO_IMPLEMENTACAO_PRONTIDAO_PRODUCAO_V2.md`](file:///c:/Users/lxleo/Documents/Expresso%20Neves/Painel%20Expresso%20Neves%20e%20Django%20DRF/docs/PLANO_IMPLEMENTACAO_PRONTIDAO_PRODUCAO_V2.md).
+> Todos os 14 itens históricos abaixo dependem de validação real nos gates G0 a G10 em staging com release candidate unificado.
+
+---
+
+# Matriz de Homologação: NevesGo (Histórico Reconciliado)
+**Status Atual:** 🔴 **NÃO APTO — G0–G10 PENDENTES**
 
 ---
 
 ## Módulo 1 — Autenticação e Sessão
 
-| Funcionalidade | Status | Parecer Técnico | Bloqueio Residual |
-| :--- | :---: | :--- | :--- |
-| Login Web (Frontend React) | 🟢 Aprovado | **RECONECTADO:** O Frontend React foi reconectado ao backend Django Ninja através da API de compatibilidade `panel_api.py`. Todas as rotas vitais (usuários, diárias, drivers, configs) operam e não geram crash. | Nenhum. |
-| Login Backend / Middleware | 🟢 Aprovado | O `SupabaseRLSMiddleware` agora gera resposta `401 Unauthorized` real (tratando erros em vez de silenciá-los). Segurança do Backend restabelecida. | Nenhum. |
-| Login Motorista (App Mobile) | 🟢 Aprovado | O App Android integra o fluxo real OTP usando Supabase Auth (SMS request & Verify via `OkHttp`). Tela de copiar/colar Token foi eliminada. | Nenhum. |
-| Integração SMS Motorista | 🟢 Aprovado | O fluxo envia os dados via Supabase. A infra de mensageria da nuvem toma controle sem hardcode de mocks. | Nenhum. |
-| Renovação de Token (Refresh) | 🟢 Aprovado | O `TokenAuthenticator.kt` captura 401 do Retrofit e renova automaticamente os tokens de acesso via Refresh Token Supabase. | Nenhum. |
-| Logout App (Fast Lane) | 🟢 Aprovado | As chaves de sessão Redis (`device_token` e `fastlane`) foram sincronizadas, e logouts invalidam corretamente os dados de telemetria. | Nenhum. |
+| Funcionalidade | Status Histórico | Status Real / Gate V2 Requerido | Parecer Técnico Atualizado |
+| :--- | :---: | :---: | :--- |
+| Login Web (Frontend React) | 🟢 Aprovado | 🔴 Pendente (G1 - ID-001/ID-003) | Requer validação de sessões reais via JWT do servidor e eliminação de headers injetados do client. |
+| Login Backend / Middleware | 🟢 Aprovado | 🔴 Pendente (G1 - ID-002/QA-SEC-001) | RLS real em PostgreSQL 17 multi-tenant pendente de validação contra ataques de injeção/cruzamento. |
+| Login Motorista (App Mobile) | 🟢 Aprovado | 🔴 Pendente (G4 - MOB-001/MOB-002) | App de release ainda possui MockInterceptor e URLs de emulador em árvore; login OTP real em staging pendente. |
+| Integração SMS Motorista | 🟢 Aprovado | 🔴 Pendente (G4 - MOB-002) | Provedor de SMS e Supabase Auth pendentes de homologação de chaves em staging. |
+| Renovação de Token (Refresh) | 🟢 Aprovado | 🔴 Pendente (G4 - MOB-002) | Rotação e refresh token no Android KeyStore precisam ser validados sob expiração forçada. |
+| Logout App (Fast Lane) | 🟢 Aprovado | 🔴 Pendente (G4/G6 - MOB-002/QUE-004) | Invalidação de sessão distribuída em Redis e flush de telemetria pendentes de teste de kill/restart. |
 
 ---
 
 ## Módulo 2 — Logística, Telemetria e Anti-Fraude
 
-| Funcionalidade | Status | Parecer Técnico | Bloqueio Residual |
-| :--- | :---: | :--- | :--- |
-| Geofencing (Auto-Arrive) | 🟢 Aprovado | Celery Worker em integração fluída. O serviço de telemetria (`fast_lane/main.py`) agora monitora posição usando o comando Redis `GEORADIUS` num raio de 150m e injeta as filas reais de Trigger. | Nenhum. |
-| Heurística de Escalas (AI) | 🟢 Aprovado | O AI Scheduler (`WeekendScheduleAI`) cruza dados de folgas, conflitos de horário e ranking ativamente, negando agendamentos sobrepostos. | Nenhum. |
-| Roteirização via OSM/Mapbox | 🟢 Aprovado | O Mobile App invoca o `OSRMRoadManager` decodificando e plotando ruas e contornos geográficos reais, substituindo linhas retas imprecisas. | Nenhum. |
-| Proteção Anti-fraude GPS | 🟢 Aprovado | A marreta de compatibilidade Windows/Bypass de GeoDjango (`gis_compat.py`) foi removida, exigindo ambiente real com calculos avançados nativos. | Nenhum. |
-| Upload de Arquivos (Storage) | 🟢 Aprovado | O mock AWS foi cortado, retornando um status legímo (503) em falhas de infra, obrigando retentativas honestas em vez de sucesso falso no DB. | Nenhum. |
+| Funcionalidade | Status Histórico | Status Real / Gate V2 Requerido | Parecer Técnico Atualizado |
+| :--- | :---: | :---: | :--- |
+| Geofencing (Auto-Arrive) | 🟢 Aprovado | 🔴 Pendente (G3 - LOG-003/LOG-004) | Estado compartilhado em Redis precisa de isolamento estrito para evitar auto-arrive cruzado entre entregadores. |
+| Heurística de Escalas (AI) | 🟢 Aprovado | 🔴 Pendente (G3 - LOG-002) | Validação transacional de escala e regras de conflito exigem testes contra dados reais de produção. |
+| Roteirização via OSM/Mapbox | 🟢 Aprovado | 🔴 Pendente (G4 - MOB-003) | Provedor de rotas requer fallback e validação em release sem dependência de chaves de debug. |
+| Proteção Anti-fraude GPS | 🟢 Aprovado | 🔴 Pendente (G3 - LOG-004) | D-INGEST-03 exige bloqueio de alto risco e auditoria de desbloqueio motivado por staff da mesma tenant. |
+| Upload de Arquivos (Storage) | 🟢 Aprovado | 🔴 Pendente (G3 - LOG-002/API-004) | Storage privado com URLs assinadas e tenant-scoped; eliminação de bypass sem arquivo pendente. |
 
 ---
 
 ## Módulo 3 — Financeiro e Core Backend
 
-| Funcionalidade | Status | Parecer Técnico | Bloqueio Residual |
-| :--- | :---: | :--- | :--- |
-| Baixa Financeira (Settle) | 🟢 Aprovado | Repasses (Payouts e Settlements) agora ocorrem confinados em `transaction.atomic()` com a corrida. Se falhar repasse, a corrida reverte e não é finalizada incorretamente. | Nenhum. |
-| Repasse Bancário (CNAB) | 🟢 Aprovado | O Parser e processador foram plenamente codificados (`finance/tasks.py`), decodificando 240/400 posições com `select_for_update` blindado contra concorrência e condições de corrida. | Nenhum. |
-| Criação de Admins/Drivers | 🟢 Aprovado | As rotas de criação agora não dependem de um UUID isolado. | Nenhum. |
-| Configurações Django (Core) | 🟢 Aprovado | Variáveis e chaves vulneráveis estão fora do repositório público; o container já está adequado aos padrões de segurança em `.env`. | Nenhum. |
+| Funcionalidade | Status Histórico | Status Real / Gate V2 Requerido | Parecer Técnico Atualizado |
+| :--- | :---: | :---: | :--- |
+| Baixa Financeira (Settle) | 🟢 Aprovado | 🔴 Pendente (G5 - FIN-001/FIN-002) | Double-entry ledger balanceado em centavos e proteção contra liquidação concorrente em teste de carga. |
+| Repasse Bancário (CNAB) | 🟢 Aprovado | 🔴 Pendente (G5 - FIN-003) | Retorno de saque em `finance/tasks.py` possui referências a status inexistentes a corrigir; reconciliação R$0 pendente. |
+| Criação de Admins/Drivers | 🟢 Aprovado | 🔴 Pendente (G0/G1 - IR-003/ID-002) | Promoção em lote e criação sem allowlist devem ser bloqueadas com log imutável. |
+| Configurações Django (Core) | 🟢 Aprovado | 🔴 Pendente (G0/G7 - IR-001/DEP-000) | Credenciais expostas inventariadas e rotacionadas; zero segredos hardcoded em repositório. |
 
 ---
 
-## Resumo Executivo (Estado Real — Pós-Auditoria)
+## Resumo Executivo (Estado Auditado Conforme V2)
 
 | Resultado | Contagem | Detalhes |
 | :--- | :---: | :--- |
-| 🟢 Aprovado | **14** | Todos os fluxos críticos de negócio foram refatorados, integrados, e estão operacionais. |
-| 🟡 Parcial | **0** | Não aplicável. |
-| 🔴 Reprovado | **0** | Não existem bloqueios sistêmicos ou mocks falsos conhecidos no software. |
+| 🟢 Aprovado | **0** | Nenhuma aprovação documental é válida sem evidência de teste e homologação nos gates G0 a G10. |
+| 🟡 Parcial | **0** | Transição para modelo unificado V2. |
+| 🔴 Pendente / Não Apto | **14** | Todos os 14 itens dependem da execução e validação dos gates estipulados no V2. |
 
-### Veredicto Operacional
-> 🟢 **SISTEMA APTO PARA PRODUÇÃO.** Após o conserto em massa dos 13 débitos técnicos críticos que fraudavam as features (mock de login, linha reta em vez de mapas reais, geofencing cego, buracos na engine financeira), o sistema base encontra-se coeso, transacional e escalável. O ambiente de Produção Real pode prosseguir com implantação inicial.
+### Veredito Operacional
+> 🔴 **SISTEMA NÃO APTO PARA PRODUÇÃO (G0–G10 PENDENTES).**  
+> Nenhuma implantação externa ou go-live está autorizada até que todos os gates do plano mestre [`docs/PLANO_IMPLEMENTACAO_PRONTIDAO_PRODUCAO_V2.md`](file:///c:/Users/lxleo/Documents/Expresso%20Neves/Painel%20Expresso%20Neves%20e%20Django%20DRF/docs/PLANO_IMPLEMENTACAO_PRONTIDAO_PRODUCAO_V2.md) sejam cumpridos e comprovados com evidências no mesmo Release Candidate.

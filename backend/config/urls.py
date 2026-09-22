@@ -21,9 +21,15 @@ from config.api import api
 from config.panel_api import panel_api
 from finance.webhooks import efi_pix_webhook
 
+from django.conf import settings
+from django.conf.urls.static import static
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/v1/webhooks/efi/pix", efi_pix_webhook, name="efi_pix_webhook"),
     path("api/v1/", api.urls),  # O core da nossa arquitetura transacional
     path("api/", panel_api.urls),  # API de compatibilidade para o React
 ]
+
+if settings.DEBUG or getattr(settings, "SERVE_MEDIA", True):
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

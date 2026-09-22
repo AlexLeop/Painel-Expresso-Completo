@@ -122,6 +122,20 @@ def setup_accounting_tables(db):
             )
         """)
         cur.execute("""
+            CREATE TABLE IF NOT EXISTS "Stop" (
+                id CHAR(32) PRIMARY KEY,
+                operator_id CHAR(32) NOT NULL,
+                order_id CHAR(32) NOT NULL,
+                sequence INT NOT NULL,
+                type VARCHAR(20) NOT NULL DEFAULT 'DROPOFF',
+                geom TEXT,
+                "requiresPin" BOOLEAN DEFAULT 0,
+                "deliveryPinHash" TEXT,
+                "completedAt" TIMESTAMP,
+                metadata TEXT DEFAULT '{}'
+            )
+        """)
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS "ManualEntry" (
                 id CHAR(32) PRIMARY KEY,
                 operator_id CHAR(32) NOT NULL,

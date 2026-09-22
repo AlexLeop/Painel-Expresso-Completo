@@ -1,11 +1,11 @@
 import { logger } from "@/lib/logger";
 /**
- * Company Config Store — Supabase-primary pattern
- * Primary: Supabase via /api/db/configs (source of truth)
+ * Company Config Store — Native Backend API pattern
+ * Primary: Django Ninja via /api/v1/db/configs (PostgreSQL source of truth)
  * Cache: localStorage (for instant reads + offline fallback)
  *
- * Reads use local cache. Writes go to Supabase + update cache.
- * pullConfigFromSupabase() syncs Supabase → local cache on mount.
+ * Reads use local cache. Writes go to Backend API + update cache.
+ * pullConfigFromBackend() syncs Backend API → local cache on mount.
  */
 
 import { authFetch } from "../lib/api";
@@ -204,7 +204,7 @@ export function getDefaultConfig(): Omit<
 }
 
 // ============================================================
-// Pull from Supabase → Local Cache (on mount)
+// Pull from Backend API → Local Cache (on mount)
 // ============================================================
 
 export function parseVal(val: any, fallback: number): number {
@@ -213,7 +213,7 @@ export function parseVal(val: any, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
-export async function pullConfigFromSupabase(
+export async function pullConfigFromBackend(
   companyId: number,
   companyName?: string,
 ): Promise<CompanyConfig | null> {
@@ -272,10 +272,13 @@ export async function pullConfigFromSupabase(
 
     return config;
   } catch (err) {
-    logger.warn("[ConfigStore] Pull from Supabase failed:", err);
+    logger.warn("[ConfigStore] Pull from backend failed:", err);
     return null;
   }
 }
+
+/** @deprecated Supabase foi descontinuado. Use pullConfigFromBackend */
+export const pullConfigFromSupabase = pullConfigFromBackend;
 
 // ============================================================
 // Helpers

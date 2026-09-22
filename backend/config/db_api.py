@@ -1805,29 +1805,34 @@ def dispatch_store_ride(request, payload: DispatchStoreRidePayload):
         metadata["cliente_telefone"] = first_d.telefone
         metadata["entrega_endereco"] = f"{first_d.endereco}, {first_d.numero}"
 
-    order = Order.objects.create(
-        id=uuid.uuid4(),
-        operator=store.operator,
-        store=store,
-        driver=driver,
-        status=initial_status,
-        fareValueCents=payload.valor_estimado_cents,
-        distanceMeters=payload.distancia_metros,
-        businessDate=now.date(),
-        requestedAt=now,
-        acceptedAt=now if driver else None,
-        metadata=metadata,
-    )
+    if not payload.destinos:
+        return {"success": False, "error": "A corrida deve conter ao menos um destino (DROPOFF)."}
 
-    # Criar Parada de Coleta (PICKUP)
-    try:
-        from django.contrib.gis.geos import Point
-        pt = Point(payload.coleta_lng or -47.9292, payload.coleta_lat or -15.7801, srid=4326)
-        pickup_geom = None if hasattr(pt, "resolve_expression") else pt
-    except Exception:
-        pickup_geom = None
+    from django.db import transaction
 
-    try:
+    with transaction.atomic():
+        order = Order.objects.create(
+            id=uuid.uuid4(),
+            operator=store.operator,
+            store=store,
+            driver=driver,
+            status=initial_status,
+            fareValueCents=payload.valor_estimado_cents,
+            distanceMeters=payload.distancia_metros,
+            businessDate=now.date(),
+            requestedAt=now,
+            acceptedAt=now if driver else None,
+            metadata=metadata,
+        )
+
+        # Criar Parada de Coleta (PICKUP)
+        try:
+            from django.contrib.gis.geos import Point
+            pt = Point(payload.coleta_lng or -47.9292, payload.coleta_lat or -15.7801, srid=4326)
+            pickup_geom = None if hasattr(pt, "resolve_expression") else pt
+        except Exception:
+            pickup_geom = None
+
         Stop.objects.create(
             id=uuid.uuid4(),
             operator=store.operator,
@@ -1837,20 +1842,16 @@ def dispatch_store_ride(request, payload: DispatchStoreRidePayload):
             geom=pickup_geom,
             metadata={"endereco": payload.coleta_endereco or store.name},
         )
-    except Exception:
-        pass
 
-    # Criar Paradas de Entrega (DROPOFF)
-    seq = 2
-    for d in payload.destinos:
-        try:
-            from django.contrib.gis.geos import Point
-            dpt = Point(d.lng or -47.9292, d.lat or -15.7801, srid=4326)
-            drop_geom = None if hasattr(dpt, "resolve_expression") else dpt
-        except Exception:
-            drop_geom = None
+        # Criar Paradas de Entrega (DROPOFF)
+        for seq, d in enumerate(payload.destinos, start=2):
+            try:
+                from django.contrib.gis.geos import Point
+                dpt = Point(d.lng or -47.9292, d.lat or -15.7801, srid=4326)
+                drop_geom = None if hasattr(dpt, "resolve_expression") else dpt
+            except Exception:
+                drop_geom = None
 
-        try:
             Stop.objects.create(
                 id=uuid.uuid4(),
                 operator=store.operator,
@@ -1867,9 +1868,6 @@ def dispatch_store_ride(request, payload: DispatchStoreRidePayload):
                     "notas": d.notas,
                 },
             )
-        except Exception:
-            pass
-        seq += 1
 
     return {
         "success": True,

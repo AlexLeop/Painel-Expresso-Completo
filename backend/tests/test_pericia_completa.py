@@ -549,19 +549,33 @@ class TestFastLaneTokenIndex:
 class TestDockerBootstrap:
     """Valida que o Docker cria roles Supabase e aplica schema (Fase 5 Q2+Q3)."""
 
+    def _get_init_path(self):
+        backend_dir = os.path.dirname(os.path.dirname(__file__))
+        repo_root = os.path.dirname(backend_dir)
+        for d in [repo_root, backend_dir]:
+            p = os.path.join(d, "docker", "init.sql")
+            if os.path.exists(p):
+                return p
+        return os.path.join(repo_root, "docker", "init.sql")
+
+    def _get_compose_path(self):
+        backend_dir = os.path.dirname(os.path.dirname(__file__))
+        repo_root = os.path.dirname(backend_dir)
+        for d in [repo_root, backend_dir]:
+            p = os.path.join(d, "docker-compose.yml")
+            if os.path.exists(p):
+                return p
+        return os.path.join(repo_root, "docker-compose.yml")
+
     def test_init_sql_exists(self):
         """Q2: init.sql deve existir em docker/."""
-        init_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "docker", "init.sql"
-        )
+        init_path = self._get_init_path()
         assert os.path.exists(init_path), "docker/init.sql deve existir"
 
     def test_init_sql_creates_roles(self):
         """Q2: init.sql deve criar roles authenticated, anon, service_role."""
-        init_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "docker", "init.sql"
-        )
-        with open(init_path, "r") as f:
+        init_path = self._get_init_path()
+        with open(init_path, "r", encoding="utf-8") as f:
             content = f.read()
 
         assert "authenticated" in content, "Deve criar role authenticated"
@@ -570,10 +584,8 @@ class TestDockerBootstrap:
 
     def test_init_sql_grants_role_to_postgres(self):
         """O user postgres deve poder fazer SET ROLE para as roles criadas."""
-        init_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "docker", "init.sql"
-        )
-        with open(init_path, "r") as f:
+        init_path = self._get_init_path()
+        with open(init_path, "r", encoding="utf-8") as f:
             content = f.read()
 
         assert "GRANT authenticated TO postgres" in content
@@ -583,10 +595,8 @@ class TestDockerBootstrap:
 
     def test_docker_compose_redis_unified_db(self):
         """Fase 4 Achado #28: Todos os serviços devem usar Redis /1."""
-        compose_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), "docker-compose.yml"
-        )
-        with open(compose_path, "r") as f:
+        compose_path = self._get_compose_path()
+        with open(compose_path, "r", encoding="utf-8") as f:
             content = f.read()
 
         # /2 NÃO deve aparecer em nenhum lugar

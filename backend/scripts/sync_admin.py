@@ -3,9 +3,23 @@ import sys
 import psycopg
 from supabase import create_client
 
-SUPABASE_URL = "https://mdrutawgropwgsmwygtz.supabase.co"
-SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1kcnV0YXdncm9wd2dzbXd5Z3R6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MTc0NTI3NSwiZXhwIjoyMDk3MzIxMjc1fQ.yOnMaVfpwksz_9TdufDMOVVDHIeZHTuuJGsM7uPiLMY"
-DATABASE_URL = "postgresql://postgres.mdrutawgropwgsmwygtz:91203095_%23%23%40@aws-1-us-west-2.pooler.supabase.com:5432/postgres"
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+env_file = BASE_DIR / ".env"
+if env_file.exists():
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line.startswith("SUPABASE_URL=") and not os.environ.get("SUPABASE_URL"):
+            os.environ["SUPABASE_URL"] = line.split("=", 1)[1].strip().strip('"').strip("'")
+        elif line.startswith("SUPABASE_SERVICE_ROLE_KEY=") and not os.environ.get("SUPABASE_SERVICE_ROLE_KEY"):
+            os.environ["SUPABASE_SERVICE_ROLE_KEY"] = line.split("=", 1)[1].strip().strip('"').strip("'")
+        elif line.startswith("DATABASE_URL=") and not os.environ.get("DATABASE_URL"):
+            os.environ["DATABASE_URL"] = line.split("=", 1)[1].strip().strip('"').strip("'")
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 # 1. Obter usuários do Supabase Auth
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
