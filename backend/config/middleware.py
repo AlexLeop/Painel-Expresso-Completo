@@ -36,24 +36,24 @@ class NativeAuthRLSMiddleware:
 
             # Se a conexão for PostgreSQL, injeta os claims para conformidade com RLS
             if connection.vendor == "postgresql":
-                from django.db import transaction
-
-                with transaction.atomic():
+                rls_claims = {
+                    "sub": jwt_payload.get("sub"),
+                    "email": jwt_payload.get("email"),
+                    "app_metadata": {
+                        "role": "platform_admin" if jwt_payload.get("is_platform_admin") else jwt_payload.get("role"),
+                        "operator_id": str(jwt_payload.get("operator_id") or ""),
+                    },
+                }
+                try:
                     with connection.cursor() as cursor:
-                        # Prepara o formato esperado pelas funções SQL is_platform_admin() e current_operator_id()
-                        rls_claims = {
-                            "sub": jwt_payload.get("sub"),
-                            "email": jwt_payload.get("email"),
-                            "app_metadata": {
-                                "role": "platform_admin" if jwt_payload.get("is_platform_admin") else jwt_payload.get("role"),
-                                "operator_id": str(jwt_payload.get("operator_id") or ""),
-                            },
-                        }
                         cursor.execute(
-                            "SELECT set_config('request.jwt.claims', %s, true);",
+                            "SELECT set_config('request.jwt.claims', %s, false);",
                             [json.dumps(rls_claims)],
                         )
                     return self.get_response(request)
+                finally:
+                    with connection.cursor() as cursor:
+                        cursor.execute("SELECT set_config('request.jwt.claims', '', false);")
 
         # Requests sem auth rodam sem claims ou com SET LOCAL ROLE anon no Postgres
         return self.get_response(request)

@@ -480,7 +480,6 @@ def process_withdrawal_remessas():
     from finance.models import WithdrawalRequest
     from accounts.models import Operator
     from finance.cnab_generator import CNAB240RemessaBuilder
-    from config.supabase_client import supabase
     from django.db import transaction
     from datetime import datetime
 

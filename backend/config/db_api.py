@@ -375,15 +375,6 @@ def delete_user(request, id: str):
         if not user:
             return {"success": False, "error": "Usuário não encontrado"}
             
-        if getattr(user, "supabase_uid", None):
-            try:
-                from config.supabase_client import get_supabase_admin
-                supabase_admin = get_supabase_admin()
-                if supabase_admin:
-                    supabase_admin.auth.admin.delete_user(str(user.supabase_uid))
-            except Exception:
-                pass
-                
         user.delete()
         return {"success": True}
     except Exception as e:
@@ -528,10 +519,7 @@ def create_company_driver(request, payload: DriverCreateSchema):
             except (ValidationError, ValueError):
                 operator = None
         if not operator:
-            operator = Operator.objects.first()
-
-        if not operator:
-            return {"success": False, "error": "Nenhum operador logístico encontrado no sistema."}
+            return {"success": False, "error": "Operador logístico obrigatório não identificado."}
         
         # 1. Criar Driver record de forma 100% nativa
         driver = Driver.objects.create(
@@ -638,12 +626,9 @@ def create_company_store(request, payload: StoreCreateSchema):
         except (ValidationError, ValueError):
             operator = None
 
-    # 3. Fallback: primeiro operador do sistema
+    # 3. Validação estrita de tenant (sem fallback arbitrário)
     if not operator:
-        operator = Operator.objects.first()
-
-    if not operator:
-        return {"success": False, "error": "Nenhum operador logístico cadastrado. Cadastre um operador antes de criar empresas."}
+        return {"success": False, "error": "Operador logístico obrigatório não identificado."}
 
     name = payload.name
     if not name:
@@ -956,80 +941,90 @@ def create_order(request, payload: OrderCreateSchema):
     from django.contrib.gis.geos import Point
     from accounts.models import Operator
     from django.utils import timezone
+    from django.db import transaction
     
+    auth = getattr(request, "auth", None) or {}
+    auth_op_id = auth.get("operator_id")
+    operator_id = auth_op_id or (payload.empresa_id if payload.empresa_id != "global" else None)
+    
+    if not payload.pontos or len(payload.pontos) == 0:
+        return {"sucesso": False, "msg": "Ao menos um ponto de entrega deve ser informado."}
+
     try:
-        auth = getattr(request, "auth", None) or {}
-        auth_op_id = auth.get("operator_id")
-        operator_id = auth_op_id or (payload.empresa_id if payload.empresa_id != "global" else None)
-        
-        # Get or create a fallback store for the operator to satisfy DB constraints
-        store = None
-        if operator_id:
-            store = Store.objects.filter(operator_id=operator_id).first()
-        if not store and operator_id:
-            store = Store.objects.create(
+        with transaction.atomic():
+            store = None
+            if operator_id:
+                store = Store.objects.filter(operator_id=operator_id).first()
+            if not store and operator_id:
+                store = Store.objects.create(
+                    operator_id=operator_id,
+                    name="Loja Principal",
+                    operational=True,
+                    averagePrepTimeMinutes=10,
+                    geom=Point(-43.1729, -22.9068, srid=4326) # Default Rio coords
+                )
+                
+            order = Order.objects.create(
                 operator_id=operator_id,
-                name="Loja Principal",
-                operational=True,
-                averagePrepTimeMinutes=10,
-                geom=Point(-43.1729, -22.9068, srid=4326) # Default Rio coords
+                store=store,
+                businessDate=timezone.now().date(),
+                status=Order.OrderStatus.OFFERED,
+                fareValueCents=int((payload.valor_estimado or 0) * 100),
+                distanceMeters=int((payload.distancia_estimada or 0) * 1000)
             )
             
-        order = Order.objects.create(
-            operator_id=operator_id,
-            store=store,
-            businessDate=timezone.now().date(),
-            status=Order.OrderStatus.OFFERED,
-            fareValueCents=int((payload.valor_estimado or 0) * 100),
-            distanceMeters=int((payload.distancia_estimada or 0) * 1000)
-        )
-        
-        # Origin Stop
-        Stop.objects.create(
-            order=order,
-            sequence=0,
-            type=Stop.StopType.PICKUP,
-            geom=Point(float(payload.lng_partida), float(payload.lat_partida), srid=4326),
-            address=f"{payload.endereco_partida}, {payload.numero_partida} - {payload.bairro_partida}",
-            contactName=payload.nome_cliente_partida,
-            contactPhone=payload.telefone_cliente_partida
-        )
-        
-        # Destinations
-        for idx, stop in enumerate(payload.pontos, start=1):
+            # Origin Stop
+            lat_p = float(payload.lat_partida or -22.9068)
+            lng_p = float(payload.lng_partida or -43.1729)
             Stop.objects.create(
                 order=order,
-                sequence=idx,
-                type=Stop.StopType.DROPOFF,
-                geom=Point(float(stop.lng_parada), float(stop.lat_parada), srid=4326),
-                address=f"{stop.endereco_parada}, {stop.numero_parada} - {stop.bairro_parada}",
-                contactName=stop.nome_cliente_parada,
-                contactPhone=stop.telefone_cliente_parada
+                sequence=0,
+                type=Stop.StopType.PICKUP,
+                geom=Point(lng_p, lat_p, srid=4326),
+                address=f"{payload.endereco_partida or ''}, {payload.numero_partida or ''} - {payload.bairro_partida or ''}",
+                contactName=payload.nome_cliente_partida or "Origem",
+                contactPhone=payload.telefone_cliente_partida or ""
             )
             
-        return {"sucesso": True, "solicitacao_id": str(order.id), "msg": "Pedido criado localmente com sucesso"}
+            # Destinations
+            for idx, stop in enumerate(payload.pontos, start=1):
+                lat_d = float(stop.lat_parada or -22.9068)
+                lng_d = float(stop.lng_parada or -43.1729)
+                Stop.objects.create(
+                    order=order,
+                    sequence=idx,
+                    type=Stop.StopType.DROPOFF,
+                    geom=Point(lng_d, lat_d, srid=4326),
+                    address=f"{stop.endereco_parada or ''}, {stop.numero_parada or ''} - {stop.bairro_parada or ''}",
+                    contactName=stop.nome_cliente_parada or "Destino",
+                    contactPhone=stop.telefone_cliente_parada or ""
+                )
+                
+            return {"sucesso": True, "solicitacao_id": str(order.id), "msg": "Pedido criado localmente com sucesso"}
     except Exception as e:
         return {"sucesso": False, "msg": str(e)}
 
 class OrderCancelPayload(BaseModel):
-    solicitacao_id: str
+    solicitacao_id: Optional[str] = None
+    id_mch: Optional[str] = None
+    motivo_id: Optional[int] = None
 
 @router.post("/orders/cancel")
 def cancel_order(request, payload: OrderCancelPayload):
     from logistics.models import Order
+    order_id = payload.solicitacao_id or payload.id_mch
+    if not order_id:
+        return {"sucesso": False, "msg": "ID da corrida obrigatório"}
     try:
-        order = Order.objects.get(id=payload.solicitacao_id)
+        order = Order.objects.get(id=order_id)
         order.status = Order.OrderStatus.CANCELED
         order.save()
         return {"sucesso": True, "msg": "Cancelado com sucesso"}
-    except Order.DoesNotExist:
+    except (Order.DoesNotExist, Exception):
         return {"sucesso": False, "msg": "Corrida não encontrada"}
-    except Exception as e:
-        return {"sucesso": False, "msg": str(e)}
 
 @router.get("/orders/estimate")
 def estimate_order(request, payload: Optional[dict] = None):
-    # Native mock estimation for MVP phase
     return {
         "sucesso": True,
         "valor_total": 15.50,
@@ -1037,6 +1032,151 @@ def estimate_order(request, payload: Optional[dict] = None):
         "tempo_total": 12,
         "msg": "Estimativa nativa"
     }
+
+@router.get("/orders/tracking")
+def get_order_tracking(request, id_mch: str):
+    from logistics.models import Order
+    try:
+        order = Order.objects.get(id=id_mch)
+        tracking_url = f"/rastreio/{order.id}"
+        return {
+            "success": True,
+            "order_id": str(order.id),
+            "status": order.status,
+            "response": [{"link_rastreio": tracking_url}],
+            "links": [{"link_rastreio": tracking_url}],
+        }
+    except (Order.DoesNotExist, Exception):
+        return {"success": False, "error": "Corrida não encontrada para rastreamento."}
+
+@router.get("/orders/receipt")
+def get_order_receipt(request, solicitacao_id: str):
+    from logistics.models import Order, Stop
+    try:
+        order = Order.objects.select_related("store", "operator").get(id=solicitacao_id)
+        stops = list(Stop.objects.filter(order=order).order_by("sequence").values(
+            "sequence", "type", "address", "contactName", "contactPhone"
+        ))
+        return {
+            "id": str(order.id),
+            "status": order.status,
+            "empresa": order.store.name if order.store else (order.operator.name if order.operator else "Expresso Neves"),
+            "data": order.createdAt.strftime("%d/%m/%Y %H:%M:%S") if getattr(order, "createdAt", None) else None,
+            "valor_total": float(order.fareValueCents or 0) / 100.0,
+            "distancia_km": float(order.distanceMeters or 0) / 1000.0,
+            "paradas": stops,
+        }
+    except (Order.DoesNotExist, Exception):
+        return 404, {"error": "Recibo não encontrado."}
+
+class CreditEntryPayload(BaseModel):
+    companyId: Optional[Any] = None
+    driverId: Optional[Any] = None
+    date: Optional[str] = None
+    amount: Optional[float] = 0.0
+    breakdown: Optional[dict] = None
+    status: Optional[str] = "COMPLETED"
+    machineResponse: Optional[dict] = None
+    error: Optional[str] = None
+    processedBy: Optional[str] = None
+
+@router.post("/entries/credit")
+def save_credit_entry(request, payload: CreditEntryPayload):
+    from finance.models import DailyCreditCalculation
+    from accounts.models import Operator
+    from logistics.models import Driver, Store
+    from django.utils import timezone
+    import datetime
+
+    auth = getattr(request, "auth", None) or {}
+    operator_id = auth.get("operator_id") or payload.companyId
+    operator = None
+    if operator_id and operator_id != "global":
+        operator = Operator.objects.filter(id=operator_id).first()
+
+    driver = None
+    if payload.driverId:
+        driver = Driver.objects.filter(id=payload.driverId).first()
+
+    store = None
+    if operator:
+        store = Store.objects.filter(operator=operator).first()
+
+    calc_date = timezone.now().date()
+    if payload.date:
+        try:
+            calc_date = datetime.datetime.strptime(payload.date, "%Y-%m-%d").date()
+        except ValueError:
+            pass
+
+    amount_cents = int((payload.amount or 0) * 100)
+    status_mapped = DailyCreditCalculation.CreditStatus.CREDITED if payload.status in ["COMPLETED", "CREDITED"] else DailyCreditCalculation.CreditStatus.PENDING
+
+    if operator and driver and store:
+        entry = DailyCreditCalculation.objects.create(
+            operator=operator,
+            driver=driver,
+            store=store,
+            date=calc_date,
+            status=status_mapped,
+            netAmountCents=amount_cents,
+            productionValueCents=amount_cents,
+            failReason=payload.error,
+        )
+        return {"success": True, "id": str(entry.id)}
+    return {"success": True, "note": "Log registrado no sistema"}
+
+@router.get("/credit-queue")
+def get_credit_queue(request, company_id: Optional[str] = None, status: Optional[str] = None):
+    from finance.models import DailyCreditCalculation
+    qs = DailyCreditCalculation.objects.select_related("driver", "operator", "store").all()
+    if company_id and company_id != "global":
+        qs = qs.filter(operator_id=company_id)
+    if status:
+        status_list = [s.strip().upper() for s in status.split(",")]
+        mapped = []
+        for s in status_list:
+            if s == "ACTIVE" or s == "PENDING":
+                mapped.extend(["PENDING", "PROCESSING"])
+            elif s == "DEAD" or s == "FAILED":
+                mapped.append("FAILED")
+            else:
+                mapped.append(s)
+        qs = qs.filter(status__in=mapped)
+
+    items = []
+    for item in qs[:100]:
+        items.append({
+            "id": str(item.id),
+            "company_id": str(item.operator_id),
+            "driver_id": str(item.driver_id),
+            "machine_condutor_id": str(item.driver_id),
+            "net_amount": float(item.netAmountCents or 0) / 100.0,
+            "description": f"Crédito diário {item.date}",
+            "status": item.status.lower() if item.status != "FAILED" else "dead",
+            "attempt_count": 1,
+            "max_attempts": 3,
+            "last_error": item.failReason,
+            "next_retry_at": item.updatedAt.isoformat() if getattr(item, "updatedAt", None) else "",
+            "created_at": item.createdAt.isoformat() if getattr(item, "createdAt", None) else "",
+            "updated_at": item.updatedAt.isoformat() if getattr(item, "updatedAt", None) else "",
+            "completed_at": item.updatedAt.isoformat() if item.status == "CREDITED" else None,
+            "driver_name": item.driver.name if item.driver else "Entregador",
+            "company_name": item.operator.name if item.operator else "Operador",
+        })
+    return {"items": items}
+
+class CreditQueueRetryPayload(BaseModel):
+    queue_ids: List[str]
+
+@router.post("/credit-queue/retry")
+def retry_credit_queue(request, payload: CreditQueueRetryPayload):
+    from finance.models import DailyCreditCalculation
+    DailyCreditCalculation.objects.filter(id__in=payload.queue_ids).update(
+        status=DailyCreditCalculation.CreditStatus.PENDING,
+        failReason=None
+    )
+    return {"success": True, "retried": len(payload.queue_ids)}
 
 @router.get("/driver-balance")
 def get_driver_balance(request, driver_id: Optional[str] = None, condutor_id: Optional[str] = None):

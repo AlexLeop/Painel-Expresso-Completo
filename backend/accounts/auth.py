@@ -52,8 +52,6 @@ def get_staff_member(request: HttpRequest) -> Optional[StaffMember]:
         op = None
         if target_operator_id:
             op = Operator.objects.filter(id=target_operator_id).first()
-        if not op:
-            op = Operator.objects.first()
 
         staff = StaffMember(
             id=admin.id if admin else uid,
@@ -61,7 +59,7 @@ def get_staff_member(request: HttpRequest) -> Optional[StaffMember]:
             email=admin.email if admin else auth.get("email", ""),
             role=StaffMember.RoleType.ADMIN,
             operator=op,
-            operator_id=op.id if op else target_operator_id,
+            operator_id=op.id if op else None,
             active=True,
         )
         staff.is_platform_admin = True

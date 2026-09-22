@@ -148,12 +148,8 @@ def _resolve_operator(request):
         try:
             return Operator.objects.get(id=op_id), None
         except Operator.DoesNotExist:
-            pass
-    # Fallback para primeiro operador em ambiente local/dev se aplicável
-    op = Operator.objects.first()
-    if op:
-        return op, None
-    raise HttpError(401, "Operador não autenticado.")
+            raise HttpError(404, "Operador logístico não encontrado.")
+    raise HttpError(401, "Operador não autenticado ou contexto multi-tenant não fornecido.")
 
 
 @router.get("/withdrawals", response={200: List[WithdrawalAdminDetailResponse], 500: dict})

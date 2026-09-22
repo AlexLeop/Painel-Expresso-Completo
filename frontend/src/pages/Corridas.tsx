@@ -2434,17 +2434,144 @@ export function Corridas() {
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 try {
-                                  const res = await fetch(
+                                  const res = await authFetch(
                                     `/api/v1/db/orders/receipt?solicitacao_id=${corrida.id}`,
                                   );
                                   if (res.ok) {
-                                    const data = await res.json();
-                                    // Open receipt in new tab as formatted page
+                                    const json = await res.json();
+                                    const rc = json.receipt || json;
+                                    const formatBRL = (v: number) =>
+                                      new Intl.NumberFormat("pt-BR", {
+                                        style: "currency",
+                                        currency: "BRL",
+                                      }).format(v || 0);
+                                    const formatDate = (isoStr: string) => {
+                                      if (!isoStr) return "—";
+                                      try {
+                                        return new Date(isoStr).toLocaleString("pt-BR", {
+                                          dateStyle: "short",
+                                          timeStyle: "short",
+                                        });
+                                      } catch {
+                                        return isoStr;
+                                      }
+                                    };
+
+                                    const stopsHtml = (rc.stops || [])
+                                      .map(
+                                        (s: any, idx: number) => `
+                                        <div style="display:flex;gap:12px;margin-bottom:12px;align-items:flex-start">
+                                          <div style="width:24px;height:24px;border-radius:50%;background:${s.type === 'C' ? '#ecfdf5' : '#eff6ff'};color:${s.type === 'C' ? '#059669' : '#2563eb'};font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center;border:1px solid ${s.type === 'C' ? '#a7f3d0' : '#bfdbfe'};flex-shrink:0;">
+                                            ${s.type === 'C' ? 'C' : 'E'}
+                                          </div>
+                                          <div style="flex:1">
+                                            <div style="font-weight:600;font-size:13px;color:#18181b">
+                                              ${s.type === 'C' ? 'Coleta' : 'Entrega ' + (idx)}
+                                              ${s.recipient ? `<span style="font-weight:normal;color:#71717a"> — Dest: ${s.recipient}</span>` : ''}
+                                            </div>
+                                            <div style="font-size:12px;color:#52525b;margin-top:2px">${s.address || 'Endereço não informado'}</div>
+                                          </div>
+                                        </div>
+                                      `
+                                      )
+                                      .join('');
+
                                     const w = window.open("", "_blank");
                                     if (w) {
-                                      w.document.write(
-                                        `<html><head><title>Recibo #${corrida.id}</title><style>body{font-family:system-ui,-apple-system,sans-serif;padding:2rem;max-width:600px;margin:0 auto;color:#18181b}pre{white-space:pre-wrap;font-size:13px;background:#f4f4f5;padding:1.5rem;border-radius:12px;border:1px solid #e4e4e7}</style></head><body><h2>Recibo — Corrida #${corrida.id}</h2><pre>${JSON.stringify(data, null, 2)}</pre></body></html>`,
-                                      );
+                                      w.document.write(`
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Comprovante #${rc.order_id || corrida.id} — Expresso Neves</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f8fafc; color: #1e293b; padding: 24px; }
+    .receipt-container { max-width: 680px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 16px rgba(0,0,0,0.04); overflow: hidden; }
+    .header-bar { background: #0f172a; color: #fff; padding: 24px 32px; display: flex; justify-content: space-between; align-items: center; }
+    .brand-title { font-size: 20px; font-weight: 800; letter-spacing: -0.5px; }
+    .brand-sub { font-size: 11px; color: #94a3b8; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .badge-status { background: #10b981; color: #ffffff; font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 9999px; text-transform: uppercase; }
+    .content-area { padding: 32px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+    .card-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; }
+    .card-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin-bottom: 10px; }
+    .card-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
+    .card-label { color: #64748b; }
+    .card-val { font-weight: 600; color: #0f172a; }
+    .stops-section { margin-bottom: 24px; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; }
+    .finance-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 20px; margin-bottom: 24px; }
+    .finance-row { display: flex; justify-content: space-between; align-items: center; font-size: 14px; margin-bottom: 8px; }
+    .finance-total { border-top: 1px solid #86efac; padding-top: 10px; margin-top: 10px; font-size: 18px; font-weight: 800; color: #166534; }
+    .actions { display: flex; gap: 12px; justify-content: flex-end; padding: 16px 32px; background: #f8fafc; border-top: 1px solid #e2e8f0; }
+    .btn { padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid transparent; transition: all 0.2s; }
+    .btn-primary { background: #0f172a; color: #fff; }
+    .btn-secondary { background: #fff; border-color: #cbd5e1; color: #475569; }
+    @media print {
+      body { background: #fff; padding: 0; }
+      .receipt-container { border: none; box-shadow: none; max-width: 100%; }
+      .actions { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="receipt-container">
+    <div class="header-bar">
+      <div>
+        <div class="brand-title">EXPRESSO NEVES</div>
+        <div class="brand-sub">Comprovante Oficial de Entrega</div>
+      </div>
+      <div class="badge-status">Concluída</div>
+    </div>
+    <div class="content-area">
+      <div class="grid-2">
+        <div class="card-info">
+          <div class="card-title">Dados da Corrida</div>
+          <div class="card-row"><span class="card-label">Identificador:</span><span class="card-val">#${rc.order_id || corrida.id}</span></div>
+          <div class="card-row"><span class="card-label">Criada em:</span><span class="card-val">${formatDate(rc.created_at)}</span></div>
+          <div class="card-row"><span class="card-label">Concluída em:</span><span class="card-val">${formatDate(rc.completed_at)}</span></div>
+          <div class="card-row"><span class="card-label">Cliente / Solicitante:</span><span class="card-val">${rc.client_name || rc.company_name || 'Expresso Neves'}</span></div>
+        </div>
+        <div class="card-info">
+          <div class="card-title">Entregador Responsável</div>
+          <div class="card-row"><span class="card-label">Nome:</span><span class="card-val">${rc.driver_name || 'Não atribuído'}</span></div>
+          <div class="card-row"><span class="card-label">Telefone:</span><span class="card-val">${rc.driver_phone || '—'}</span></div>
+          <div class="card-row"><span class="card-label">Chave PIX:</span><span class="card-val">${rc.driver_pix || '—'}</span></div>
+          <div class="card-row"><span class="card-label">Forma Pagto:</span><span class="card-val">${rc.payment_method || 'PIX'}</span></div>
+        </div>
+      </div>
+
+      <div class="stops-section">
+        <div class="card-title" style="margin-bottom:14px">Itinerário de Paradas</div>
+        ${stopsHtml || '<p style="font-size:13px;color:#71717a">Nenhuma parada registrada.</p>'}
+      </div>
+
+      <div class="finance-box">
+        <div class="finance-row">
+          <span style="color:#166534">Valor Solicitante:</span>
+          <span style="font-weight:600;color:#166534">${formatBRL(rc.total_value)}</span>
+        </div>
+        <div class="finance-row">
+          <span style="color:#166534">Repasse do Motorista:</span>
+          <span style="font-weight:600;color:#166534">${formatBRL(rc.driver_value)}</span>
+        </div>
+        <div class="finance-row finance-total">
+          <span>Total Final:</span>
+          <span>${formatBRL(rc.total_value)}</span>
+        </div>
+      </div>
+      <div style="font-size:11px;color:#94a3b8;text-align:center">
+        Comprovante emitido eletronicamente pela plataforma Expresso Neves / NevesGo.
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn btn-secondary" onclick="window.close()">Fechar</button>
+      <button class="btn btn-primary" onclick="window.print()">Imprimir / Salvar PDF</button>
+    </div>
+  </div>
+</body>
+</html>
+                                      `);
                                       w.document.close();
                                     }
                                   } else {
