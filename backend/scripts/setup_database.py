@@ -8,7 +8,12 @@ and applies native authentication schema patches.
 import os
 import sys
 from pathlib import Path
-from typing import cast, LiteralString
+from typing import cast
+
+if sys.version_info >= (3, 11):
+    from typing import LiteralString
+else:
+    from typing_extensions import LiteralString
 from urllib.parse import urlparse, unquote
 import psycopg
 
