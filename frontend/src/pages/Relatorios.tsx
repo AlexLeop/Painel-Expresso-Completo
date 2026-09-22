@@ -71,25 +71,34 @@ export function Relatorios() {
     user?.role === "master";
   const [viewMode, setViewMode] = useState<"loja" | "motoboy">("loja");
 
-  // Período da semana
+  // Escopo de visualização: Semanal ou Mensal
+  const [periodMode, setPeriodMode] = useState<"semanal" | "mensal">("semanal");
   const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
+  const [currentMonthOffset, setCurrentMonthOffset] = useState(0);
+  const [selectedWeekIndex, setSelectedWeekIndex] = useState<number | "all">("all");
 
-  const weekPeriod = useMemo(() => {
-    const now = new Date();
-    now.setDate(now.getDate() + currentWeekOffset * 7);
-    const day = now.getDay();
-    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-    const start = new Date(now.setDate(diff));
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(start);
-    end.setDate(start.getDate() + 6);
-    end.setHours(23, 59, 59, 999);
+  // Sincronização inteligente com a configuração contratual da loja (Opção A + C)
+  useEffect(() => {
+    const cycle = storeConfig?.billingCycle || (storeConfig as any)?.report?.billingCycle;
+    if (cycle === "MENSAL") {
+      setPeriodMode("mensal");
+    }
+  }, [storeConfig]);
 
-    return {
-      start: formatDateISO(start),
-      end: formatDateISO(end),
-      label: `${start.toLocaleDateString("pt-BR")} a ${end.toLocaleDateString("pt-BR")}`,
-      dates: Array.from({ length: 7 }, (_, i) => {
+  // Período Ativo (Semanal ou Mensal)
+  const activePeriod = useMemo(() => {
+    if (periodMode === "semanal") {
+      const now = new Date();
+      now.setDate(now.getDate() + currentWeekOffset * 7);
+      const day = now.getDay();
+      const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+      const start = new Date(now.setDate(diff));
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      end.setHours(23, 59, 59, 999);
+
+      const dates = Array.from({ length: 7 }, (_, i) => {
         const d = new Date(start);
         d.setDate(start.getDate() + i);
         return {
@@ -103,9 +112,118 @@ export function Relatorios() {
             month: "2-digit",
           }),
         };
-      }),
-    };
-  }, [currentWeekOffset]);
+      });
+
+      return {
+        mode: "semanal" as const,
+        start: formatDateISO(start),
+        end: formatDateISO(end),
+        label: `${start.toLocaleDateString("pt-BR")} a ${end.toLocaleDateString("pt-BR")}`,
+        dates,
+        weeks: [
+          {
+            weekIndex: 1,
+            label: `${start.toLocaleDateString("pt-BR")} a ${end.toLocaleDateString("pt-BR")}`,
+            start: formatDateISO(start),
+            end: formatDateISO(end),
+            dates,
+          },
+        ],
+      };
+    } else {
+      // Modo MENSAL
+      const now = new Date();
+      now.setDate(1);
+      now.setMonth(now.getMonth() + currentMonthOffset);
+      const year = now.getFullYear();
+      const month = now.getMonth();
+
+      const start = new Date(year, month, 1, 0, 0, 0, 0);
+      const end = new Date(year, month + 1, 0, 23, 59, 59, 999);
+      const totalDays = end.getDate();
+
+      const monthNamesPt = [
+        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+      ];
+      const monthLabel = `${monthNamesPt[month]} de ${year}`;
+
+      const allDates = Array.from({ length: totalDays }, (_, i) => {
+        const d = new Date(year, month, i + 1);
+        return {
+          iso: formatDateISO(d),
+          label: d
+            .toLocaleDateString("pt-BR", { weekday: "short" })
+            .toUpperCase()
+            .replace(".", ""),
+          fullLabel: d.toLocaleDateString("pt-BR", {
+            day: "2-digit",
+            month: "2-digit",
+          }),
+        };
+      });
+
+      // Agrupa os dias em blocos semanais cronológicos do mês
+      const weeks: Array<{
+        weekIndex: number;
+        label: string;
+        start: string;
+        end: string;
+        dates: typeof allDates;
+      }> = [];
+
+      let currentChunk: typeof allDates = [];
+      let weekCount = 1;
+
+      for (let i = 0; i < allDates.length; i++) {
+        currentChunk.push(allDates[i]);
+        const dObj = new Date(allDates[i].iso + "T12:00:00");
+        // Domingo (0) ou último dia do mês encerra o bloco semanal
+        if (dObj.getDay() === 0 || i === allDates.length - 1) {
+          const wStart = currentChunk[0].iso;
+          const wEnd = currentChunk[currentChunk.length - 1].iso;
+          const sDate = new Date(wStart + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+          const eDate = new Date(wEnd + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+          weeks.push({
+            weekIndex: weekCount++,
+            label: `Semana ${weekCount - 1} (${sDate} a ${eDate})`,
+            start: wStart,
+            end: wEnd,
+            dates: [...currentChunk],
+          });
+          currentChunk = [];
+        }
+      }
+
+      return {
+        mode: "mensal" as const,
+        start: formatDateISO(start),
+        end: formatDateISO(end),
+        label: monthLabel,
+        dates: allDates,
+        weeks,
+      };
+    }
+  }, [periodMode, currentWeekOffset, currentMonthOffset]);
+
+  // Dias atualmente visíveis na tabela e relatórios (Mês Completo ou Semana selecionada)
+  const displayedDates = useMemo(() => {
+    if (periodMode === "mensal" && selectedWeekIndex !== "all") {
+      const found = activePeriod.weeks.find((w) => w.weekIndex === selectedWeekIndex);
+      if (found) return found.dates;
+    }
+    return activePeriod.dates;
+  }, [periodMode, selectedWeekIndex, activePeriod]);
+
+  // Alias compatível com toda a lógica existente de visualização e exportação
+  const weekPeriod = useMemo(() => ({
+    ...activePeriod,
+    dates: displayedDates,
+    label:
+      periodMode === "mensal" && selectedWeekIndex !== "all"
+        ? `${activePeriod.label} — ${activePeriod.weeks.find((w) => w.weekIndex === selectedWeekIndex)?.label || ""}`
+        : activePeriod.label,
+  }), [activePeriod, displayedDates, periodMode, selectedWeekIndex]);
 
   const loadData = useCallback(async () => {
     if (!companyId) return;
@@ -118,15 +236,15 @@ export function Relatorios() {
 
       await pullEntriesFromSupabase(
         companyId,
-        weekPeriod.start,
-        weekPeriod.end,
+        activePeriod.start,
+        activePeriod.end,
       );
 
       try {
         // A Machine API não suporta filtros de data — buscamos um lote grande
         // e filtramos no cliente, igual ao frontend antigo.
-        const expandedStart = addDaysISO(weekPeriod.start, -1);
-        const expandedEnd = addDaysISO(weekPeriod.end, 1);
+        const expandedStart = addDaysISO(activePeriod.start, -1);
+        const expandedEnd = addDaysISO(activePeriod.end, 1);
 
         const allRides: any[] = [];
         const limit = 500;
@@ -215,17 +333,6 @@ export function Relatorios() {
         cdList.forEach((d) => uuidToMachine.set(d.driverUUID, d.driverId));
 
         if (companyUUID) {
-          const schedRes = await authFetch(
-            `/api/schedules?company_id=${encodeURIComponent(companyUUID)}&week_start=${encodeURIComponent(weekPeriod.start)}`,
-          );
-          const schedData = schedRes.ok ? await schedRes.json() : null;
-          const schedules = Array.isArray(schedData?.schedules)
-            ? schedData.schedules
-            : [];
-          const entries = schedules.flatMap((s: any) =>
-            Array.isArray(s?.schedule_entries) ? s.schedule_entries : [],
-          );
-
           const map: Record<string, Record<string, number>> = {};
           const shifts: Record<
             string,
@@ -240,36 +347,54 @@ export function Relatorios() {
               }>
             >
           > = {};
-          for (const e of entries) {
-            const driverUUID = String(e.driver_id || "");
-            const machineId = String(
-              (e?.driver as any)?.machine_condutor_id ||
-                uuidToMachine.get(driverUUID) ||
-                "",
-            );
-            if (!machineId) continue;
-            const date = String(e.entry_date || "");
-            if (!date) continue;
-            const val = Number(e.daily_rate || 0);
-            if (!map[machineId]) map[machineId] = {};
-            map[machineId][date] =
-              (map[machineId][date] || 0) + (Number.isFinite(val) ? val : 0);
 
-            const shiftStart = String(e.shift_start || "");
-            const shiftEnd = String(e.shift_end || "");
-            if (shiftStart && shiftEnd) {
-              if (!shifts[machineId]) shifts[machineId] = {};
-              if (!shifts[machineId][date]) shifts[machineId][date] = [];
-              shifts[machineId][date].push({
-                start: shiftStart,
-                end: shiftEnd,
-                dailyRate: val,
-                label: String(e.shift_label || ""),
-                minGuaranteedOverride:
-                  e.min_guaranteed_override != null
-                    ? Number(e.min_guaranteed_override)
-                    : null,
-              });
+          for (const w of activePeriod.weeks) {
+            try {
+              const schedRes = await authFetch(
+                `/api/schedules?company_id=${encodeURIComponent(companyUUID)}&week_start=${encodeURIComponent(w.start)}`,
+              );
+              const schedData = schedRes.ok ? await schedRes.json() : null;
+              const schedules = Array.isArray(schedData?.schedules)
+                ? schedData.schedules
+                : [];
+              const entries = schedules.flatMap((s: any) =>
+                Array.isArray(s?.schedule_entries) ? s.schedule_entries : [],
+              );
+
+              for (const e of entries) {
+                const driverUUID = String(e.driver_id || "");
+                const machineId = String(
+                  (e?.driver as any)?.machine_condutor_id ||
+                    uuidToMachine.get(driverUUID) ||
+                    "",
+                );
+                if (!machineId) continue;
+                const date = String(e.entry_date || "");
+                if (!date) continue;
+                const val = Number(e.daily_rate || 0);
+                if (!map[machineId]) map[machineId] = {};
+                map[machineId][date] =
+                  (map[machineId][date] || 0) + (Number.isFinite(val) ? val : 0);
+
+                const shiftStart = String(e.shift_start || "");
+                const shiftEnd = String(e.shift_end || "");
+                if (shiftStart && shiftEnd) {
+                  if (!shifts[machineId]) shifts[machineId] = {};
+                  if (!shifts[machineId][date]) shifts[machineId][date] = [];
+                  shifts[machineId][date].push({
+                    start: shiftStart,
+                    end: shiftEnd,
+                    dailyRate: val,
+                    label: String(e.shift_label || ""),
+                    minGuaranteedOverride:
+                      e.min_guaranteed_override != null
+                        ? Number(e.min_guaranteed_override)
+                        : null,
+                  });
+                }
+              }
+            } catch {
+              // ignore and continue
             }
           }
           setScheduleDailyByDriver(map);
@@ -287,7 +412,7 @@ export function Relatorios() {
     } finally {
       setLoading(false);
     }
-  }, [companyId, companyName, weekPeriod]);
+  }, [companyId, companyName, activePeriod.start, activePeriod.end]);
 
   useEffect(() => {
     loadData();
@@ -1079,6 +1204,36 @@ export function Relatorios() {
                 </button>
               </div>
             )}
+
+            {/* Toggle de Escopo: Semanal / Mensal */}
+            <div className="flex bg-zinc-100 p-1 rounded-lg border border-zinc-200 mr-2">
+              <button
+                onClick={() => {
+                  setPeriodMode("semanal");
+                  setSelectedWeekIndex("all");
+                }}
+                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+                  periodMode === "semanal"
+                    ? "bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-200"
+                    : "text-zinc-500 hover:text-zinc-700"
+                }`}
+              >
+                Semanal
+              </button>
+              <button
+                onClick={() => {
+                  setPeriodMode("mensal");
+                  setSelectedWeekIndex("all");
+                }}
+                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+                  periodMode === "mensal"
+                    ? "bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-200"
+                    : "text-zinc-500 hover:text-zinc-700"
+                }`}
+              >
+                Mensal
+              </button>
+            </div>
             <button
               onClick={() => {
                 if (!reportData) return;
@@ -1193,25 +1348,73 @@ export function Relatorios() {
 
           <div className="flex items-center gap-4 bg-zinc-50 px-2 py-1 rounded-xl">
             <button
-              onClick={() => setCurrentWeekOffset((o) => o - 1)}
+              onClick={() => {
+                if (periodMode === "semanal") {
+                  setCurrentWeekOffset((o) => o - 1);
+                } else {
+                  setCurrentMonthOffset((o) => o - 1);
+                  setSelectedWeekIndex("all");
+                }
+              }}
               className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all text-zinc-500 hover:text-zinc-900 focus:ring-2 focus:ring-zinc-200 outline-none"
+              title={periodMode === "semanal" ? "Semana anterior" : "Mês anterior"}
             >
               <ChevronLeft className="h-5 w-5" />
             </button>
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-zinc-400" />
               <span className="text-sm font-bold text-zinc-700 tracking-wide">
-                {weekPeriod.label}
+                {periodMode === "mensal" ? activePeriod.label : weekPeriod.label}
               </span>
             </div>
             <button
-              onClick={() => setCurrentWeekOffset((o) => o + 1)}
+              onClick={() => {
+                if (periodMode === "semanal") {
+                  setCurrentWeekOffset((o) => o + 1);
+                } else {
+                  setCurrentMonthOffset((o) => o + 1);
+                  setSelectedWeekIndex("all");
+                }
+              }}
               className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all text-zinc-500 hover:text-zinc-900 focus:ring-2 focus:ring-zinc-200 outline-none"
+              title={periodMode === "semanal" ? "Próxima semana" : "Próximo mês"}
             >
               <ChevronRight className="h-5 w-5" />
             </button>
           </div>
         </div>
+
+        {/* Abas de Semanas do Mês quando em Modo Mensal */}
+        {periodMode === "mensal" && (
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 -mt-2 mb-4 scrollbar-thin">
+            <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider pl-1 whitespace-nowrap">
+              Filtrar Semana:
+            </span>
+            <button
+              onClick={() => setSelectedWeekIndex("all")}
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap ${
+                selectedWeekIndex === "all"
+                  ? "bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-600"
+                  : "bg-white text-zinc-600 hover:bg-zinc-100 ring-1 ring-zinc-200"
+              }`}
+            >
+              Mês Completo ({activePeriod.dates.length} dias)
+            </button>
+            {activePeriod.weeks.map((w) => (
+              <button
+                key={w.weekIndex}
+                onClick={() => setSelectedWeekIndex(w.weekIndex)}
+                className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap ${
+                  selectedWeekIndex === w.weekIndex
+                    ? "bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-600"
+                    : "bg-white text-zinc-600 hover:bg-zinc-100 ring-1 ring-zinc-200"
+                }`}
+              >
+                {w.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Table Section - Escala Equilibrada */}
         <div className="bg-white rounded-2xl shadow-sm ring-1 ring-zinc-200/60 overflow-hidden">

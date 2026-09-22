@@ -1660,12 +1660,38 @@ def adjust_store_balance(request, payload: AdjustStoreBalancePayload):
 def get_operator_financial_dashboard(request, month: Optional[str] = None):
     from logistics.models import Order
     from finance.models import WithdrawalRequest
+    from accounts.models import Operator
     from django.db.models import Sum, Count
     from django.utils import timezone
+    import datetime
 
     auth = getattr(request, "auth", None) or {}
     is_admin = auth.get("is_platform_admin", False)
     op_id = auth.get("operator_id")
+
+    operator = None
+    if op_id and op_id != "global":
+        operator = Operator.objects.filter(id=op_id).first()
+    elif is_admin:
+        operator = Operator.objects.first()
+
+    now = timezone.now()
+    target_year = now.year
+    target_month = now.month
+    if month:
+        try:
+            dt = datetime.datetime.strptime(month, "%Y-%m")
+            target_year = dt.year
+            target_month = dt.month
+        except ValueError:
+            pass
+
+    target_date = datetime.date(target_year, target_month, 1)
+    month_names_pt = [
+        "", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+    ]
+    month_label = f"{month_names_pt[target_month]} de {target_year}"
 
     orders_qs = Order.objects.filter(status="COMPLETED")
     withdrawals_qs = WithdrawalRequest.objects.filter(status="PAID")
@@ -1674,9 +1700,8 @@ def get_operator_financial_dashboard(request, month: Optional[str] = None):
         orders_qs = orders_qs.filter(operator_id=op_id)
         withdrawals_qs = withdrawals_qs.filter(operator_id=op_id)
 
-    now = timezone.now()
-    orders_qs = orders_qs.filter(completedAt__year=now.year, completedAt__month=now.month)
-    withdrawals_qs = withdrawals_qs.filter(createdAt__year=now.year, createdAt__month=now.month)
+    orders_qs = orders_qs.filter(completedAt__year=target_year, completedAt__month=target_month)
+    withdrawals_qs = withdrawals_qs.filter(createdAt__year=target_year, createdAt__month=target_month)
 
     orders_agg = orders_qs.aggregate(
         total_fare=Sum("fareValueCents"),
@@ -1689,12 +1714,37 @@ def get_operator_financial_dashboard(request, month: Optional[str] = None):
     margem = 20.0 if receita_bruta_cents > 0 else 0.0
 
     saques_pagos_cents = withdrawals_qs.aggregate(s=Sum("amountCents"))["s"] or 0
-    resultado_liquido_cents = comissao_retida_cents - saques_pagos_cents
+
+    # Cálculo da Taxa da Plataforma SaaS (Alex / Expresso Neves Platform)
+    # Suporta taxa base de R$ 0,40/entrega com garantia de piso mínimo mensal de R$ 299,00 e faixas de volume
+    if operator and hasattr(operator, "calculate_platform_fee"):
+        platform_billing = operator.calculate_platform_fee(corridas_entregues)
+    else:
+        floor_c = 29900
+        calc_c = corridas_entregues * 40
+        final_c = max(calc_c, floor_c)
+        platform_billing = {
+            "deliveries_count": corridas_entregues,
+            "calculated_cents": calc_c,
+            "floor_cents": floor_c,
+            "final_fee_cents": final_c,
+            "final_fee_reais": round(final_c / 100.0, 2),
+            "floor_reais": 299.00,
+            "base_rate_reais": 0.40,
+            "applied_floor": final_c == floor_c and calc_c < floor_c,
+        }
+
+    custo_plataforma_cents = platform_billing["final_fee_cents"]
+    custo_plataforma_reais = platform_billing["final_fee_reais"]
+
+    # Resultado Líquido Real = Comissão Retida - Saques Pagos aos Motoboys - Custo da Licença SaaS
+    resultado_liquido_cents = comissao_retida_cents - saques_pagos_cents - custo_plataforma_cents
 
     ticket_medio_reais = round((receita_bruta_cents / corridas_entregues / 100.0), 2) if corridas_entregues > 0 else 0.0
 
     return {
-        "month_label": now.strftime("%B de %Y").capitalize(),
+        "month": f"{target_year:04d}-{target_month:02d}",
+        "month_label": month_label,
         "receita_bruta_cents": receita_bruta_cents,
         "receita_bruta_reais": round(receita_bruta_cents / 100.0, 2),
         "comissao_retida_cents": comissao_retida_cents,
@@ -1702,6 +1752,9 @@ def get_operator_financial_dashboard(request, month: Optional[str] = None):
         "margem_percentual": margem,
         "saques_pagos_cents": saques_pagos_cents,
         "saques_pagos_reais": round(saques_pagos_cents / 100.0, 2),
+        "custo_plataforma_cents": custo_plataforma_cents,
+        "custo_plataforma_reais": custo_plataforma_reais,
+        "plataforma_billing": platform_billing,
         "resultado_liquido_cents": resultado_liquido_cents,
         "resultado_liquido_reais": round(resultado_liquido_cents / 100.0, 2),
         "corridas_entregues": corridas_entregues,

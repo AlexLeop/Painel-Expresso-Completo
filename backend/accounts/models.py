@@ -98,6 +98,22 @@ class Operator(models.Model):
         db_column="gracePeriodDays",
         help_text="Dias de tolerância antes do bloqueio por inadimplência.",
     )
+    platformCostPerDeliveryCents = models.IntegerField(
+        default=40,
+        db_column="platformCostPerDeliveryCents",
+        help_text="Taxa fixa cobrada pela plataforma por entrega concluída (em centavos).",
+    )
+    platformMinMonthlyFloorCents = models.IntegerField(
+        default=29900,
+        db_column="platformMinMonthlyFloorCents",
+        help_text="Piso mínimo mensal garantido cobrado pela plataforma (em centavos).",
+    )
+    platformVolumeTiers = models.JSONField(
+        null=True,
+        blank=True,
+        db_column="platformVolumeTiers",
+        help_text="Faixas de volume customizadas [{\"max\": 1000, \"rateCents\": 50}, ...]",
+    )
     notes = models.TextField(
         null=True, blank=True, help_text="Termos contratuais e observações financeiras."
     )
@@ -118,6 +134,51 @@ class Operator(models.Model):
 
     def __str__(self):
         return self.name
+
+    def calculate_platform_fee(self, completed_deliveries_count: int) -> dict:
+        """
+        Calcula o custo da plataforma SaaS para o operador no mês,
+        aplicando faixas de volume (se houver) ou a taxa por entrega,
+        com garantia irrevogável do piso mínimo mensal.
+        """
+        floor_cents = self.platformMinMonthlyFloorCents if self.platformMinMonthlyFloorCents is not None else 29900
+        rate_cents = self.platformCostPerDeliveryCents if self.platformCostPerDeliveryCents is not None else 40
+        tiers = self.platformVolumeTiers or []
+
+        calculated_cents = 0
+        if tiers and isinstance(tiers, list):
+            remaining = completed_deliveries_count
+            prev_max = 0
+            for tier in tiers:
+                tier_max = tier.get("max")
+                tier_rate = tier.get("rateCents", rate_cents)
+                if tier_max is None:
+                    calculated_cents += remaining * tier_rate
+                    break
+                else:
+                    span = tier_max - prev_max
+                    qty_in_tier = min(remaining, span)
+                    calculated_cents += qty_in_tier * tier_rate
+                    remaining -= qty_in_tier
+                    prev_max = tier_max
+                    if remaining <= 0:
+                        break
+        else:
+            calculated_cents = completed_deliveries_count * rate_cents
+
+        final_fee_cents = max(calculated_cents, floor_cents)
+        applied_floor = (final_fee_cents == floor_cents) and (calculated_cents < floor_cents)
+
+        return {
+            "deliveries_count": completed_deliveries_count,
+            "calculated_cents": calculated_cents,
+            "floor_cents": floor_cents,
+            "final_fee_cents": final_fee_cents,
+            "final_fee_reais": round(final_fee_cents / 100.0, 2),
+            "floor_reais": round(floor_cents / 100.0, 2),
+            "base_rate_reais": round(rate_cents / 100.0, 2),
+            "applied_floor": applied_floor,
+        }
 
 
 class PlatformAdmin(models.Model):

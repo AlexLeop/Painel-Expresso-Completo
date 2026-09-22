@@ -26,6 +26,9 @@ def setup_test_tables(db):
                 "trialDays" INTEGER DEFAULT 14,
                 "gracePeriodDays" INTEGER DEFAULT 5,
                 notes TEXT,
+                "platformCostPerDeliveryCents" INTEGER DEFAULT 40,
+                "platformMinMonthlyFloorCents" INTEGER DEFAULT 29900,
+                "platformVolumeTiers" TEXT DEFAULT '[]',
                 status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
                 "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP

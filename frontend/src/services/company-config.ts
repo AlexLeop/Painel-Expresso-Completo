@@ -53,6 +53,7 @@ export interface ReportConfig {
   showDiaria: boolean;
   showTxCorridas: boolean;
   showEntregas: boolean;
+  billingCycle?: "SEMANAL" | "MENSAL";
 }
 
 export interface CompanyConfig {
@@ -69,6 +70,7 @@ export interface CompanyConfig {
   extraKm: ExtraKmConfig;
   autoCredit: AutoCreditConfig;
   report: ReportConfig;
+  billingCycle?: "SEMANAL" | "MENSAL";
   dailyValue?: number;
 }
 

@@ -14,6 +14,9 @@ def add_operator_billing_columns(apps, schema_editor):
             ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS "trialDays" INTEGER DEFAULT 14;
             ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS "gracePeriodDays" INTEGER DEFAULT 5;
             ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS notes TEXT;
+            ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS "platformCostPerDeliveryCents" INTEGER DEFAULT 40;
+            ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS "platformMinMonthlyFloorCents" INTEGER DEFAULT 29900;
+            ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS "platformVolumeTiers" JSONB DEFAULT '[]'::jsonb;
         """)
 
 
