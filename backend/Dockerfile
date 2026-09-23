@@ -13,10 +13,13 @@ RUN apt-get update && apt-get install -y \
     python3-gdal \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt /app/
+COPY backend/requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
-COPY . /app/
+COPY backend/ /app/
+COPY database/migrations/ /app/database/migrations/
+
+ENV SCHEMA_MIGRATIONS_DIR=/app/database/migrations
 
 EXPOSE 8000
 

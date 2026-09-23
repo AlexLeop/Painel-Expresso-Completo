@@ -1,25 +1,46 @@
-version: '3.8'
 services:
   redis:
     image: redis:7-alpine
     volumes:
       - redis_data:/data
 
-  django:
+  migrate:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     command: >
-      bash -c "python manage.py migrate &&
-               python manage.py warmup_denylist &&
-               python manage.py collectstatic --noinput &&
-               gunicorn --bind 0.0.0.0:8000 --workers 3 config.wsgi:application"
+      bash -ec "python scripts/apply_schema.py &&
+                python manage.py migrate --settings=config.settings_migrate --noinput &&
+                python manage.py warmup_denylist &&
+                python manage.py collectstatic --noinput"
     volumes:
       - static_volume:/app/static
+      - media_volume:/app/media
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - DIRECT_URL=${DIRECT_URL}
+      - SCHEMA_MIGRATION_BASELINE=${SCHEMA_MIGRATION_BASELINE:-}
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-sua-chave-secreta-aqui}
+      - DJANGO_DEBUG=${DJANGO_DEBUG:-False}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-seu-dominio.com,localhost}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/1}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/1}
+    depends_on:
+      - redis
+    restart: "no"
+
+  django:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: gunicorn --bind 0.0.0.0:8000 --workers 3 config.wsgi:application
+    volumes:
+      - static_volume:/app/static
+      - media_volume:/app/media
     environment:
       # Standalone PostgreSQL 17 + PostGIS & Auth Nativo
-      - DATABASE_URL=${DATABASE_URL:-postgresql://expresso_admin:senha@191.101.235.244:5433/expresso_neves}
-      - DIRECT_URL=${DIRECT_URL:-postgresql://expresso_admin:senha@191.101.235.244:5433/expresso_neves}
+      - DATABASE_URL=${DATABASE_URL}
+      - DIRECT_URL=${DIRECT_URL}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-super-secret-jwt-token-with-at-least-32-characters-long}
       
       # Backend (Django & Celery)
@@ -45,30 +66,36 @@ services:
       # Mobile (NevesGo)
       - NEVESGO_API_BASE_URL=${NEVESGO_API_BASE_URL:-https://api.seu-dominio.com/api/v1/}
     depends_on:
-      - redis
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
 
   fastapi:
     build:
       context: ./backend
       dockerfile: fast_lane/Dockerfile
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql://expresso_admin:senha@191.101.235.244:5433/expresso_neves}
-      - DIRECT_URL=${DIRECT_URL:-postgresql://expresso_admin:senha@191.101.235.244:5433/expresso_neves}
+      - DATABASE_URL=${DATABASE_URL}
+      - DIRECT_URL=${DIRECT_URL}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-super-secret-jwt-token-with-at-least-32-characters-long}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/1}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-sua-chave-gemini}
     depends_on:
-      - redis
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
 
   celery_worker:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     command: celery -A config worker -l info --concurrency=2
     environment:
       # Standalone PostgreSQL 17 + PostGIS & Auth Nativo
-      - DATABASE_URL=${DATABASE_URL:-postgresql://expresso_admin:senha@191.101.235.244:5433/expresso_neves}
-      - DIRECT_URL=${DIRECT_URL:-postgresql://expresso_admin:senha@191.101.235.244:5433/expresso_neves}
+      - DATABASE_URL=${DATABASE_URL}
+      - DIRECT_URL=${DIRECT_URL}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-super-secret-jwt-token-with-at-least-32-characters-long}
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-sua-chave-secreta-aqui}
       - DJANGO_DEBUG=${DJANGO_DEBUG:-False}
@@ -86,18 +113,20 @@ services:
       - EVOLUTION_INSTANCE_TOKEN=${EVOLUTION_INSTANCE_TOKEN:-seu-token-de-instancia}
       - NEVESGO_API_BASE_URL=${NEVESGO_API_BASE_URL:-https://api.seu-dominio.com/api/v1/}
     depends_on:
-      - django
-      - redis
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
 
   celery_beat:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     command: celery -A config beat -l info
     environment:
       # Idem ao worker
-      - DATABASE_URL=${DATABASE_URL:-postgresql://expresso_admin:senha@191.101.235.244:5433/expresso_neves}
-      - DIRECT_URL=${DIRECT_URL:-postgresql://expresso_admin:senha@191.101.235.244:5433/expresso_neves}
+      - DATABASE_URL=${DATABASE_URL}
+      - DIRECT_URL=${DIRECT_URL}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-super-secret-jwt-token-with-at-least-32-characters-long}
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-sua-chave-secreta-aqui}
       - DJANGO_DEBUG=${DJANGO_DEBUG:-False}
@@ -115,8 +144,10 @@ services:
       - EVOLUTION_INSTANCE_TOKEN=${EVOLUTION_INSTANCE_TOKEN:-seu-token-de-instancia}
       - NEVESGO_API_BASE_URL=${NEVESGO_API_BASE_URL:-https://api.seu-dominio.com/api/v1/}
     depends_on:
-      - django
-      - redis
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
 
   nginx:
     image: nginx:alpine
@@ -147,3 +178,4 @@ services:
 volumes:
   redis_data:
   static_volume:
+  media_volume:
