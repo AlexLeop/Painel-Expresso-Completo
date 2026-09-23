@@ -139,16 +139,48 @@ def list_contracts(request):
         return [{"id": str(c.id), "store_id": str(c.store.id if c.store else "")} for c in contracts]
 
 
-def _resolve_operator(request):
+def _resolve_operator(request, allow_sovereign_fallback=False):
+    """
+    Resolve o Operador do contexto multi-tenant.
+    Para PlatformAdmin sem X-Operator-Id e allow_sovereign_fallback=True,
+    usa o primeiro Operator como fallback para visão soberana de suporte.
+    """
     staff = get_staff_member(request)
-    if staff and staff.operator:
-        return staff.operator, staff
-    op_id = request.auth.get("operator_id") if request.auth else None
-    if op_id:
+
+    # Tenta obter operator do staff (cuidado: PlatformAdmin pode ter operator=None)
+    if staff:
         try:
-            return Operator.objects.get(id=op_id), None
+            if staff.operator_id and staff.operator:
+                return staff.operator, staff
+        except StaffMember.operator.RelatedObjectDoesNotExist:
+            pass
+
+    # Tenta via header X-Operator-Id ou query param
+    target_op_id = (
+        getattr(request, 'headers', {}).get('X-Operator-Id')
+        or request.GET.get('operator_id')
+        or (request.auth.get('operator_id') if request.auth else None)
+    )
+    if target_op_id:
+        try:
+            op = Operator.objects.get(id=target_op_id)
+            return op, staff
         except Operator.DoesNotExist:
             raise HttpError(404, "Operador logístico não encontrado.")
+
+    # PlatformAdmin: fallback soberano para o primeiro operador (suporte)
+    is_admin = getattr(staff, 'is_platform_admin', False) or (
+        request.auth.get('is_platform_admin', False) if request.auth else False
+    )
+    if is_admin and allow_sovereign_fallback:
+        fallback_op = Operator.objects.first()
+        if fallback_op:
+            return fallback_op, staff
+        return None, staff
+
+    if is_admin:
+        return None, staff
+
     raise HttpError(401, "Operador não autenticado ou contexto multi-tenant não fornecido.")
 
 
@@ -163,18 +195,27 @@ def list_withdrawals(
 ):
     """
     Lista solicitações de saque com filtros por status, motorista e texto de busca.
+    PlatformAdmin sem X-Operator-Id vê saques de todos os operadores (visão soberana).
     """
     try:
-        operator, _ = _resolve_operator(request)
+        operator, _ = _resolve_operator(request, allow_sovereign_fallback=False)
     except HttpError:
         return []
 
     try:
-        qs = (
-            WithdrawalRequest.objects.filter(operator=operator)
-            .select_related("driver")
-            .order_by("-createdAt")
-        )
+        if operator:
+            qs = (
+                WithdrawalRequest.objects.filter(operator=operator)
+                .select_related("driver")
+                .order_by("-createdAt")
+            )
+        else:
+            # PlatformAdmin visão soberana: todos os operadores
+            qs = (
+                WithdrawalRequest.objects.all()
+                .select_related("driver", "operator")
+                .order_by("-createdAt")
+            )
 
         if status:
             qs = qs.filter(status=status.upper())
@@ -224,14 +265,15 @@ def approve_withdrawal(request, withdrawal_id: UUID):
     """
     Aprova individualmente uma solicitação de saque pendente e despacha a task Celery.
     """
-    operator, staff = _resolve_operator(request)
+    operator, staff = _resolve_operator(request, allow_sovereign_fallback=True)
 
     with transaction.atomic():
         try:
-            withdrawal = (
-                WithdrawalRequest.objects.select_for_update()
-                .get(id=withdrawal_id, operator=operator)
-            )
+            qs = WithdrawalRequest.objects.select_for_update()
+            if operator:
+                withdrawal = qs.get(id=withdrawal_id, operator=operator)
+            else:
+                withdrawal = qs.get(id=withdrawal_id)
         except WithdrawalRequest.DoesNotExist:
             raise HttpError(404, "Solicitação de saque não encontrada.")
 
@@ -263,7 +305,7 @@ def bulk_approve_withdrawals(request, payload: BulkApprovalPayload):
     """
     Aprova em lote múltiplas solicitações de saque pendentes.
     """
-    operator, staff = _resolve_operator(request)
+    operator, staff = _resolve_operator(request, allow_sovereign_fallback=True)
     approved_ids = []
 
     for w_id in payload.withdrawal_ids:
@@ -297,10 +339,13 @@ def reject_withdrawal(request, withdrawal_id: UUID, payload: WithdrawalRejection
     """
     Rejeita a solicitação de saque, devolvendo integralmente o saldo à carteira do motorista.
     """
-    operator, staff = _resolve_operator(request)
+    operator, staff = _resolve_operator(request, allow_sovereign_fallback=True)
 
     try:
-        withdrawal = WithdrawalRequest.objects.get(id=withdrawal_id, operator=operator)
+        if operator:
+            withdrawal = WithdrawalRequest.objects.get(id=withdrawal_id, operator=operator)
+        else:
+            withdrawal = WithdrawalRequest.objects.get(id=withdrawal_id)
     except WithdrawalRequest.DoesNotExist:
         raise HttpError(404, "Solicitação de saque não encontrada.")
 
@@ -336,10 +381,14 @@ def reject_withdrawal(request, withdrawal_id: UUID, payload: WithdrawalRejection
 def get_payout_policy(request):
     """
     Retorna a política de liberação de saques PIX ativa para o operador.
+    PlatformAdmin sem X-Operator-Id usa fallback para o primeiro operador.
     """
     try:
-        operator, _ = _resolve_operator(request)
+        operator, _ = _resolve_operator(request, allow_sovereign_fallback=True)
     except HttpError:
+        return PayoutPolicyConfigSchema()
+
+    if not operator:
         return PayoutPolicyConfigSchema()
 
     try:
@@ -358,7 +407,9 @@ def update_payout_policy(request, payload: PayoutPolicyConfigSchema):
     """
     Atualiza os limiares de aprovação automática, tarifas de saque e canais de notificação.
     """
-    operator, _ = _resolve_operator(request)
+    operator, _ = _resolve_operator(request, allow_sovereign_fallback=True)
+    if not operator:
+        raise HttpError(400, "Operador não identificado. Envie o header X-Operator-Id.")
     policy, _ = PayoutPolicyConfig.objects.get_or_create(operator=operator)
 
     policy.mode = payload.mode

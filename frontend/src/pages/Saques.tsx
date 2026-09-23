@@ -127,7 +127,7 @@ export function Saques() {
         throw new Error(`Erro ao carregar saques: ${res.status}`);
       }
       const data = await res.json();
-      setWithdrawals(data.items || []);
+      setWithdrawals(Array.isArray(data) ? data : data.items || []);
     } catch (err: any) {
       console.error(err);
       setError(err.message || "Falha ao carregar lista de saques.");

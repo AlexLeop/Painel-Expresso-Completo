@@ -43,12 +43,20 @@ api.add_router("/admin/logistics/", logistics_admin_router)
 @api.exception_handler(Exception)
 def global_exception_handler(request, exc):
     """
-    Tratação global de exceções genéricas para a API Ninja.
+    Tratamento global de exceções para a API Ninja.
     """
+    from ninja.errors import HttpError
     from logistics.exceptions import InvalidOrderStatusTransitionError
     from pydantic import ValidationError
     from postgrest.exceptions import APIError
     
+    if isinstance(exc, HttpError):
+        return api.create_response(
+            request,
+            {"success": False, "error": exc.message or str(exc)},
+            status=exc.status_code,
+        )
+
     if isinstance(exc, InvalidOrderStatusTransitionError):
         return api.create_response(
             request, {"success": False, "error": str(exc)}, status=400
@@ -64,11 +72,8 @@ def global_exception_handler(request, exc):
         
     # Catch PostgREST API Errors
     if isinstance(exc, APIError):
-        # APIError has a dict payload: {'message': ..., 'details': ..., 'hint': ..., 'code': ...}
-        # To avoid leaking sensitive DB details, we can return a sanitized version.
         error_info = exc.json() if hasattr(exc, 'json') and callable(exc.json) else str(exc)
         if isinstance(error_info, dict):
-            # Safe keys
             safe_details = {
                 "message": error_info.get("message", "Database Error"),
                 "code": error_info.get("code")
@@ -80,11 +85,11 @@ def global_exception_handler(request, exc):
             {"success": False, "error": "Erro de integração externa.", "details": safe_details}, 
             status=502
         )
-    # Para outras exceções não tratadas, loga silenciosamente e retorna 500 genérico
-    import logging
 
+    # Para outras exceções não tratadas, loga stacktrace completo e retorna 500 genérico
+    import logging
     logger = logging.getLogger(__name__)
-    logger.error("Unhandled API Exception:", exc_info=exc)
+    logger.exception(f"Unhandled API Exception: {exc}")
 
     return api.create_response(
         request, {"success": False, "error": "Erro interno do servidor."}, status=500
