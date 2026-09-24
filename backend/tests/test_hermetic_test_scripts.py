@@ -4,10 +4,18 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import sys
 
 import pytest
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_pytest_collection_does_not_import_manual_script_gis_shim():
+    """Manual diagnostics must not mutate Django modules during collection."""
+
+    assert "scripts.test_apis" not in sys.modules
+    assert "tests.fake_gis" not in sys.modules
 
 
 def import_script(script_name: str):

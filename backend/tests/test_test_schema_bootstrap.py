@@ -61,3 +61,7 @@ def test_bootstrap_upgrades_legacy_schema_before_test_body():
         "error_count",
         "error_message",
     }.issubset(integration_columns)
+    assert connection.ops.Adapter(None, geography=True) is None
+    assert connection.ops.Adapter("POINT(-46 -23)", geography=True) == (
+        "POINT(-46 -23)"
+    )

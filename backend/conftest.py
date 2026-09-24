@@ -50,6 +50,44 @@ def _add_column_if_missing(
         )
 
 
+def _sqlite_geometry_adapter(value, **_kwargs):
+    """Serialize GIS values for TEXT columns in the SQLite unit-test schema.
+
+    GeoDjango's ``PointField`` delegates the final conversion to
+    ``connection.ops.Adapter``.  The plain SQLite backend intentionally has no
+    spatial adapter, while these unit tests model geometry columns as TEXT.
+    Keeping this shim on the test connection avoids production-code branches
+    for a test-only database limitation.
+    """
+
+    if value is None:
+        return None
+    return str(value)
+
+
+def _install_sqlite_geometry_contract() -> None:
+    """Install the GeoDjango operations expected by the SQLite test double.
+
+    Django can recreate or replace a test connection between fixture phases.
+    Installing these attributes at the start of every test keeps GIS writes
+    deterministic instead of depending on which schema fixture ran first.
+    """
+
+    from django.db import connection
+
+    if connection.vendor != "sqlite":
+        return
+
+    if not hasattr(connection.ops, "select"):
+        connection.ops.select = "%s"
+    if not hasattr(connection.ops, "get_geom_placeholder"):
+        connection.ops.get_geom_placeholder = (
+            lambda _field, _value, _compiler: "%s"
+        )
+    if not hasattr(connection.ops, "Adapter"):
+        connection.ops.Adapter = _sqlite_geometry_adapter
+
+
 def _ensure_sqlite_managed_false_schema() -> bool:
     """Bring legacy SQLite table subsets up to the shared unmanaged schema.
 
@@ -62,6 +100,8 @@ def _ensure_sqlite_managed_false_schema() -> bool:
 
     if connection.vendor != "sqlite":
         return False
+
+    _install_sqlite_geometry_contract()
 
     with connection.cursor() as cursor:
         tables = set(connection.introspection.table_names(cursor))
@@ -199,6 +239,12 @@ def _ensure_sqlite_managed_false_schema() -> bool:
         )
 
     return True
+
+
+def pytest_runtest_setup(item):
+    """Prepare the SQLite GIS contract before any data fixture can execute."""
+
+    _install_sqlite_geometry_contract()
 
 
 @pytest.hookimpl(hookwrapper=True)
