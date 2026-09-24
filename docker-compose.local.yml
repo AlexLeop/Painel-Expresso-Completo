@@ -10,7 +10,7 @@ services:
   migrate:
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: Dockerfile
     command: >
       bash -ec "python scripts/apply_schema.py &&
                python manage.py migrate --settings=config.settings_migrate --noinput &&
@@ -32,7 +32,7 @@ services:
   django:
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: Dockerfile
     command: gunicorn --bind 0.0.0.0:8000 --workers 3 config.wsgi:application
     volumes:
       - ./backend:/app
@@ -69,7 +69,7 @@ services:
   celery_worker:
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: Dockerfile
     command: celery -A config worker -l info --concurrency=2
     volumes:
       - ./backend:/app
@@ -84,7 +84,7 @@ services:
   celery_beat:
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: Dockerfile
     command: celery -A config beat -l info
     volumes:
       - ./backend:/app
