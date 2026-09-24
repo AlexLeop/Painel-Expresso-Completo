@@ -1,4 +1,7 @@
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 from scripts.audit_schema_baseline import (
     FINGERPRINTS,
@@ -11,6 +14,26 @@ from scripts.audit_schema_baseline import (
 def test_fingerprint_manifest_covers_every_canonical_migration_in_order():
     migrations_dir = Path(__file__).resolve().parents[2] / "database" / "migrations"
     validate_fingerprint_manifest(migrations_dir)
+
+
+def test_auditor_can_be_executed_directly_without_package_import_failure():
+    backend_dir = Path(__file__).resolve().parents[1]
+    environment = os.environ.copy()
+    environment.pop("DIRECT_URL", None)
+    environment.pop("DATABASE_URL", None)
+
+    result = subprocess.run(
+        [sys.executable, "scripts/audit_schema_baseline.py"],
+        cwd=backend_dir,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert "DIRECT_URL or DATABASE_URL must be configured." in result.stderr
+    assert "ModuleNotFoundError" not in result.stderr
 
 
 def test_every_migration_has_at_least_one_read_only_probe():

@@ -44,7 +44,18 @@ def deployment_commands(python_executable: str = sys.executable) -> tuple[tuple[
 def run(commands: Sequence[Sequence[str]]) -> None:
     for command in commands:
         print(f"[deploy] Running: {' '.join(command)}", flush=True)
-        subprocess.run(command, cwd=APP_ROOT, check=True)
+        try:
+            subprocess.run(command, cwd=APP_ROOT, check=True)
+        except subprocess.CalledProcessError:
+            if len(command) > 1 and command[1] == "scripts/apply_schema.py":
+                diagnostic = (command[0], "scripts/audit_schema_baseline.py")
+                print(
+                    "[deploy] Schema application failed; emitting the read-only "
+                    "baseline audit for diagnosis.",
+                    flush=True,
+                )
+                subprocess.run(diagnostic, cwd=APP_ROOT, check=False)
+            raise
 
 
 def main() -> int:

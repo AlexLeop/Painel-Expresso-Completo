@@ -33,7 +33,32 @@ def test_release_commands_have_a_fixed_fail_fast_order():
     )
 
 
-def test_release_runner_stops_after_the_first_failed_stage(monkeypatch):
+def test_schema_failure_emits_audit_then_stops(monkeypatch):
+    attempted: list[tuple[str, ...]] = []
+
+    def fake_run(command, **kwargs):
+        attempted.append(tuple(command))
+        if command[1] == "scripts/apply_schema.py":
+            raise subprocess.CalledProcessError(9, command)
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        run(
+            (
+                ("python-test", "scripts/apply_schema.py"),
+                ("python-test", "second.py"),
+            )
+        )
+
+    assert attempted == [
+        ("python-test", "scripts/apply_schema.py"),
+        ("python-test", "scripts/audit_schema_baseline.py"),
+    ]
+
+
+def test_non_schema_failure_stops_without_baseline_audit(monkeypatch):
     attempted: list[tuple[str, ...]] = []
 
     def fake_run(command, **kwargs):
@@ -43,6 +68,6 @@ def test_release_runner_stops_after_the_first_failed_stage(monkeypatch):
     monkeypatch.setattr(subprocess, "run", fake_run)
 
     with pytest.raises(subprocess.CalledProcessError):
-        run((("python-test", "first.py"), ("python-test", "second.py")))
+        run((("python-test", "manage.py", "migrate"),))
 
-    assert attempted == [("python-test", "first.py")]
+    assert attempted == [("python-test", "manage.py", "migrate")]

@@ -18,7 +18,10 @@ from typing import Sequence
 
 import psycopg
 
-from scripts.apply_schema import discover_migrations, resolve_migrations_dir
+if __package__:
+    from .apply_schema import discover_migrations, resolve_migrations_dir
+else:
+    from apply_schema import discover_migrations, resolve_migrations_dir
 
 
 @dataclass(frozen=True)
