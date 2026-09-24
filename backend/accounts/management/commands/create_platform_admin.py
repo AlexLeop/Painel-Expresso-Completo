@@ -1,3 +1,5 @@
+import getpass
+import os
 import uuid
 from django.core.management.base import BaseCommand, CommandError
 from accounts.models import PlatformAdmin
@@ -22,17 +24,35 @@ class Command(BaseCommand):
         parser.add_argument(
             "--password",
             type=str,
-            required=True,
-            help="Senha de acesso segura",
+            required=False,
+            help=(
+                "Compatibilidade apenas. Prefira PLATFORM_ADMIN_PASSWORD ou o "
+                "prompt interativo para não expor a senha no histórico."
+            ),
+        )
+        parser.add_argument(
+            "--password-env",
+            type=str,
+            default="PLATFORM_ADMIN_PASSWORD",
+            help="Nome da variável de ambiente que contém a senha inicial.",
         )
 
     def handle(self, *args, **options):
         email = options["email"].strip().lower()
         name = options["name"].strip()
-        password = options["password"]
+        password = options.get("password") or os.environ.get(options["password_env"])
 
         if not password:
-            raise CommandError("A senha não pode ser vazia.")
+            try:
+                password = getpass.getpass("Senha segura do administrador: ")
+            except (EOFError, KeyboardInterrupt) as exc:
+                raise CommandError(
+                    "Senha não fornecida. Configure PLATFORM_ADMIN_PASSWORD "
+                    "temporariamente ou execute o comando em terminal interativo."
+                ) from exc
+
+        if len(password) < 10:
+            raise CommandError("A senha deve ter pelo menos 10 caracteres.")
 
         admin, created = PlatformAdmin.objects.get_or_create(
             email=email,

@@ -333,3 +333,18 @@ def test_create_platform_admin_command(db):
     assert admin.name == "Root Sovereign"
     assert admin.check_password("SuperRootSecurePassword123@#") is True
     assert "com soberania total" in out.getvalue()
+
+
+@pytest.mark.django_db
+def test_create_platform_admin_command_reads_password_from_environment(monkeypatch):
+    from django.core.management import call_command
+
+    monkeypatch.setenv("PLATFORM_ADMIN_PASSWORD", "EnvironmentPassword123!@#")
+    call_command(
+        "create_platform_admin",
+        email="env-root@expressoneves.com.br",
+        name="Root From Environment",
+    )
+
+    admin = PlatformAdmin.objects.get(email="env-root@expressoneves.com.br")
+    assert admin.check_password("EnvironmentPassword123!@#") is True
