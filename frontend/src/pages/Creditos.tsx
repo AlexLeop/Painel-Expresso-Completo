@@ -19,6 +19,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { authFetch, getSession } from "../lib/api";
 import { formatCurrency, cn } from "../lib/utils";
+import { useBranding } from "../contexts/BrandingContext";
 
 interface BalanceData {
   store_id?: string;
@@ -55,6 +56,7 @@ interface RechargeResponse {
 
 export function Creditos() {
   const session = getSession();
+  const { branding } = useBranding();
   const [balance, setBalance] = useState<BalanceData | null>(null);
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -287,7 +289,7 @@ export function Creditos() {
             <div className="flex items-center justify-between">
               <span className="text-zinc-500">Operadora Logística:</span>
               <span className="font-semibold text-zinc-900">
-                Expresso Neves
+                {branding.brand_name}
               </span>
             </div>
           </div>
@@ -526,7 +528,7 @@ export function Creditos() {
                         {formatCurrency(rechargeData.amount_reais)}
                       </div>
                       <span className="text-xs text-zinc-500 block">
-                        Beneficiário: <strong className="text-zinc-700">Expresso Neves Logística LTDA</strong>
+                        Operadora: <strong className="text-zinc-700">{branding.brand_name}</strong>
                       </span>
                     </div>
 
@@ -611,4 +613,3 @@ export function Creditos() {
     </div>
   );
 }
-

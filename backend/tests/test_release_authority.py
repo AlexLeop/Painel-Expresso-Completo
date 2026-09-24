@@ -48,9 +48,9 @@ def test_audit_passes_with_superseded_banner():
 def test_audit_real_repo_docs():
     repo_root = Path(__file__).resolve().parent.parent.parent
     docs_dir = repo_root / "docs"
-    authority_file = docs_dir / "PLANO_IMPLEMENTACAO_PRONTIDAO_PRODUCAO_V2.md"
+    authority_file = docs_dir / "PLANO_IMPLEMENTACAO_CORRECOES_SISTEMA_SEM_MOBILE.md"
 
-    assert authority_file.exists(), "PLANO_IMPLEMENTACAO_PRONTIDAO_PRODUCAO_V2.md deve existir"
+    assert authority_file.exists(), "O plano mestre vigente deve existir"
 
     success, reports = run_audit(docs_dir, authority_file)
     conflicts = [r for r in reports if r.get("classification") in ("CONFLICT_UNBANNED", "MISSING_AUTHORITY")]

@@ -6,7 +6,10 @@ eventual nas integrações externas. Utiliza pesadamente o Outbox Pattern para
 garantir que nenhum evento (ex: enviar status de pedido) se perca por falha de rede.
 """
 
+import uuid
+from typing import Optional
 from django.db import connection, models
+from django.core.exceptions import ValidationError
 from config.core_models import TimeStampedTenantModel
 from accounts.models import Operator
 from logistics.models import Store, Order
@@ -40,21 +43,68 @@ def get_cipher():
     return Fernet(base64.urlsafe_b64encode(derived_key))
 
 
+class IntegrationConnector(models.Model):
+    """
+    Registry global de conectores externos (shared, não é tenant-scoped).
+    Define as plataformas suportadas pelo Hub (iFood, Delivery Direto, Saipos, etc).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    slug = models.CharField(max_length=50, unique=True)
+    name = models.CharField(max_length=100)
+    description = models.TextField(null=True, blank=True)
+    icon_url = models.CharField(max_length=500, null=True, blank=True)
+    auth_type = models.CharField(
+        max_length=30,
+        default="webhook_signature",
+        help_text="Tipo de autenticação: oauth2, api_key, webhook_signature, mtls, none",
+    )
+    config_schema = models.JSONField(default=dict, blank=True)
+    webhook_path_template = models.CharField(max_length=200)
+    capabilities = models.JSONField(default=list, blank=True)
+    status = models.CharField(
+        max_length=20,
+        default="active",
+        help_text="Status: active, beta, deprecated, disabled",
+    )
+    documentation_url = models.CharField(max_length=500, null=True, blank=True)
+    version = models.CharField(max_length=20, default="1.0.0")
+    createdAt = models.DateTimeField(auto_now_add=True, db_column="createdAt")
+    updatedAt = models.DateTimeField(auto_now=True, db_column="updatedAt")
+
+    class Meta:
+        db_table = "integration_connector"
+        managed = False
+        verbose_name = "Conector de Integração"
+        verbose_name_plural = "Conectores de Integração"
+
+    def __str__(self):
+        return f"{self.name} ({self.slug})"
+
+
 class StoreIntegration(TimeStampedTenantModel):
     """
-    Credenciais de Integração Externa (Hub/Delivery).
-
-    Amarra uma loja específica às suas chaves de API em agregadores (Hubster,
-    iFood, etc). As senhas de cliente devem trafegar ofuscadas, limitando a
-    visibilidade via RLS.
+    Credenciais e configuração de Integração da Loja.
+    Tenant-scoped. Vincula uma loja do operador a um conector externo (ou legado).
     """
 
     operator = models.ForeignKey(
         Operator, on_delete=models.CASCADE, db_column="operator_id"
     )
+    operator_id: uuid.UUID
     store = models.ForeignKey(Store, on_delete=models.CASCADE, db_column="store_id")
+    store_id: uuid.UUID
+    connector = models.ForeignKey(
+        IntegrationConnector,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        db_column="connector_id",
+        related_name="store_integrations",
+    )
+    connector_id: Optional[uuid.UUID]
     provider = models.CharField(
-        max_length=50, help_text="Provedor (Ex: HUBSTER, IFOOD)."
+        max_length=50, null=True, blank=True, help_text="Provedor (Ex: HUBSTER, IFOOD)."
     )
     clientId = models.CharField(
         max_length=255, null=True, blank=True, db_column="clientId"
@@ -72,9 +122,23 @@ class StoreIntegration(TimeStampedTenantModel):
     baseUrl = models.TextField(null=True, blank=True, db_column="baseUrl")
     webhookUrl = models.TextField(null=True, blank=True, db_column="webhookUrl")
     apiKey = models.TextField(null=True, blank=True, db_column="apiKey")
+    webhook_secret = models.TextField(
+        null=True, blank=True, db_column="webhook_secret"
+    )
+    config = models.JSONField(default=dict, blank=True, db_column="config")
+    auto_create_order = models.BooleanField(
+        default=True, db_column="auto_create_order"
+    )
+    last_webhook_at = models.DateTimeField(
+        null=True, blank=True, db_column="last_webhook_at"
+    )
+    error_count = models.IntegerField(default=0, db_column="error_count")
+    error_message = models.TextField(
+        null=True, blank=True, db_column="error_message"
+    )
     active = models.BooleanField(default=True)
 
-    class Meta:
+    class Meta(TimeStampedTenantModel.Meta):
         db_table = "StoreIntegration"
         managed = False
         verbose_name = "Integração da Loja"
@@ -98,14 +162,22 @@ class StoreIntegration(TimeStampedTenantModel):
     def save(self, *args, **kwargs):
         """
         Criptografia Fática (Manifesto IV.4):
-        Intercepta o save() para garantir que clientSecret e apiKey
+        Intercepta o save() para garantir que clientSecret, apiKey e webhook_secret
         NUNCA sejam gravados em texto puro, independentemente de
-        o desenvolvedor ter usado set_client_secret() ou não.
+        o desenvolvedor ter usado set_*() ou não.
         """
+        if self.store_id and self.operator_id:
+            store_operator_id = Store.objects.filter(id=self.store_id).values_list(
+                "operator_id", flat=True
+            ).first()
+            if store_operator_id and store_operator_id != self.operator_id:
+                raise ValidationError("A integração e a loja devem pertencer ao mesmo operador.")
         if self.clientSecret and not self._is_fernet_token(self.clientSecret):
             self.set_client_secret(self.clientSecret)
         if self.apiKey and not self._is_fernet_token(self.apiKey):
             self.set_api_key(self.apiKey)
+        if self.webhook_secret and not self._is_fernet_token(self.webhook_secret):
+            self.set_webhook_secret(self.webhook_secret)
         super().save(*args, **kwargs)
 
     def set_client_secret(self, raw_secret: str):
@@ -117,7 +189,7 @@ class StoreIntegration(TimeStampedTenantModel):
         else:
             self.clientSecret = None
 
-    def get_client_secret(self) -> str:
+    def get_client_secret(self) -> Optional[str]:
         """Descriptografa o segredo em runtime (Memória). O DB nunca vê o plaintext."""
         if self.clientSecret:
             try:
@@ -136,10 +208,30 @@ class StoreIntegration(TimeStampedTenantModel):
         else:
             self.apiKey = None
 
-    def get_api_key(self) -> str:
+    def get_api_key(self) -> Optional[str]:
         if self.apiKey:
             try:
                 return get_cipher().decrypt(self.apiKey.encode("utf-8")).decode("utf-8")
+            except Exception:
+                return None
+        return None
+
+    def set_webhook_secret(self, raw_secret: str):
+        if raw_secret:
+            self.webhook_secret = (
+                get_cipher().encrypt(raw_secret.encode("utf-8")).decode("utf-8")
+            )
+        else:
+            self.webhook_secret = None
+
+    def get_webhook_secret(self) -> Optional[str]:
+        if self.webhook_secret:
+            try:
+                return (
+                    get_cipher()
+                    .decrypt(self.webhook_secret.encode("utf-8"))
+                    .decode("utf-8")
+                )
             except Exception:
                 return None
         return None
@@ -201,7 +293,7 @@ class IntegrationOutbox(TimeStampedTenantModel):
         help_text="Armazena os status codes ou timeouts (504, 500, etc).",
     )
 
-    class Meta:
+    class Meta(TimeStampedTenantModel.Meta):
         db_table = "IntegrationOutbox"
         managed = False
         verbose_name = "Fila de Integração (Outbox)"
@@ -222,10 +314,13 @@ class IntegrationEventAudit(TimeStampedTenantModel):
     operator = models.ForeignKey(
         Operator, on_delete=models.CASCADE, db_column="operator_id"
     )
+    operator_id: uuid.UUID
     store = models.ForeignKey(Store, on_delete=models.CASCADE, db_column="store_id")
+    store_id: uuid.UUID
     order = models.ForeignKey(
         Order, null=True, blank=True, on_delete=models.SET_NULL, db_column="order_id"
     )
+    order_id: Optional[uuid.UUID]
     provider = models.CharField(max_length=50)
     direction = models.CharField(max_length=20)
     eventType = models.CharField(max_length=100, db_column="eventType")
@@ -249,8 +344,49 @@ class IntegrationEventAudit(TimeStampedTenantModel):
     failReason = models.TextField(null=True, blank=True, db_column="failReason")
     processedAt = models.DateTimeField(null=True, blank=True, db_column="processedAt")
 
-    class Meta:
+    class Meta(TimeStampedTenantModel.Meta):
         db_table = "IntegrationEventAudit"
         managed = False
         verbose_name = "Auditoria de Evento de Integração"
         verbose_name_plural = "Auditorias de Eventos de Integração"
+
+
+class IntegrationWebhookLog(models.Model):
+    """
+    Log de ingestão de webhooks externos para auditoria e deduplicação (idempotência).
+    Vinculado a StoreIntegration.
+    """
+
+    class LogStatus(models.TextChoices):
+        RECEIVED = "received", "Received"
+        PROCESSED = "processed", "Processed"
+        FAILED = "failed", "Failed"
+        DUPLICATE = "duplicate", "Duplicate"
+        REJECTED = "rejected", "Rejected"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    integration = models.ForeignKey(
+        StoreIntegration,
+        on_delete=models.CASCADE,
+        db_column="integration_id",
+        related_name="webhook_logs",
+    )
+    connector_slug = models.CharField(max_length=50, db_column="connector_slug")
+    raw_payload_hash = models.CharField(max_length=64, db_column="raw_payload_hash")
+    status = models.CharField(
+        max_length=20,
+        choices=LogStatus.choices,
+        default=LogStatus.RECEIVED,
+        db_column="status",
+    )
+    order_id = models.UUIDField(null=True, blank=True, db_column="order_id")
+    error_detail = models.TextField(null=True, blank=True, db_column="error_detail")
+    processing_ms = models.IntegerField(null=True, blank=True, db_column="processing_ms")
+    createdAt = models.DateTimeField(auto_now_add=True, db_column="createdAt")
+
+    class Meta:
+        db_table = "integration_webhook_log"
+        managed = False
+        verbose_name = "Log de Webhook de Integração"
+        verbose_name_plural = "Logs de Webhook de Integração"
+        ordering = ["-createdAt"]

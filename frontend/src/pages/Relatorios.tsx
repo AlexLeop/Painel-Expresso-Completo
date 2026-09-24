@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { formatCurrency, cn } from "../lib/utils";
 import { useAuth } from "../contexts/AuthContext";
+import { useBranding } from "../contexts/BrandingContext";
 import {
   getCompanyConfig,
   pullConfigFromSupabase,
@@ -32,6 +33,7 @@ import { authFetch } from "../lib/api";
 
 export function Relatorios() {
   const { session } = useAuth();
+  const { branding } = useBranding();
   const user = session?.user;
   const companyId = user?.machine_empresa_id || user?.company_id || "";
   const currentCompany = user?.companies?.find(

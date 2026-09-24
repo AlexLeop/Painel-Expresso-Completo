@@ -4,7 +4,7 @@ import pytest
 from django.test import Client
 from django.db import connection
 from accounts.models import Operator, PlatformAdmin, StaffMember
-from accounts.security import hash_password, create_access_token
+from accounts.security import hash_password, create_access_token, create_refresh_token
 
 @pytest.fixture(autouse=True)
 def setup_test_tables(db):
@@ -51,6 +51,31 @@ def setup_test_tables(db):
                 email VARCHAR(255) NOT NULL,
                 "passwordHash" VARCHAR(255),
                 role VARCHAR(20) NOT NULL DEFAULT 'OPERATOR_ROLE',
+                active BOOLEAN NOT NULL DEFAULT 1,
+                "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS "Client" (
+                id CHAR(32) PRIMARY KEY,
+                operator_id CHAR(32) NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                document VARCHAR(20) NOT NULL,
+                active BOOLEAN NOT NULL DEFAULT 1,
+                "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS "ClientPortalUser" (
+                id CHAR(32) PRIMARY KEY,
+                operator_id CHAR(32) NOT NULL,
+                client_id CHAR(32) NOT NULL,
+                supabase_uid CHAR(32) UNIQUE NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                email VARCHAR(255) NOT NULL,
+                "passwordHash" VARCHAR(255),
                 active BOOLEAN NOT NULL DEFAULT 1,
                 "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -119,7 +144,8 @@ def test_login_as_platform_admin_success(client: Client, platform_admin_fixture)
     assert resp.status_code == 200, resp.content
     data = resp.json()
     assert "access_token" in data
-    assert "refresh_token" in data
+    assert "refresh_token" not in data
+    assert resp.cookies["neves_refresh"]["httponly"] is True
     assert data["user"]["role"] in ("admin", "platform_admin", "superadmin")
 
 
@@ -214,6 +240,79 @@ def test_superadmin_sovereignty_bypass(client: Client, platform_admin_fixture, o
     )
     # Shouldn't fail with 403 Forbidden!
     assert resp.status_code != 403
+
+
+@pytest.mark.django_db
+def test_refresh_token_cannot_authenticate_protected_endpoint(client: Client, platform_admin_fixture):
+    refresh = create_refresh_token({"sub": str(platform_admin_fixture.id)})
+    response = client.get(
+        "/api/auth/me",
+        HTTP_AUTHORIZATION=f"Bearer {refresh}",
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.django_db
+def test_refresh_token_rotates_only_in_httponly_cookie(client: Client, platform_admin_fixture):
+    login = client.post(
+        "/api/auth/login",
+        data=json.dumps({
+            "email": platform_admin_fixture.email,
+            "password": "MasterPassword123@#",
+        }),
+        content_type="application/json",
+    )
+    assert login.status_code == 200
+    first_refresh = login.cookies["neves_refresh"].value
+
+    refreshed = client.post(
+        "/api/auth/refresh", data=json.dumps({}), content_type="application/json"
+    )
+    assert refreshed.status_code == 200, refreshed.content
+    assert "access_token" in refreshed.json()
+    assert "refresh_token" not in refreshed.json()
+    assert refreshed.cookies["neves_refresh"]["httponly"] is True
+    assert refreshed.cookies["neves_refresh"].value != first_refresh
+
+    client.cookies["neves_refresh"] = first_refresh
+    replay = client.post(
+        "/api/auth/refresh", data=json.dumps({}), content_type="application/json"
+    )
+    assert replay.status_code == 401
+
+
+@pytest.mark.django_db
+def test_client_portal_refresh_is_supported_and_revocation_is_enforced(client: Client):
+    from logistics.models import Client, ClientPortalUser
+
+    operator = Operator.objects.create(id=uuid.uuid4(), name="Operador Portal", status="ACTIVE")
+    portal_client = Client.objects.create(
+        id=uuid.uuid4(), operator=operator, name="Cliente Portal", document="11222333000144", active=True
+    )
+    portal_user = ClientPortalUser(
+        id=uuid.uuid4(), supabase_uid=uuid.uuid4(), operator=operator,
+        client=portal_client, name="Lojista", email="portal-refresh@example.com", active=True,
+    )
+    portal_user.set_password("StrongPortalPassword123!")
+    portal_user.save()
+
+    login = client.post(
+        "/api/auth/login",
+        data=json.dumps({"email": portal_user.email, "password": "StrongPortalPassword123!"}),
+        content_type="application/json",
+    )
+    assert login.status_code == 200
+    refreshed = client.post(
+        "/api/auth/refresh", data=json.dumps({}), content_type="application/json"
+    )
+    assert refreshed.status_code == 200
+
+    portal_user.active = False
+    portal_user.save(update_fields=["active"])
+    denied = client.post(
+        "/api/auth/refresh", data=json.dumps({}), content_type="application/json"
+    )
+    assert denied.status_code == 401
 
 
 @pytest.mark.django_db

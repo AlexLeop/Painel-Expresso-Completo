@@ -12,6 +12,7 @@ Todos os modelos possuem `managed = False` para manter o contrato de "Database-F
 
 from django.contrib.gis.db import models as gis_models
 from django.db import models
+from django.core.exceptions import ValidationError
 from config.core_models import TenantModel, TimeStampedTenantModel
 from accounts.models import Operator, StaffMember
 
@@ -52,6 +53,7 @@ class ClientPortalUser(TimeStampedTenantModel):
     supabase_uid = models.UUIDField(unique=True, help_text="Vínculo com Auth Seguro.")
     name = models.CharField(max_length=255)
     email = models.CharField(max_length=255)
+    active = models.BooleanField(default=True)
     passwordHash = models.CharField(
         max_length=255, null=True, blank=True, db_column="passwordHash", help_text="Hash PBKDF2 da senha de acesso."
     )
@@ -125,6 +127,18 @@ class Turno(TenantModel):
     class Meta:
         db_table = "Turno"
         managed = False
+
+    def clean(self):
+        if self.store_id and self.operator_id:
+            store_operator_id = Store.objects.filter(id=self.store_id).values_list(
+                "operator_id", flat=True
+            ).first()
+            if store_operator_id and store_operator_id != self.operator_id:
+                raise ValidationError("O turno e a loja devem pertencer ao mesmo operador.")
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        return super().save(*args, **kwargs)
 
 
 class Vehicle(TenantModel):
@@ -224,6 +238,27 @@ class StoreDriver(TimeStampedTenantModel):
         db_table = "StoreDriver"
         managed = False
 
+    def clean(self):
+        errors = {}
+        if self.store_id and self.operator_id:
+            store_operator_id = Store.objects.filter(id=self.store_id).values_list(
+                "operator_id", flat=True
+            ).first()
+            if store_operator_id and store_operator_id != self.operator_id:
+                errors["store"] = "A loja pertence a outro operador."
+        if self.driver_id and self.operator_id:
+            driver_operator_id = Driver.objects.filter(id=self.driver_id).values_list(
+                "operator_id", flat=True
+            ).first()
+            if driver_operator_id and driver_operator_id != self.operator_id:
+                errors["driver"] = "O motoboy pertence a outro operador."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        return super().save(*args, **kwargs)
+
 
 class Place(TenantModel):
     """
@@ -289,6 +324,30 @@ class ScheduleEntry(TimeStampedTenantModel):
     class Meta:
         db_table = "ScheduleEntry"
         managed = False
+
+    def clean(self):
+        related_operators = {
+            "driver": Driver.objects.filter(id=self.driver_id).values_list(
+                "operator_id", flat=True
+            ).first() if self.driver_id else None,
+            "store": Store.objects.filter(id=self.store_id).values_list(
+                "operator_id", flat=True
+            ).first() if self.store_id else None,
+            "turno": Turno.objects.filter(id=self.turno_id).values_list(
+                "operator_id", flat=True
+            ).first() if self.turno_id else None,
+        }
+        errors = {
+            field: f"{field.capitalize()} pertence a outro operador."
+            for field, operator_id in related_operators.items()
+            if operator_id and operator_id != self.operator_id
+        }
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        return super().save(*args, **kwargs)
 
 
 class ScheduleEntryAudit(TenantModel):
@@ -481,7 +540,7 @@ class Order(TenantModel):
     storeAuthorizedBonusCents = models.IntegerField(
         default=0, db_column="storeAuthorizedBonusCents"
     )
-    distanceMeters = models.IntegerField(db_column="distanceMeters")
+    distanceMeters = models.IntegerField(null=True, blank=True, db_column="distanceMeters")
     businessDate = models.DateField(
         db_column="businessDate", help_text="Data de corte fiscal para a fatura."
     )

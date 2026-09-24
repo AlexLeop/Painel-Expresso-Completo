@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CheckCircle2, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import { useBranding } from "../contexts/BrandingContext";
 import { nativeLogin } from "../lib/auth";
 
 type AuthMode = "login" | "register" | "recover" | "set_password";
@@ -83,6 +84,10 @@ function validateCNPJ(cnpj: string): boolean {
 }
 
 function BrandingPanel() {
+  const { branding } = useBranding();
+  const displayName = branding.brand_name || "Expresso Neves";
+  const displayLogo = branding.logo_url || branding.favicon_url || "/favicon.ico";
+
   return (
     <div className="login-branding">
       <div style={{ marginBottom: "40px" }}>
@@ -95,13 +100,15 @@ function BrandingPanel() {
           }}
         >
           <img
-            src="/favicon.ico"
-            alt="Expresso Neves"
+            src={displayLogo}
+            alt={displayName}
             style={{
               width: "52px",
               height: "52px",
               borderRadius: "14px",
               objectFit: "contain",
+              backgroundColor: "white",
+              padding: "4px",
             }}
           />
           <div>
@@ -112,7 +119,7 @@ function BrandingPanel() {
                 letterSpacing: "-0.03em",
               }}
             >
-              EXPRESSO NEVES
+              {displayName.toUpperCase()}
             </div>
             <div
               style={{
@@ -140,7 +147,7 @@ function BrandingPanel() {
         >
           Gestão de
           <br />
-          <span style={{ color: "#E55C00" }}>Entregas</span> Inteligente
+          <span style={{ color: branding.color_primary || "#E55C00" }}>Entregas</span> Inteligente
         </h1>
         <p
           className="login-hero-subtitle"
@@ -220,6 +227,7 @@ function TabButton({
 }
 
 export function Login() {
+  const { branding } = useBranding();
   const navigate = useNavigate();
   const { login, session } = useAuth();
 
@@ -490,7 +498,7 @@ export function Login() {
         color: "#999999",
       }}
     >
-      © {new Date().getFullYear()} Expresso Neves • Portal Logístico
+      © {new Date().getFullYear()} {branding.brand_name} • Portal Logístico
     </div>
   );
 

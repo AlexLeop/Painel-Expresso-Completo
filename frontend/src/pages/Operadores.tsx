@@ -709,7 +709,7 @@ function OperatorFormDrawer({
     // Gerente (apenas na criação)
     managerName: operator?.managerName || "",
     managerEmail: operator?.managerEmail || "",
-    managerPassword: "123456",
+    managerPassword: "",
   });
 
   const [saving, setSaving] = useState(false);
@@ -893,7 +893,7 @@ function OperatorFormDrawer({
                       </label>
                       <input
                         required
-                        type="text"
+                        type="password"
                         value={formData.name}
                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                         className="w-full px-3.5 py-2.5 text-xs font-semibold bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all"
@@ -1207,7 +1207,8 @@ function OperatorFormDrawer({
                         value={formData.managerPassword}
                         onChange={(e) => setFormData({ ...formData, managerPassword: e.target.value })}
                         className="w-full px-3.5 py-2.5 text-xs font-mono bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all"
-                        placeholder="123456"
+                        placeholder="Mínimo 10 caracteres"
+                        minLength={10}
                       />
                       <span className="text-[11px] text-zinc-400 mt-1 block">
                         O gerente poderá alterar a senha no primeiro login administrativo.

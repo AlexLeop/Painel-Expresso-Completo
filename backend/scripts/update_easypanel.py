@@ -1,15 +1,19 @@
 import json
 import os
+import sys
 
-filepath = r"c:\Users\lxleo\Documents\Expresso Neves\Painel Expresso Neves e Django DRF\easypanel-template.json"
+if len(sys.argv) != 2:
+    sys.exit("Uso: python update_easypanel.py <easypanel-template.json>")
+
+filepath = os.path.abspath(sys.argv[1])
 
 with open(filepath, 'r', encoding='utf-8') as f:
     data = json.load(f)
 
 supabase_envs = [
-    "SUPABASE_URL=${SUPABASE_URL:-https://xxxx.supabase.co}",
-    "SUPABASE_KEY=${SUPABASE_KEY:-sua-chave-anon}",
-    "SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}"
+    "SUPABASE_URL=${SUPABASE_URL:?SUPABASE_URL obrigatoria}",
+    "SUPABASE_KEY=${SUPABASE_KEY:?SUPABASE_KEY obrigatoria}",
+    "SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET:?SUPABASE_JWT_SECRET obrigatoria}"
 ]
 
 for service in data.get('services', []):

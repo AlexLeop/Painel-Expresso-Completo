@@ -1,6 +1,11 @@
+import os
 import psycopg
 
-conn = psycopg.connect('postgres://postgres:Al147258%40%23@191.101.235.244:5433/expresso_neves?sslmode=disable')
+db_url = os.environ.get("DATABASE_URL")
+if not db_url:
+    raise RuntimeError("DATABASE_URL não configurada no ambiente.")
+
+conn = psycopg.connect(db_url)
 cur = conn.cursor()
 
 for table in ["Driver", "Vehicle", "DriverDocument", "Store", "Client", "Operator"]:

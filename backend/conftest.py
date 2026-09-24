@@ -112,6 +112,10 @@ def _ensure_sqlite_managed_false_schema() -> bool:
     # SQLite cannot add a column with a UNIQUE constraint.  Add the nullable
     # column first, then enforce the Django field's uniqueness with an index.
     _add_column_if_missing(connection, "Operator", "slug", "VARCHAR(100) NULL")
+    if "ClientPortalUser" in tables:
+        _add_column_if_missing(
+            connection, "ClientPortalUser", "active", "BOOLEAN NOT NULL DEFAULT 1"
+        )
     with connection.cursor() as cursor:
         cursor.execute(
             'CREATE UNIQUE INDEX IF NOT EXISTS "test_operator_slug_unique" '

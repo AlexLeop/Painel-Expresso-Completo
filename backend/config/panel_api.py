@@ -1,9 +1,21 @@
+import logging
+
 from ninja import NinjaAPI, Router, Schema
+from ninja.errors import HttpError
 from typing import Optional
 from logistics.models import Driver, Order
 from accounts.models import Operator, StaffMember, PlatformAdmin
-from accounts.auth import NativeJWTAuth
-from accounts.api import handle_login, handle_me, handle_refresh, handle_logout, LoginPayload, RefreshPayload
+from accounts.auth import NativeJWTAuth, get_client_portal_user, require_role
+from accounts.api import (
+    LoginPayload,
+    RefreshPayload,
+    handle_me,
+    login_endpoint,
+    logout_endpoint,
+    refresh_endpoint,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class OperatorCreateSchema(Schema):
@@ -21,7 +33,7 @@ class OperatorCreateSchema(Schema):
     notes: Optional[str] = ""
     managerName: str
     managerEmail: str
-    managerPassword: str = "123456"
+    managerPassword: str
 
 
 class OperatorUpdateSchema(Schema):
@@ -45,33 +57,74 @@ class OperatorStatusSchema(Schema):
 
 
 class OperatorPasswordResetSchema(Schema):
-    newPassword: str = "123456"
+    newPassword: str
 
 
 panel_api = NinjaAPI(urls_namespace="panel_api", auth=NativeJWTAuth())
 
 auth_bearer = NativeJWTAuth()
 
+
+def _panel_actor(request, roles, *, allow_client: bool = False):
+    auth = getattr(request, "auth", None) or {}
+    if auth.get("client_id") or auth.get("user_type") == "client_portal_user":
+        if not allow_client:
+            raise HttpError(403, "Acesso não permitido para usuário lojista.")
+        client_user = get_client_portal_user(request)
+        if not client_user:
+            raise HttpError(401, "Usuário lojista não autenticado ou revogado.")
+        return "client", client_user
+    return "staff", require_role(roles)(request)
+
+
+def _operator_scope(request, requested_operator_id: Optional[str] = None) -> str:
+    """Resolve o tenant exclusivamente a partir da identidade autenticada."""
+    actor_kind, actor = _panel_actor(
+        request, ["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"], allow_client=True
+    )
+    if actor_kind == "client":
+        if requested_operator_id and str(requested_operator_id) != str(actor.operator_id):
+            raise HttpError(403, "Acesso negado ao operador solicitado.")
+        return str(actor.operator_id)
+    if getattr(actor, "is_platform_admin", False):
+        target = (
+            requested_operator_id
+            or request.headers.get("X-Operator-Id")
+            or actor.operator_id
+        )
+        if not target or target == "global" or not Operator.objects.filter(id=target).exists():
+            raise HttpError(422, "Selecione um operador logístico válido.")
+        return str(target)
+
+    operator_id = actor.operator_id
+    if not operator_id:
+        raise HttpError(403, "Usuário sem operador logístico vinculado.")
+    if requested_operator_id and str(requested_operator_id) != str(operator_id):
+        raise HttpError(403, "Acesso negado ao operador solicitado.")
+    return str(operator_id)
+
 @panel_api.post("/auth/login", auth=None, tags=["Native Auth Panel"])
 def panel_login(request, payload: LoginPayload):
-    return handle_login(request, payload)
+    return login_endpoint(request, payload)
 
 @panel_api.get("/auth/me", tags=["Native Auth Panel"])
 def panel_me(request):
     return handle_me(request)
 
 @panel_api.post("/auth/refresh", auth=None, tags=["Native Auth Panel"])
-def panel_refresh(request, payload: RefreshPayload):
-    return handle_refresh(request, payload)
+def panel_refresh(request, payload: RefreshPayload = None):
+    return refresh_endpoint(request, payload)
 
 @panel_api.post("/auth/logout", tags=["Native Auth Panel"])
 def panel_logout(request):
-    return handle_logout(request)
+    return logout_endpoint(request)
 
 @panel_api.post("/auth/change-tenant")
 def change_tenant(request, payload: dict):
-    # Endpoint to allow Superadmin switching active tenant header/context
-    return {"success": True, "selected_tenant": payload.get("tenant_id")}
+    raise HttpError(
+        410,
+        "Endpoint removido. O contexto de operador é validado por requisição no header X-Operator-Id.",
+    )
 
 
 
@@ -89,10 +142,12 @@ def get_rides(
     from logistics.models import Order
     from django.core.exceptions import ValidationError
 
-    auth = getattr(request, "auth", None) or {}
-    is_admin = auth.get("is_platform_admin", False)
-    auth_op_id = auth.get("operator_id")
-    client_id = auth.get("client_id")
+    actor_kind, actor = _panel_actor(
+        request, ["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"], allow_client=True
+    )
+    is_admin = actor_kind == "staff" and bool(getattr(actor, "is_platform_admin", False))
+    auth_op_id = actor.operator_id
+    client_id = actor.client_id if actor_kind == "client" else None
     
     qs = Order.objects.select_related('driver', 'store').all().order_by("-requestedAt")
     if client_id:
@@ -149,9 +204,9 @@ def get_schedules(request, company_id: Optional[str] = None):
     from django.core.exceptions import ValidationError
     from logistics.models import ScheduleEntry
 
-    auth = getattr(request, "auth", None) or {}
-    is_admin = auth.get("is_platform_admin", False)
-    auth_op_id = auth.get("operator_id")
+    _, actor = _panel_actor(request, ["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])
+    is_admin = bool(getattr(actor, "is_platform_admin", False))
+    auth_op_id = actor.operator_id
 
     qs = ScheduleEntry.objects.all()
     if not is_admin and auth_op_id:
@@ -186,27 +241,25 @@ def get_schedules(request, company_id: Optional[str] = None):
 @panel_api.get("/machine/companies", auth=auth_bearer)
 def get_machine_companies(request):
     from logistics.models import Store
-    
-    is_admin = request.auth.get("is_platform_admin", False)
-    if is_admin:
+
+    actor_kind, actor = _panel_actor(
+        request, ["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"], allow_client=True
+    )
+    if actor_kind == "staff" and getattr(actor, "is_platform_admin", False):
         ops = Operator.objects.all()
         return {"companies": [{"id": str(o.id), "nome": o.name} for o in ops]}
-
-    uid = request.auth.get("sub")
-    staff = StaffMember.objects.filter(id=uid).first() or StaffMember.objects.filter(supabase_uid=uid).first()
-    
-    if staff and staff.operator_id:
-        stores = Store.objects.filter(operator_id=staff.operator_id)
-        return {"companies": [{"id": str(s.id), "nome": s.name} for s in stores]}
-    return {"companies": []}
+    stores = Store.objects.filter(operator_id=actor.operator_id)
+    if actor_kind == "client":
+        stores = stores.filter(client_id=actor.client_id)
+    return {"companies": [{"id": str(s.id), "nome": s.name} for s in stores]}
 
 @panel_api.get("/machine/drivers")
 def get_machine_drivers(request, company_id: Optional[str] = None):
     from django.core.exceptions import ValidationError
 
-    auth = getattr(request, "auth", None) or {}
-    is_admin = auth.get("is_platform_admin", False)
-    auth_op_id = auth.get("operator_id")
+    _, actor = _panel_actor(request, ["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])
+    is_admin = bool(getattr(actor, "is_platform_admin", False))
+    auth_op_id = actor.operator_id
 
     qs = Driver.objects.filter(active=True)
     if not is_admin and auth_op_id:
@@ -231,17 +284,28 @@ def get_machine_drivers(request, company_id: Optional[str] = None):
 @panel_api.get("/machine/credits/driver/balance")
 def get_machine_driver_balance(request, condutor_id: str):
     from finance.models import Wallet
+    _panel_actor(request, ["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])
+    operator_id = _operator_scope(request)
     try:
-        w = Wallet.objects.get(driver_id=condutor_id)
+        w = Wallet.objects.get(driver_id=condutor_id, operator_id=operator_id)
         return {"saldo": w.balanceCents / 100.0}
     except Wallet.DoesNotExist:
         return {"saldo": 0.0}
 
 @panel_api.get("/machine/rides/tracking")
 def get_machine_ride_tracking(request, id_mch: str):
-    return {"link_rastreamento": f"https://tracking.expressoneves.com/{id_mch}"}
+    operator_id = _operator_scope(request)
+    orders = Order.objects.filter(id=id_mch, operator_id=operator_id)
+    auth = getattr(request, "auth", None) or {}
+    if auth.get("client_id"):
+        client_user = get_client_portal_user(request)
+        orders = orders.filter(store__client=client_user.client)
+    order = orders.first()
+    if not order:
+        raise HttpError(404, "Corrida não encontrada.")
+    return {"link_rastreamento": f"/rastreio/{order.id}"}
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional, Any
 
 class StopPayload(BaseModel):
@@ -273,60 +337,92 @@ class RideCreatePayload(BaseModel):
     telefone_cliente_partida: str = ""
     forma_pagamento_id: int = 1
     tipo_veiculo_id: int = 1
-    paradas: List[StopPayload] = []
+    paradas: List[StopPayload] = Field(default_factory=list)
     retorno: bool = False
+
+
+def _parse_coordinate(value: str, *, field_name: str, minimum: float, maximum: float) -> float:
+    try:
+        from logistics.pricing import parse_coordinate
+
+        return parse_coordinate(
+            value, field_name=field_name, minimum=minimum, maximum=maximum
+        )
+    except ValueError as exc:
+        raise HttpError(422, str(exc)) from exc
+
+
+def _estimated_route_distance_km(points) -> float:
+    """Estimativa conservadora; o método é exposto na resposta e não finge roteamento viário."""
+    from logistics.pricing import estimate_route_distance_km
+
+    return estimate_route_distance_km(points)
+
+
+def _configured_fare_cents(store, distance_km: float) -> int:
+    from logistics.pricing import configured_fare_cents
+
+    try:
+        return configured_fare_cents(store, distance_km)
+    except ValueError as exc:
+        raise HttpError(422, str(exc)) from exc
+
 
 @panel_api.post("/machine/rides/create")
 def post_machine_ride_create(request, payload: RideCreatePayload):
     from logistics.models import Store, Order, Stop
-    from finance.models import KmFaixa
-    from django.core.exceptions import ValidationError
     from django.contrib.gis.geos import Point
-    import math
-    from datetime import date
+    from django.db import transaction
+    from finance.business_date import resolve_store_business_date
     
-    try:
-        operator = Operator.objects.get(id=payload.empresa_id)
-    except (Operator.DoesNotExist, ValidationError):
-        return panel_api.create_response(request, {"error": "Empresa inválida"}, status=400)
-    
-    store = Store.objects.filter(operator=operator).first()
+    _panel_actor(
+        request, ["ADMIN", "MANAGER", "OPERATOR_ROLE"], allow_client=True
+    )
+    operator_id = _operator_scope(request)
+    operator = Operator.objects.get(id=operator_id)
+
+    stores = Store.objects.filter(operator=operator, id=payload.empresa_id, operational=True)
+    client_id = (getattr(request, "auth", None) or {}).get("client_id")
+    if client_id:
+        client_user = get_client_portal_user(request)
+        stores = stores.filter(client=client_user.client)
+    store = stores.first()
     if not store:
-        store = Store.objects.create(operator=operator, name="Store Default")
-        
-    lat1, lon1 = 0.0, 0.0
-    try:
-        lat1, lon1 = float(payload.lat_partida), float(payload.lng_partida)
-    except (ValueError, TypeError):
-        pass
+        raise HttpError(422, "Nenhuma loja autorizada está disponível para a corrida.")
 
-    lat2, lon2 = lat1, lon1
-    if payload.paradas and len(payload.paradas) > 0:
-        try:
-            lat2, lon2 = float(payload.paradas[-1].lat_parada), float(payload.paradas[-1].lng_parada)
-        except (ValueError, TypeError):
-            pass
+    if not payload.paradas:
+        raise HttpError(422, "Informe ao menos uma parada de entrega.")
 
-    R = 6371.0
-    dLat = math.radians(lat2 - lat1)
-    dLon = math.radians(lon2 - lon1)
-    a = math.sin(dLat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dLon / 2)**2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    distancia_km = (R * c) * 1.3
+    pickup = (
+        _parse_coordinate(
+            payload.lat_partida, field_name="lat_partida", minimum=-90, maximum=90
+        ),
+        _parse_coordinate(
+            payload.lng_partida, field_name="lng_partida", minimum=-180, maximum=180
+        ),
+    )
+    parsed_stops = []
+    for index, parada in enumerate(payload.paradas, start=1):
+        parsed_stops.append(
+            (
+                _parse_coordinate(
+                    parada.lat_parada,
+                    field_name=f"paradas[{index}].lat_parada",
+                    minimum=-90,
+                    maximum=90,
+                ),
+                _parse_coordinate(
+                    parada.lng_parada,
+                    field_name=f"paradas[{index}].lng_parada",
+                    minimum=-180,
+                    maximum=180,
+                ),
+            )
+        )
+
+    distancia_km = _estimated_route_distance_km([pickup, *parsed_stops])
     distance_meters = int(distancia_km * 1000)
-
-    valor_cents = 1000
-    faixa = KmFaixa.objects.filter(operator=operator, kmStart__lte=distancia_km, kmEnd__gt=distancia_km).first()
-    if faixa:
-        valor_cents = faixa.priceCents
-    else:
-        faixa_max = KmFaixa.objects.filter(operator=operator).order_by('-kmEnd').first()
-        if faixa_max and distancia_km >= faixa_max.kmEnd:
-            valor_cents = faixa_max.priceCents
-        elif KmFaixa.objects.filter(operator=operator).exists():
-            faixa_min = KmFaixa.objects.filter(operator=operator).order_by('kmStart').first()
-            if faixa_min:
-                valor_cents = faixa_min.priceCents
+    valor_cents = _configured_fare_cents(store, distancia_km)
 
     metadata = {
         "payment_method_id": payload.forma_pagamento_id,
@@ -334,16 +430,6 @@ def post_machine_ride_create(request, payload: RideCreatePayload):
         "return_required": payload.retorno
     }
 
-    order = Order.objects.create(
-        operator=operator,
-        store=store,
-        status=Order.OrderStatus.PREPARING,
-        fareValueCents=valor_cents,
-        distanceMeters=distance_meters,
-        businessDate=date.today(),
-        metadata=metadata
-    )
-    
     pickup_meta = {
         "address": f"{payload.endereco_partida}, {payload.numero_partida}",
         "neighborhood": payload.bairro_partida,
@@ -355,43 +441,48 @@ def post_machine_ride_create(request, payload: RideCreatePayload):
         "customer_phone": payload.telefone_cliente_partida
     }
     
-    Stop.objects.create(
-        operator=operator,
-        order=order,
-        sequence=1,
-        type=Stop.StopType.PICKUP,
-        geom=Point(lon1, lat1),
-        metadata=pickup_meta
-    )
-    
-    seq = 2
-    for parada in payload.paradas:
-        p_lat, p_lon = 0.0, 0.0
-        try:
-            p_lat, p_lon = float(parada.lat_parada), float(parada.lng_parada)
-        except (ValueError, TypeError):
-            pass
-            
-        dropoff_meta = {
-            "address": f"{parada.endereco_parada}, {parada.numero_parada}",
-            "neighborhood": parada.bairro_parada,
-            "city": parada.cidade_parada,
-            "state": parada.estado_parada,
-            "zipcode": parada.cep_parada,
-            "complement": parada.complemento_parada,
-            "customer_name": parada.nome_cliente_parada,
-            "customer_phone": parada.telefone_cliente_parada,
-            "observation": parada.observacao_parada
-        }
+    with transaction.atomic():
+        order = Order.objects.create(
+            operator=operator,
+            store=store,
+            status=Order.OrderStatus.PREPARING,
+            fareValueCents=valor_cents,
+            distanceMeters=distance_meters,
+            businessDate=resolve_store_business_date(store),
+            metadata={**metadata, "distance_method": "HAVERSINE_BUFFERED_30_PERCENT"},
+        )
+
         Stop.objects.create(
             operator=operator,
             order=order,
-            sequence=seq,
-            type=Stop.StopType.DROPOFF,
-            geom=Point(p_lon, p_lat),
-            metadata=dropoff_meta
+            sequence=1,
+            type=Stop.StopType.PICKUP,
+            geom=Point(pickup[1], pickup[0]),
+            metadata=pickup_meta,
         )
-        seq += 1
+
+        for seq, (parada, (p_lat, p_lon)) in enumerate(
+            zip(payload.paradas, parsed_stops), start=2
+        ):
+            dropoff_meta = {
+                "address": f"{parada.endereco_parada}, {parada.numero_parada}",
+                "neighborhood": parada.bairro_parada,
+                "city": parada.cidade_parada,
+                "state": parada.estado_parada,
+                "zipcode": parada.cep_parada,
+                "complement": parada.complemento_parada,
+                "customer_name": parada.nome_cliente_parada,
+                "customer_phone": parada.telefone_cliente_parada,
+                "observation": parada.observacao_parada,
+            }
+            Stop.objects.create(
+                operator=operator,
+                order=order,
+                sequence=seq,
+                type=Stop.StopType.DROPOFF,
+                geom=Point(p_lon, p_lat),
+                metadata=dropoff_meta,
+            )
         
     return {"response": {"id": str(order.id)}}
 
@@ -402,7 +493,12 @@ class RideCancelPayload(BaseModel):
 def post_machine_ride_cancel(request, payload: RideCancelPayload):
     from django.core.exceptions import ValidationError
     try:
-        order = Order.objects.get(id=payload.id_mch)
+        _panel_actor(request, ["ADMIN", "MANAGER", "OPERATOR_ROLE"], allow_client=True)
+        operator_id = _operator_scope(request)
+        order = Order.objects.get(id=payload.id_mch, operator_id=operator_id)
+        client_id = (getattr(request, "auth", None) or {}).get("client_id")
+        if client_id and str(order.store.client_id) != str(client_id):
+            raise Order.DoesNotExist
         order.status = Order.OrderStatus.CANCELED
         order.save()
         return {"success": True}
@@ -412,59 +508,48 @@ def post_machine_ride_cancel(request, payload: RideCancelPayload):
 @panel_api.get("/machine/rides/estimate", auth=auth_bearer)
 def get_machine_rides_estimate(
     request, 
+    empresa_id: str,
     endereco_partida: str = "", 
     bairro_partida: str = "", 
     cidade_partida: str = "", 
     estado_partida: str = "",
-    lat_partida: str = "0", 
-    lng_partida: str = "0", 
+    lat_partida: str = "",
+    lng_partida: str = "",
     endereco_desejado: str = "", 
     bairro_desejado: str = "", 
     cidade_desejado: str = "", 
     estado_desejado: str = "",
-    lat_desejado: str = "0", 
-    lng_desejado: str = "0"
+    lat_desejado: str = "",
+    lng_desejado: str = "",
 ):
-    import math
-    from finance.models import KmFaixa
-    
-    try:
-        lat1, lon1 = float(lat_partida), float(lng_partida)
-        lat2, lon2 = float(lat_desejado), float(lng_desejado)
-        R = 6371.0
-        dLat = math.radians(lat2 - lat1)
-        dLon = math.radians(lon2 - lon1)
-        a = math.sin(dLat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dLon / 2)**2
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-        distancia = R * c
-    except (ValueError, TypeError):
-        distancia = 0.0
+    from logistics.models import Store
 
-    # Increase distance by 30% for street routing approximation
-    distancia = distancia * 1.3
-    
-    uid = request.auth.get("sub")
-    staff = StaffMember.objects.filter(id=uid).first() or StaffMember.objects.filter(supabase_uid=uid).first()
-    operator_id = staff.operator_id if staff else None
+    _panel_actor(request, ["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"], allow_client=True)
 
-    valor_cents = 1000 # default fallback R$ 10.00
-    if operator_id:
-        faixa = KmFaixa.objects.filter(operator_id=operator_id, kmStart__lte=distancia, kmEnd__gt=distancia).first()
-        if faixa:
-            valor_cents = faixa.priceCents
-        else:
-            faixa_max = KmFaixa.objects.filter(operator_id=operator_id).order_by('-kmEnd').first()
-            if faixa_max and distancia >= faixa_max.kmEnd:
-                valor_cents = faixa_max.priceCents
-            elif KmFaixa.objects.filter(operator_id=operator_id).exists():
-                faixa_min = KmFaixa.objects.filter(operator_id=operator_id).order_by('kmStart').first()
-                if faixa_min:
-                    valor_cents = faixa_min.priceCents
+    pickup = (
+        _parse_coordinate(lat_partida, field_name="lat_partida", minimum=-90, maximum=90),
+        _parse_coordinate(lng_partida, field_name="lng_partida", minimum=-180, maximum=180),
+    )
+    destination = (
+        _parse_coordinate(lat_desejado, field_name="lat_desejado", minimum=-90, maximum=90),
+        _parse_coordinate(lng_desejado, field_name="lng_desejado", minimum=-180, maximum=180),
+    )
+    distancia = _estimated_route_distance_km([pickup, destination])
+    operator_id = _operator_scope(request)
+    stores = Store.objects.filter(id=empresa_id, operator_id=operator_id, operational=True)
+    client_id = (getattr(request, "auth", None) or {}).get("client_id")
+    if client_id:
+        stores = stores.filter(client_id=client_id)
+    store = stores.first()
+    if not store:
+        raise HttpError(404, "Loja não encontrada no escopo autenticado.")
+    valor_cents = _configured_fare_cents(store, distancia)
 
     return {
         "response": {
             "distancia": round(distancia, 2),
-            "valor": valor_cents / 100.0
+            "valor": valor_cents / 100.0,
+            "metodo_distancia": "HAVERSINE_BUFFERED_30_PERCENT",
         }
     }
 
@@ -472,7 +557,14 @@ def get_machine_rides_estimate(
 def get_machine_rides_receipt(request, solicitacao_id: str):
     from django.core.exceptions import ValidationError
     try:
-        order = Order.objects.get(id=solicitacao_id)
+        _panel_actor(request, ["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"], allow_client=True)
+        operator_id = _operator_scope(request)
+        order = Order.objects.select_related("store", "driver").get(
+            id=solicitacao_id, operator_id=operator_id
+        )
+        client_id = (getattr(request, "auth", None) or {}).get("client_id")
+        if client_id and str(order.store.client_id) != str(client_id):
+            raise Order.DoesNotExist
         return {
             "recibo": {
                 "id": str(order.id),
@@ -486,13 +578,16 @@ def get_machine_rides_receipt(request, solicitacao_id: str):
 
 
 def is_request_platform_admin(request):
-    is_admin = request.auth.get("is_platform_admin", False)
+    from django.core.exceptions import ValidationError
+
     uid = request.auth.get("sub")
-    if is_admin:
-        return True
-    if PlatformAdmin.objects.filter(id=uid).exists() or PlatformAdmin.objects.filter(supabase_uid=uid).exists():
-        return True
-    return False
+    try:
+        exists = PlatformAdmin.objects.filter(id=uid).exists() or PlatformAdmin.objects.filter(supabase_uid=uid).exists()
+    except (ValidationError, ValueError, TypeError):
+        exists = False
+    if not exists and request.auth.get("email"):
+        exists = PlatformAdmin.objects.filter(email__iexact=request.auth["email"]).exists()
+    return bool(request.auth.get("is_platform_admin") and exists)
 
 
 @panel_api.get("/admin/operators", auth=auth_bearer)
@@ -595,46 +690,47 @@ def create_operator(request, payload: OperatorCreateSchema):
     Cria um novo Operador Logístico com plano SaaS e o seu primeiro Gerente (Owner) de forma 100% nativa.
     """
     import uuid
-    
+    from django.db import transaction
+
     if not is_request_platform_admin(request):
         return panel_api.create_response(request, {"error": "Acesso Negado: requer privilégios de Superadmin."}, status=403)
-        
+
     if not payload.name or not payload.managerName or not payload.managerEmail:
         return panel_api.create_response(request, {"error": "Dados obrigatórios faltando"}, status=400)
-        
+    if len(payload.managerPassword) < 10:
+        raise HttpError(422, "A senha inicial deve possuir ao menos 10 caracteres.")
+    if StaffMember.objects.filter(email__iexact=payload.managerEmail.strip()).exists():
+        raise HttpError(409, "Já existe um usuário com este e-mail.")
+
     try:
-        initial_status = Operator.OperatorStatus.TRIAL if payload.trialDays > 0 else Operator.OperatorStatus.ACTIVE
-        operator = Operator.objects.create(
-            id=uuid.uuid4(),
-            name=payload.name,
-            cnpj=payload.cnpj or "",
-            phone=payload.phone or "",
-            city=payload.city or "",
-            state=payload.state or "",
-            billingPlanType=payload.billingPlanType or "PERCENT_PER_DELIVERY",
-            billingRateValue=payload.billingRateValue or 0.0,
-            billingCycle=payload.billingCycle or "MENSAL",
-            dueDay=payload.dueDay or 10,
-            trialDays=payload.trialDays if payload.trialDays is not None else 14,
-            gracePeriodDays=payload.gracePeriodDays if payload.gracePeriodDays is not None else 5,
-            notes=payload.notes or "",
-            status=initial_status
-        )
-        
-        staff = StaffMember(
-            id=uuid.uuid4(),
-            operator=operator,
-            name=payload.managerName,
-            email=payload.managerEmail.strip().lower(),
-            role=StaffMember.RoleType.ADMIN,
-            active=True
-        )
-        staff.set_password(payload.managerPassword or "123456")
-        staff.save()
-        
+        with transaction.atomic():
+            initial_status = Operator.OperatorStatus.TRIAL if payload.trialDays > 0 else Operator.OperatorStatus.ACTIVE
+            operator = Operator.objects.create(
+                id=uuid.uuid4(), name=payload.name, cnpj=payload.cnpj or "",
+                phone=payload.phone or "", city=payload.city or "", state=payload.state or "",
+                billingPlanType=payload.billingPlanType or "PERCENT_PER_DELIVERY",
+                billingRateValue=payload.billingRateValue or 0.0,
+                billingCycle=payload.billingCycle or "MENSAL", dueDay=payload.dueDay or 10,
+                trialDays=payload.trialDays if payload.trialDays is not None else 14,
+                gracePeriodDays=payload.gracePeriodDays if payload.gracePeriodDays is not None else 5,
+                notes=payload.notes or "", status=initial_status,
+            )
+            staff = StaffMember(
+                id=uuid.uuid4(), operator=operator, name=payload.managerName,
+                email=payload.managerEmail.strip().lower(), role=StaffMember.RoleType.ADMIN,
+                active=True,
+            )
+            staff.set_password(payload.managerPassword)
+            staff.save()
+
         return {"success": True, "operatorId": str(operator.id), "staffId": str(staff.id)}
-    except Exception as e:
-        return panel_api.create_response(request, {"success": False, "error": str(e)}, status=500)
+    except Exception:
+        logger.exception("Falha ao criar operador logístico.")
+        return panel_api.create_response(
+            request,
+            {"success": False, "error": "Não foi possível criar o operador."},
+            status=500,
+        )
 
 
 @panel_api.put("/admin/operators/{operator_id}", auth=auth_bearer)
@@ -722,8 +818,8 @@ def reset_operator_manager_password(request, operator_id: str, payload: Operator
     if not manager:
         return panel_api.create_response(request, {"error": "Nenhum gerente administrativo encontrado para este operador"}, status=404)
 
-    if not payload.newPassword or len(payload.newPassword) < 4:
-        return panel_api.create_response(request, {"error": "A senha deve ter pelo menos 4 caracteres"}, status=400)
+    if not payload.newPassword or len(payload.newPassword) < 10:
+        return panel_api.create_response(request, {"error": "A senha deve ter pelo menos 10 caracteres"}, status=400)
 
     manager.set_password(payload.newPassword)
     manager.save(update_fields=["passwordHash"])

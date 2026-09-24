@@ -60,6 +60,8 @@ def test_jwt_refresh_token_lifecycle():
     decoded = decode_token(token)
     assert decoded["sub"] == user_id
     assert decoded["type"] == "refresh"
+    with pytest.raises(SecurityError, match="Tipo de token inválido"):
+        decode_token(token, expected_type="access")
 
 
 def test_jwt_expired_token():

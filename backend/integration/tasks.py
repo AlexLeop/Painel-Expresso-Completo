@@ -460,13 +460,21 @@ def process_inbound_webhooks(self):
                         else None,
                         reference_dt=business_dt,
                     )
+                    if payload.get("fareValueCents") is None:
+                        raise ValueError("Payload missing fareValueCents")
+                    if payload.get("distanceMeters") is None:
+                        raise ValueError("Payload missing distanceMeters")
+                    fare_value_cents = int(payload["fareValueCents"])
+                    distance_meters = int(payload["distanceMeters"])
+                    if fare_value_cents < 0 or distance_meters < 0:
+                        raise ValueError("Payload contains negative fare or distance")
                     order, created = Order.objects.get_or_create(
                         store_id=store_id,
                         external_source=source,
                         external_order_id=external_id,
                         defaults={
-                            "fareValueCents": payload.get("fareValueCents", 500),
-                            "distanceMeters": payload.get("distanceMeters", 1500),
+                            "fareValueCents": fare_value_cents,
+                            "distanceMeters": distance_meters,
                             "businessDate": resolved_business_date,
                             "status": Order.OrderStatus.PREPARING,
                         },

@@ -1,5 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { authStorage, fetchCurrentProfile, nativeLogout, User as AuthUser } from "../lib/auth";
+import {
+  authStorage,
+  fetchCurrentProfile,
+  nativeLogout,
+  nativeRefreshToken,
+  User as AuthUser,
+} from "../lib/auth";
 
 export interface Company {
   id: string;
@@ -40,13 +46,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const initAuth = async () => {
       try {
-        const token = authStorage.getAccessToken();
+        let token = authStorage.getAccessToken();
         if (!token) {
-          if (mounted) {
-            setSession(null);
-            setIsLoading(false);
-          }
-          return;
+          token = await nativeRefreshToken();
+          if (!token) return;
         }
 
         const user = await fetchCurrentProfile();
@@ -55,7 +58,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             success: true,
             user,
           };
-          localStorage.setItem("nevesgo:session", JSON.stringify(newSession));
+          const preferredOperator = sessionStorage.getItem("nevesgo:preferred_operator");
+          if (
+            user.is_platform_admin &&
+            preferredOperator &&
+            user.companies?.some((company) => company.id === preferredOperator)
+          ) {
+            newSession.user.company_id = preferredOperator;
+            newSession.user.machine_empresa_id = preferredOperator;
+          }
+          authStorage.setSession(newSession);
           setSession(newSession);
         } else if (mounted) {
           authStorage.clearTokens();
@@ -79,12 +91,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = (newSession: SessionData) => {
-    localStorage.setItem("nevesgo:session", JSON.stringify(newSession));
+    authStorage.setSession(newSession);
     setSession(newSession);
   };
 
   const logout = async () => {
     await nativeLogout();
+    sessionStorage.removeItem("nevesgo:preferred_operator");
     setSession(null);
   };
 
@@ -97,7 +110,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           company_id: companyId,
         },
       };
-      localStorage.setItem("nevesgo:session", JSON.stringify(updatedSession));
+      if (session.user.is_platform_admin) {
+        sessionStorage.setItem("nevesgo:preferred_operator", companyId);
+      }
+      authStorage.setSession(updatedSession);
       setSession(updatedSession);
 
       window.location.reload();

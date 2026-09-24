@@ -2,6 +2,7 @@ import React, { Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { BrandingProvider } from "./contexts/BrandingContext";
 import { Login } from "./pages/Login";
 import { NetworkToast } from "./components/ui/NetworkToast";
 
@@ -59,6 +60,9 @@ const Extrato = React.lazy(() =>
 const Clientes = React.lazy(() =>
   import("./pages/Clientes").then((m) => ({ default: m.Clientes })),
 );
+const Integracoes = React.lazy(() =>
+  import("./pages/Integracoes").then((m) => ({ default: m.Integracoes })),
+);
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { session, isLoading } = useAuth();
@@ -93,9 +97,10 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
+      <BrandingProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<Login />} />
 
           {/* Protected Routes */}
           <Route
@@ -219,6 +224,14 @@ export default function App() {
             }
           />
           <Route
+            path="/integracoes"
+            element={
+              <PrivateRoute>
+                <Integracoes />
+              </PrivateRoute>
+            }
+          />
+          <Route
             path="/configuracoes"
             element={
               <PrivateRoute>
@@ -248,6 +261,7 @@ export default function App() {
         </Routes>
         <NetworkToast />
       </BrowserRouter>
-    </AuthProvider>
+    </BrandingProvider>
+  </AuthProvider>
   );
 }

@@ -1,4 +1,5 @@
 import redis
+from django.db import transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from logistics.models import Driver
@@ -51,20 +52,26 @@ def block_deactivated_driver(sender, instance, **kwargs):
                         reason="Suspensão automatizada via bloqueio de cadastro (active=False).",
                     )
 
-                # 2. Redis O(1) Access para Fast Lane e Celery Tasks
-                # Idempotente: setex é safe para chamar múltiplas vezes
-                redis_key = f"deny_list:driver:{instance.id}"
-                r.setex(redis_key, 30 * 86400, "BLOCKED")
+                driver_id = str(instance.id)
 
-                # 3. Invalidar TODOS os Device Tokens ativos dele
-                tokens_key = f"fastlane:driver_tokens:{instance.id}"
-                active_tokens = r.zrangebyscore(tokens_key, "-inf", "+inf")
-                if active_tokens:
-                    pipe = r.pipeline()
-                    for tk in active_tokens:
-                        pipe.delete(f"fastlane:token_meta:{tk}")
-                    pipe.delete(tokens_key)
-                    pipe.execute()
+                def sync_revocation_cache():
+                    try:
+                        # Idempotente e executado somente depois do commit do banco.
+                        redis_key = f"deny_list:driver:{driver_id}"
+                        r.setex(redis_key, 30 * 86400, "BLOCKED")
+                        tokens_key = f"fastlane:driver_tokens:{driver_id}"
+                        active_tokens = r.zrangebyscore(tokens_key, "-inf", "+inf")
+                        if active_tokens:
+                            pipe = r.pipeline()
+                            for tk in active_tokens:
+                                pipe.delete(f"fastlane:token_meta:{tk}")
+                            pipe.delete(tokens_key)
+                            pipe.execute()
+                    except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError):
+                        # PostgreSQL continua sendo a fonte da verdade.
+                        pass
+
+                transaction.on_commit(sync_revocation_cache)
 
         except Driver.DoesNotExist:
             pass

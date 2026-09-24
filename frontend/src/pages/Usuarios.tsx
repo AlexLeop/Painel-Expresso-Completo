@@ -132,7 +132,7 @@ export function Usuarios() {
       } else {
         const payload = {
           email: user.email,
-          password: user.password || "Mudar@123",
+          password: user.password,
           fullName: user.nome,
           role: apiRole,
           companyIds: user.empresas,
@@ -142,9 +142,8 @@ export function Usuarios() {
           body: JSON.stringify(payload),
         });
         const savedData = await response.json();
-        if (savedData.error) {
-          alert(`Erro: ${savedData.error}`);
-          return;
+        if (!response.ok) {
+          throw new Error(savedData.detail || savedData.error || "Erro ao criar usuário");
         }
       }
       fetchUsers();
@@ -164,9 +163,13 @@ export function Usuarios() {
   const confirmDelete = async () => {
     if (usuarioToDelete !== null) {
       try {
-        await authFetch(`/api/v1/db/users?id=${usuarioToDelete}`, {
+        const response = await authFetch(`/api/v1/db/users?id=${usuarioToDelete}`, {
           method: "DELETE",
         });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.detail || data.error || "Falha ao revogar usuário");
+        }
         setUsuarios(usuarios.filter((u) => u.id !== usuarioToDelete));
       } catch (err) {
         logger.error("Failed to delete user", err);

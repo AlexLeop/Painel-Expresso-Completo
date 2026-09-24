@@ -1,8 +1,8 @@
 -- ============================================================
 -- LIMPEZA COMPLETA DO BANCO SUPABASE
--- Projeto: mdrutawgropwgsmwygtz
+-- Projeto: [PROJECT_REF_REDACTED]
 -- Execute este SQL no SQL Editor do Supabase Dashboard:
--- https://supabase.com/dashboard/project/mdrutawgropwgsmwygtz/sql/new
+-- Abra o SQL Editor a partir do painel autenticado do projeto correto.
 -- ============================================================
 
 BEGIN;

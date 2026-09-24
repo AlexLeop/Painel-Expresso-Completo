@@ -9,7 +9,21 @@ from accounts.security import create_access_token
 
 
 @pytest.fixture(autouse=True)
-def setup_test_tables(db):
+def setup_test_tables(db, monkeypatch):
+    from django.contrib.gis.db.models.proxy import SpatialProxy
+
+    monkeypatch.setattr(
+        SpatialProxy,
+        "__set__",
+        lambda self, instance, value: instance.__dict__.__setitem__(self.field.attname, value),
+    )
+    monkeypatch.setattr(
+        SpatialProxy,
+        "__get__",
+        lambda self, instance, cls=None: instance.__dict__.get(self.field.attname)
+        if instance
+        else self,
+    )
     if not hasattr(connection.ops, "select"):
         setattr(connection.ops, "select", "%s")
     if not hasattr(connection.ops, "get_geom_placeholder"):
@@ -82,6 +96,7 @@ def setup_test_tables(db):
                 name VARCHAR(255) NOT NULL,
                 email VARCHAR(255) NOT NULL,
                 "passwordHash" VARCHAR(255),
+                active BOOLEAN NOT NULL DEFAULT 1,
                 "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -122,6 +137,17 @@ def setup_test_tables(db):
                 "pixKey" VARCHAR(255),
                 "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS "SecurityDenylist" (
+                id CHAR(32) PRIMARY KEY,
+                operator_id CHAR(32) NOT NULL,
+                "targetId" CHAR(32) NOT NULL,
+                "targetType" VARCHAR(50) NOT NULL,
+                reason TEXT NOT NULL,
+                "blockedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                "expiresAt" TIMESTAMP
             )
         """)
         cur.execute("""
@@ -167,6 +193,37 @@ def setup_test_tables(db):
                 "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS "StoreDriver" (
+                id CHAR(32) PRIMARY KEY,
+                operator_id CHAR(32) NOT NULL,
+                store_id CHAR(32) NOT NULL,
+                driver_id CHAR(32) NOT NULL,
+                "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS "Vehicle" (
+                id CHAR(32) PRIMARY KEY,
+                operator_id CHAR(32) NOT NULL,
+                plate VARCHAR(10) UNIQUE NOT NULL,
+                type VARCHAR(20) DEFAULT 'MOTORCYCLE',
+                active BOOLEAN DEFAULT 1
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS "OperatorAuditLog" (
+                id CHAR(32) PRIMARY KEY,
+                operator_id CHAR(32) NOT NULL,
+                "platformAdminId" CHAR(32) NOT NULL,
+                action VARCHAR(100) NOT NULL,
+                "previousStatus" VARCHAR(20),
+                "newStatus" VARCHAR(20),
+                reason TEXT NOT NULL,
+                "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
     yield
 
 
@@ -188,9 +245,12 @@ def test_operator_staff_cannot_access_operators_list(client: Client):
 
 @pytest.mark.django_db
 def test_superadmin_can_access_operators_list(client: Client):
+    admin = PlatformAdmin.objects.create(
+        id=uuid.uuid4(), name="Master", email="master@expressoneves.com.br"
+    )
     token = create_access_token({
-        "sub": str(uuid.uuid4()),
-        "email": "master@expressoneves.com.br",
+        "sub": str(admin.id),
+        "email": admin.email,
         "role": "superadmin",
         "user_type": "platform_admin",
         "is_platform_admin": True,
@@ -227,6 +287,66 @@ def test_operator_staff_only_sees_own_users(client: Client):
 
 
 @pytest.mark.django_db
+def test_operator_admin_cannot_update_or_revoke_foreign_tenant_user(client: Client):
+    op1 = Operator.objects.create(id=uuid.uuid4(), name="Operador A", status="ACTIVE")
+    op2 = Operator.objects.create(id=uuid.uuid4(), name="Operador B", status="ACTIVE")
+    actor = StaffMember.objects.create(
+        id=uuid.uuid4(), operator=op1, name="Admin A", email="admin-a@example.com",
+        role="ADMIN", active=True,
+    )
+    foreign = StaffMember.objects.create(
+        id=uuid.uuid4(), operator=op2, name="Admin B", email="admin-b@example.com",
+        role="ADMIN", active=True,
+    )
+    token = create_access_token({
+        "sub": str(actor.id), "email": actor.email, "role": "ADMIN",
+        "user_type": "operator_staff", "is_platform_admin": False,
+        "operator_id": str(op1.id),
+    })
+    headers = {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+
+    response = client.put(
+        "/api/v1/db/users",
+        data=json.dumps({"id": str(foreign.id), "fullName": "Invadido"}),
+        content_type="application/json",
+        **headers,
+    )
+    assert response.status_code == 404
+
+    response = client.delete(f"/api/v1/db/users?id={foreign.id}", **headers)
+    assert response.status_code == 404
+    foreign.refresh_from_db()
+    assert foreign.name == "Admin B"
+    assert foreign.active is True
+
+
+@pytest.mark.django_db
+def test_user_creation_requires_explicit_strong_password(client: Client):
+    operator = Operator.objects.create(id=uuid.uuid4(), name="Operador Seguro", status="ACTIVE")
+    actor = StaffMember.objects.create(
+        id=uuid.uuid4(), operator=operator, name="Admin", email="admin@example.com",
+        role="ADMIN", active=True,
+    )
+    token = create_access_token({
+        "sub": str(actor.id), "email": actor.email, "role": "ADMIN",
+        "user_type": "operator_staff", "is_platform_admin": False,
+        "operator_id": str(operator.id),
+    })
+
+    response = client.post(
+        "/api/v1/db/users",
+        data=json.dumps({
+            "fullName": "Novo usuário", "email": "novo@example.com",
+            "role": "operator", "password": "123456",
+        }),
+        content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+    assert response.status_code == 422
+    assert not StaffMember.objects.filter(email="novo@example.com").exists()
+
+
+@pytest.mark.django_db
 def test_client_portal_user_gets_empty_user_list(client: Client):
     token = create_access_token({
         "sub": str(uuid.uuid4()),
@@ -243,10 +363,133 @@ def test_client_portal_user_gets_empty_user_list(client: Client):
 
 
 @pytest.mark.django_db
-def test_operator_saas_billing_crud_and_actions(client: Client):
+def test_operator_cannot_list_or_patch_driver_from_another_tenant(client: Client):
+    op1 = Operator.objects.create(id=uuid.uuid4(), name="Op Isolada 1", status="ACTIVE")
+    op2 = Operator.objects.create(id=uuid.uuid4(), name="Op Isolada 2", status="ACTIVE")
+    staff = StaffMember.objects.create(
+        id=uuid.uuid4(), operator=op1, name="Admin Op 1",
+        email="admin-isolado@op1.com", role="ADMIN", active=True,
+    )
+    own_driver = Driver.objects.create(
+        id=uuid.uuid4(), operator=op1, name="Motoboy Próprio", phone="11911111111",
+        pixKeyType="TELEFONE", pixKey="11911111111", active=True,
+    )
+    foreign_driver = Driver.objects.create(
+        id=uuid.uuid4(), operator=op2, name="Motoboy Externo", phone="11922222222",
+        pixKeyType="TELEFONE", pixKey="11922222222", active=True,
+    )
     token = create_access_token({
-        "sub": str(uuid.uuid4()),
-        "email": "master@expressoneves.com.br",
+        "sub": str(staff.id), "email": staff.email, "role": "operador_admin",
+        "user_type": "operator_staff", "is_platform_admin": False,
+        "operator_id": str(op1.id),
+    })
+    headers = {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+
+    response = client.get(
+        f"/api/v1/db/company-drivers?company_id={op2.id}", **headers
+    )
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()] == [str(own_driver.id)]
+
+    response = client.patch(
+        "/api/v1/db/company-drivers",
+        data=json.dumps({"driverId": str(foreign_driver.id), "active": False}),
+        content_type="application/json",
+        **headers,
+    )
+    assert response.status_code == 404
+    foreign_driver.refresh_from_db()
+    assert foreign_driver.active is True
+
+
+@pytest.mark.django_db
+def test_operator_created_driver_is_forced_to_authenticated_tenant(client: Client):
+    op1 = Operator.objects.create(id=uuid.uuid4(), name="Op Cadastro 1", status="ACTIVE")
+    op2 = Operator.objects.create(id=uuid.uuid4(), name="Op Cadastro 2", status="ACTIVE")
+    staff = StaffMember.objects.create(
+        id=uuid.uuid4(), operator=op1, name="Admin Cadastro",
+        email="cadastro@op1.com", role="ADMIN", active=True,
+    )
+    token = create_access_token({
+        "sub": str(staff.id), "email": staff.email, "role": "operador_admin",
+        "is_platform_admin": False, "operator_id": str(op1.id),
+    })
+
+    response = client.post(
+        "/api/v1/db/company-drivers",
+        data=json.dumps({
+            "companyId": str(op2.id), "nome": "Novo Motoboy",
+            "phone": "(11) 93333-4444", "email": "driver@example.com",
+            "password": "senha-segura", "document": "123.456.789-01",
+        }),
+        content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+    assert response.status_code == 200, response.content
+    driver = Driver.objects.get(id=response.json()["driverId"])
+    assert driver.operator_id == op1.id
+    assert driver.phone == "11933334444"
+    assert driver.document == "12345678901"
+
+
+@pytest.mark.django_db
+def test_only_platform_owner_can_transfer_driver_and_transfer_is_audited(client: Client):
+    op1 = Operator.objects.create(id=uuid.uuid4(), name="Origem", status="ACTIVE")
+    op2 = Operator.objects.create(id=uuid.uuid4(), name="Destino", status="ACTIVE")
+    staff = StaffMember.objects.create(
+        id=uuid.uuid4(), operator=op1, name="Admin Origem",
+        email="origem@example.com", role="ADMIN", active=True,
+    )
+    driver = Driver.objects.create(
+        id=uuid.uuid4(), operator=op1, supabase_uid=uuid.uuid4(),
+        name="Motoboy Transferível", phone="11955556666", document="98765432100",
+        pixKeyType="TELEFONE", pixKey="11955556666", active=True,
+    )
+    staff_token = create_access_token({
+        "sub": str(staff.id), "email": staff.email, "role": "operador_admin",
+        "is_platform_admin": False, "operator_id": str(op1.id),
+    })
+    payload = {"targetCompanyId": str(op2.id), "reason": "Mudança contratual autorizada"}
+    response = client.post(
+        f"/api/v1/db/company-drivers/{driver.id}/transfer",
+        data=json.dumps(payload), content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {staff_token}",
+    )
+    assert response.status_code == 403
+
+    owner = PlatformAdmin.objects.create(
+        id=uuid.uuid4(), supabase_uid=uuid.uuid4(), name="Proprietário",
+        email="owner@example.com",
+    )
+    owner_token = create_access_token({
+        "sub": str(owner.id), "email": owner.email, "role": "SUPERADMIN",
+        "is_platform_admin": True, "operator_id": None,
+    })
+    response = client.post(
+        f"/api/v1/db/company-drivers/{driver.id}/transfer",
+        data=json.dumps(payload), content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {owner_token}",
+    )
+    assert response.status_code == 200, response.content
+    driver.refresh_from_db()
+    assert driver.active is False
+    transferred = Driver.objects.get(id=response.json()["driverId"])
+    assert transferred.operator_id == op2.id
+    assert transferred.active is True
+    from accounts.models import OperatorAuditLog
+    audit = OperatorAuditLog.objects.get(action="DRIVER_OPERATOR_TRANSFER")
+    assert str(driver.id) in audit.reason
+    assert str(transferred.id) in audit.reason
+
+
+@pytest.mark.django_db
+def test_operator_saas_billing_crud_and_actions(client: Client):
+    platform_admin = PlatformAdmin.objects.create(
+        id=uuid.uuid4(), name="Master SaaS", email="master-saas@expressoneves.com.br"
+    )
+    token = create_access_token({
+        "sub": str(platform_admin.id),
+        "email": platform_admin.email,
         "role": "superadmin",
         "user_type": "platform_admin",
         "is_platform_admin": True,
@@ -367,9 +610,12 @@ def test_dashboard_stats_endpoint_metrics(client):
         fareValueCents=1800,
     )
 
+    admin = PlatformAdmin.objects.create(
+        id=uuid.uuid4(), name="Master Dashboard", email="master-dashboard@expressoneves.com.br"
+    )
     token = create_access_token({
-        "sub": "user_superadmin_master",
-        "email": "master@expressoneves.com.br",
+        "sub": str(admin.id),
+        "email": admin.email,
         "is_platform_admin": True,
         "role": "SUPERADMIN",
     })
@@ -388,5 +634,3 @@ def test_dashboard_stats_endpoint_metrics(client):
     assert len(data["chart_data"]) == 7
     assert len(data["top_stores"]) >= 1
     assert data["top_stores"][0]["nome"] == "Pizzaria Central"
-
-

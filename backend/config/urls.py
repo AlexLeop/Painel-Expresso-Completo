@@ -31,5 +31,7 @@ urlpatterns = [
     path("api/", panel_api.urls),  # API de compatibilidade para o React
 ]
 
-if settings.DEBUG or getattr(settings, "SERVE_MEDIA", True):
+# DATA-002: Servir media pelo Django é restrito exclusivamente ao desenvolvimento local (DEBUG=True).
+# Em produção, uploads devem residir em Object Storage privado (S3/Supabase Storage) com URLs assinadas.
+if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

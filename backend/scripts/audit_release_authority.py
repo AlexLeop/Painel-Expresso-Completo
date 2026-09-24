@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Auditor Fail-Closed da Autoridade Documental Ativa (DOC-001 / G0).
-Garante que apenas o Plano Mestre V2 seja a autoridade normativa ativa,
+Garante que apenas o plano consolidado do sistema sem mobile seja a autoridade normativa ativa,
 bloqueando qualquer declaração ativa de aptidão para produção não comprovada.
 """
 
@@ -47,7 +47,7 @@ def is_superseded(content: str) -> bool:
 def audit_document(filepath: Path, authority_path: Path) -> Tuple[str, Optional[str]]:
     """
     Classifica o documento como:
-    - 'AUTHORITY': O documento oficial ativo (V2)
+    - 'AUTHORITY': O documento oficial ativo
     - 'ARCHIVED_OR_HISTORICAL': Documento histórico com banner obrigatório
     - 'CONVENTIONAL_DOC': Documentação técnica ou spec válida
     - 'CONFLICT_UNBANNED': Erro: declaração de aptidão ou plano concorrente sem banner
@@ -88,7 +88,7 @@ def run_audit(docs_dir: Path, authority_file: Path) -> Tuple[bool, List[Dict[str
         reports.append({
             "path": str(authority_file),
             "classification": "MISSING_AUTHORITY",
-            "reason": "Arquivo de autoridade mestre V2 não foi encontrado",
+            "reason": "Arquivo de autoridade documental não foi encontrado",
         })
         return False, reports
 
@@ -129,8 +129,8 @@ def main():
     parser.add_argument("--docs", default="docs", help="Diretório de documentação")
     parser.add_argument(
         "--authority",
-        default="docs/PLANO_IMPLEMENTACAO_PRONTIDAO_PRODUCAO_V2.md",
-        help="Caminho do Plano Mestre V2 (única autoridade)",
+        default="docs/PLANO_IMPLEMENTACAO_CORRECOES_SISTEMA_SEM_MOBILE.md",
+        help="Caminho do plano mestre vigente (única autoridade)",
     )
     parser.add_argument("--report", default=None, help="Caminho do relatório JSON de saída")
     parser.add_argument("--check", action="store_true", help="Falha com código 1 caso haja conflitos")

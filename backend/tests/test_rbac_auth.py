@@ -78,6 +78,7 @@ def setup_test_tables(db):
                 name VARCHAR(255) NOT NULL,
                 email VARCHAR(255) NOT NULL,
                 "passwordHash" VARCHAR(255),
+                active BOOLEAN NOT NULL DEFAULT 1,
                 "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )

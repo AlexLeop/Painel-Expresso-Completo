@@ -895,7 +895,8 @@ export function MotoboyModal({
                                 })
                               }
                               className="w-full px-3 py-2 text-sm bg-white border border-zinc-300 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none rounded-lg text-zinc-900"
-                              placeholder="Padrão: 123456"
+                              placeholder="Mínimo 10 caracteres"
+                              minLength={10}
                             />
                           </div>
                         </div>

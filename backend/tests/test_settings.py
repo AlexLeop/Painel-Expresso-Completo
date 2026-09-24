@@ -20,3 +20,6 @@ CACHES = {
 
 CELERY_BROKER_URL = "memory://"
 CELERY_RESULT_BACKEND = "cache+memory://"
+ALLOW_PAYMENT_SIMULATION = True
+EFI_WEBHOOK_HMAC = "test-efi-webhook-hmac"
+EFI_REQUIRE_MTLS_HEADER = True

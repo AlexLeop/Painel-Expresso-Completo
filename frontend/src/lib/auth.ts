@@ -19,14 +19,12 @@ export interface User {
 
 export interface AuthResponse {
   access_token: string;
-  refresh_token: string;
   token_type: string;
   user: User;
 }
 
-const ACCESS_TOKEN_KEY = "nevesgo:access_token";
-const REFRESH_TOKEN_KEY = "nevesgo:refresh_token";
-const SESSION_KEY = "nevesgo:session";
+let accessTokenInMemory: string | null = null;
+let sessionInMemory: unknown = null;
 
 function getBaseUrl(): string {
   let rawBaseUrl = import.meta.env.VITE_API_URL || "";
@@ -37,21 +35,20 @@ function getBaseUrl(): string {
 
 export const authStorage = {
   getAccessToken(): string | null {
-    return localStorage.getItem(ACCESS_TOKEN_KEY);
+    return accessTokenInMemory;
   },
-  getRefreshToken(): string | null {
-    return localStorage.getItem(REFRESH_TOKEN_KEY);
+  setAccessToken(accessToken: string) {
+    accessTokenInMemory = accessToken;
   },
-  setTokens(accessToken: string, refreshToken?: string) {
-    localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-    if (refreshToken) {
-      localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
-    }
+  setSession(session: unknown) {
+    sessionInMemory = session;
+  },
+  getSession<T>(): T | null {
+    return (sessionInMemory as T) || null;
   },
   clearTokens() {
-    localStorage.removeItem(ACCESS_TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
-    localStorage.removeItem(SESSION_KEY);
+    accessTokenInMemory = null;
+    sessionInMemory = null;
   },
 };
 
@@ -60,6 +57,7 @@ export async function nativeLogin(email: string, password: string): Promise<Auth
   const res = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
   });
 
@@ -70,30 +68,25 @@ export async function nativeLogin(email: string, password: string): Promise<Auth
   }
 
   const data: AuthResponse = await res.json();
-  authStorage.setTokens(data.access_token, data.refresh_token);
+  authStorage.setAccessToken(data.access_token);
 
   const sessionData = {
     success: true,
     user: data.user,
   };
-  localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
+  authStorage.setSession(sessionData);
 
   return data;
 }
 
 export async function nativeRefreshToken(): Promise<string | null> {
-  const refreshToken = authStorage.getRefreshToken();
-  if (!refreshToken) {
-    authStorage.clearTokens();
-    return null;
-  }
-
   try {
     const baseUrl = getBaseUrl();
     const res = await fetch(`${baseUrl}/api/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refreshToken }),
+      credentials: "include",
+      body: JSON.stringify({}),
     });
 
     if (!res.ok) {
@@ -103,7 +96,7 @@ export async function nativeRefreshToken(): Promise<string | null> {
 
     const data = await res.json();
     if (data.access_token) {
-      authStorage.setTokens(data.access_token);
+      authStorage.setAccessToken(data.access_token);
       return data.access_token;
     }
   } catch {
@@ -126,6 +119,7 @@ export async function nativeLogout(): Promise<void> {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
+        credentials: "include",
       });
     } catch {
       // Ignora erro no logout remoto
@@ -161,7 +155,7 @@ export async function fetchCurrentProfile(): Promise<User | null> {
         success: true,
         user: data.user,
       };
-      localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
+      authStorage.setSession(sessionData);
       return data.user;
     }
   }

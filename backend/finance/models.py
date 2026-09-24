@@ -282,7 +282,9 @@ class ManualEntry(TimeStampedTenantModel):
     operator = models.ForeignKey(
         Operator, on_delete=models.CASCADE, db_column="operator_id"
     )
-    driver = models.ForeignKey(Driver, on_delete=models.CASCADE, db_column="driver_id")
+    driver = models.ForeignKey(
+        Driver, null=True, blank=True, on_delete=models.CASCADE, db_column="driver_id"
+    )
     store = models.ForeignKey(
         Store, null=True, blank=True, on_delete=models.SET_NULL, db_column="store_id"
     )

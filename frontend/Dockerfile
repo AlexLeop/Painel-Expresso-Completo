@@ -9,7 +9,7 @@ WORKDIR /app
 
 # Install all dependencies (including dev)
 COPY frontend/package*.json ./
-RUN npm install
+RUN npm ci
 
 # Copy source and build
 COPY frontend/ ./
@@ -20,9 +20,9 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-# Copy package files and install only production dependencies
+# O servidor empacotado mantém apenas dependências Node de runtime.
 COPY frontend/package*.json ./
-RUN npm install --omit=dev
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 # Copy build artifacts from builder
 COPY --from=builder /app/dist ./dist
@@ -30,6 +30,7 @@ COPY --from=builder /app/dist ./dist
 ENV NODE_ENV=production
 ENV PORT=5173
 EXPOSE 5173
+USER node
 
 # Start the express server using the built bundle
 CMD ["npm", "start"]

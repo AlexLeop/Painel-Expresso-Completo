@@ -8,43 +8,44 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
+TEST_OPERATOR_ID = os.environ.get("TEST_OPERATOR_ID")
+ALLOW_TEST_DATA = os.environ.get("ALLOW_TEST_DATA", "").lower() == "true"
 
-if not DATABASE_URL:
-    print("Falta variável de ambiente DATABASE_URL no .env")
+if not DATABASE_URL or not TEST_OPERATOR_ID or not ALLOW_TEST_DATA:
+    print("Defina DATABASE_URL, TEST_OPERATOR_ID e ALLOW_TEST_DATA=true explicitamente.")
     exit(1)
 
-TEST_PHONE = os.environ.get("TEST_DRIVER_PHONE", "11999999999")
-TEST_NAME = os.environ.get("TEST_DRIVER_NAME", "Motoboy Teste")
-TEST_DOC = os.environ.get("TEST_DRIVER_DOC", "12345678901")
+TEST_PHONE = os.environ.get("TEST_DRIVER_PHONE")
+TEST_NAME = os.environ.get("TEST_DRIVER_NAME")
+TEST_DOC = os.environ.get("TEST_DRIVER_DOC")
+if not all((TEST_PHONE, TEST_NAME, TEST_DOC)):
+    print("Defina TEST_DRIVER_PHONE, TEST_DRIVER_NAME e TEST_DRIVER_DOC explicitamente.")
+    exit(1)
 
 try:
     print("Conectando ao banco de dados PostgreSQL...")
     with psycopg.connect(DATABASE_URL) as conn:
         with conn.cursor() as cur:
-            # 1. Verificar ou Criar Operator
-            cur.execute('SELECT id FROM "Operator" LIMIT 1')
+            # O tenant é sempre explícito; nunca selecionamos o primeiro operador.
+            cur.execute('SELECT id FROM "Operator" WHERE id = %s', (TEST_OPERATOR_ID,))
             op_row = cur.fetchone()
             if not op_row:
-                print("Nenhum Operator encontrado. Criando operador Logístico de Teste...")
-                operator_id = str(uuid.uuid4())
-                cur.execute(
-                    'INSERT INTO "Operator" (id, name, status) VALUES (%s, %s, %s)',
-                    (operator_id, "Operador Teste", "ACTIVE")
-                )
-            else:
-                operator_id = op_row[0]
-                print(f"Usando Operator existente: {operator_id}")
+                raise RuntimeError("TEST_OPERATOR_ID não corresponde a um operador existente.")
+            operator_id = op_row[0]
+            print(f"Usando Operator explicitamente selecionado: {operator_id}")
 
             # 2. Criar ou Atualizar Driver
-            cur.execute('SELECT id FROM "Driver" WHERE phone = %s', (TEST_PHONE,))
+            cur.execute('SELECT id, operator_id FROM "Driver" WHERE phone = %s', (TEST_PHONE,))
             driver_row = cur.fetchone()
 
             if driver_row:
                 driver_id = driver_row[0]
+                if str(driver_row[1]) != str(operator_id):
+                    raise RuntimeError("O telefone já pertence a um motoboy de outro operador.")
                 print(f"Driver já existe para o telefone {TEST_PHONE} com ID {driver_id}. Atualizando...")
                 cur.execute(
-                    'UPDATE "Driver" SET operator_id = %s, active = TRUE, online = TRUE WHERE id = %s',
-                    (operator_id, driver_id)
+                    'UPDATE "Driver" SET active = TRUE, online = TRUE WHERE id = %s AND operator_id = %s',
+                    (driver_id, operator_id)
                 )
             else:
                 driver_id = str(uuid.uuid4())

@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Header, HTTPException, status, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import redis
 import json
 import time
@@ -14,11 +14,20 @@ redis_client = redis.from_url(REDIS_URL, decode_responses=True)
 
 
 class TelemetryPayload(BaseModel):
-    lat: float
-    lng: float
-    heading: Optional[int] = 0
-    speedKmh: Optional[int] = 0
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+    heading: Optional[int] = Field(default=0, ge=0, le=359)
+    speedKmh: Optional[int] = Field(default=0, ge=0, le=250)
     timestamp: int
+
+
+@app.get("/health")
+def health():
+    try:
+        redis_client.ping()
+        return {"status": "ok"}
+    except redis.exceptions.RedisError as exc:
+        raise HTTPException(status_code=503, detail="Cache unavailable") from exc
 
 
 def verify_device_token(x_device_token: str = Header(...)):
@@ -87,6 +96,11 @@ async def ingest_telemetry(
     operator_id = driver_info["operator_id"]
 
     ts_server = int(time.time())
+    if abs(ts_server - payload.timestamp) > 300:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Telemetry timestamp is outside the accepted freshness window.",
+        )
 
     try:
         # Pipeline atômico para gravar nos dois locais em 1 RT

@@ -1,7 +1,9 @@
 import logging
+from django.conf import settings
+from django.http import JsonResponse
 from ninja import Router
 from ninja.errors import HttpError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from uuid import uuid4
 import redis
@@ -56,22 +58,35 @@ def register_driver(request, payload: DriverRegistrationPayload):
     if len(clean_cpf) != 11:
         return 400, {"error": "CPF inválido."}
 
-    # Check if Driver with this CPF already exists
-    if Driver.objects.filter(operator=staff.operator, phone=payload.phone).exists():
-        return 409, {"error": "Motorista com este telefone já registrado."}
+    clean_phone = re.sub(r"[^\d]", "", payload.phone)
+    from django.db.models import Q
 
-    with transaction.atomic():
-        driver = Driver.objects.create(
-            id=uuid4(),
-            operator=staff.operator,
-            supabase_uid=str(uuid4()),
-            name=payload.name,
-            phone=payload.phone,
-            pixKey=payload.cpf,  # Storing CPF as pixKey
-            pixKeyType="CPF",
-            active=True,
+    existing = Driver.objects.filter(
+        Q(phone=clean_phone) | Q(document=clean_cpf), active=True
+    ).first()
+    if existing:
+        if existing.operator_id == staff.operator_id:
+            raise HttpError(409, "Motorista com este telefone já registrado.")
+        raise HttpError(
+            409,
+            "Este motoboy já pertence a outro operador. Somente o proprietário da plataforma pode transferi-lo.",
         )
-        return driver
+
+    try:
+        with transaction.atomic():
+            return Driver.objects.create(
+                id=uuid4(),
+                operator=staff.operator,
+                supabase_uid=str(uuid4()),
+                name=payload.name,
+                phone=clean_phone,
+                document=clean_cpf,
+                pixKey=clean_cpf,
+                pixKeyType="CPF",
+                active=True,
+            )
+    except IntegrityError as exc:
+        raise HttpError(409, "Já existe um motoboy ativo com esta identidade.") from exc
 
 
 @router.post("/operator/drivers/biometrics", response=DriverBiometricResponse)
@@ -85,8 +100,10 @@ async def verify_biometrics(request, payload: DriverBiometricPayload):
     except Driver.DoesNotExist:
         return 404, {"error": "Motorista não encontrado."}
     
-    provider_url = os.environ.get("BIOMETRICS_PROVIDER_URL", "https://api.fake-biometrics.com/verify")
-    api_key = os.environ.get("BIOMETRICS_API_KEY", "dummy")
+    provider_url = os.environ.get("BIOMETRICS_PROVIDER_URL", "")
+    api_key = os.environ.get("BIOMETRICS_API_KEY", "")
+    if not provider_url or not api_key:
+        raise HttpError(503, "Provedor de biometria não configurado.")
     
     async with httpx.AsyncClient() as client:
         try:
@@ -113,9 +130,12 @@ async def verify_biometrics(request, payload: DriverBiometricPayload):
     }
 
 
-@router.post("/operator/drivers/biometrics/webhook", response={200: dict, 401: dict})
+@router.post("/operator/drivers/biometrics/webhook", response={200: dict, 401: dict, 503: dict})
 def biometrics_webhook(request, payload: BiometricWebhookPayload, x_signature: str = Header(None)):  # type: ignore
-    secret = os.environ.get("WEBHOOK_SECRET", "dummy-secret").encode('utf-8')
+    configured_secret = os.environ.get("BIOMETRICS_WEBHOOK_SECRET", "")
+    if not configured_secret:
+        return 503, {"error": "Webhook de biometria não configurado."}
+    secret = configured_secret.encode('utf-8')
     if not x_signature:
         return 401, {"error": "Assinatura não fornecida."}
         
@@ -216,7 +236,7 @@ class LoginPayload(Schema):
 
 
 class RefreshPayload(Schema):
-    refresh_token: str
+    refresh_token: str | None = None
 
 
 def handle_login(request, payload: LoginPayload):
@@ -306,7 +326,7 @@ def handle_login(request, payload: LoginPayload):
     # 3. Checa ClientPortalUser (Cliente / Lojista)
     try:
         from logistics.models import ClientPortalUser
-        client_user = ClientPortalUser.objects.filter(email__iexact=email).select_related("client", "operator").first()
+        client_user = ClientPortalUser.objects.filter(email__iexact=email, active=True).select_related("client", "operator").first()
         if client_user and client_user.check_password(raw_password):
             token_payload = {
                 "sub": str(client_user.id),
@@ -359,9 +379,9 @@ def handle_me(request):
 
     # 1. SuperAdmin Master
     if is_admin:
-        admin = PlatformAdmin.objects.filter(id=uid).first()
-        if not admin and "email" in request.auth:
-            admin = PlatformAdmin.objects.filter(email=request.auth["email"]).first()
+        from accounts.auth import platform_admin_required
+
+        admin = platform_admin_required(request)
 
         all_ops = Operator.objects.all()
         companies_list = [{"id": "global", "nome": "Administração Global"}]
@@ -371,9 +391,9 @@ def handle_me(request):
         return {
             "authenticated": True,
             "user": {
-                "id": str(admin.id) if admin else uid,
-                "email": admin.email if admin else request.auth.get("email", ""),
-                "name": admin.name if admin else "Platform Admin",
+                "id": str(admin.id),
+                "email": admin.email,
+                "name": admin.name,
                 "role": "superadmin",
                 "user_type": "platform_admin",
                 "is_platform_admin": True,
@@ -387,9 +407,9 @@ def handle_me(request):
     # 2. ClientPortalUser (Lojista)
     if request.auth.get("user_type") == "client_portal_user" or request.auth.get("client_id"):
         from logistics.models import ClientPortalUser
-        client_user = ClientPortalUser.objects.filter(id=uid).select_related("client", "operator").first()
+        client_user = ClientPortalUser.objects.filter(id=uid, active=True).select_related("client", "operator").first()
         if not client_user and "email" in request.auth:
-            client_user = ClientPortalUser.objects.filter(email=request.auth["email"]).select_related("client", "operator").first()
+            client_user = ClientPortalUser.objects.filter(email=request.auth["email"], active=True).select_related("client", "operator").first()
 
         if client_user:
             try:
@@ -452,13 +472,27 @@ def handle_me(request):
 
 
 def handle_refresh(request, payload: RefreshPayload):
+    from django.core.cache import cache
+
     try:
-        decoded = decode_token(payload.refresh_token)
-        if decoded.get("type") != "refresh":
-            raise HttpError(401, "Token não é de renovação.")
+        decoded = decode_token(payload.refresh_token, expected_type="refresh")
         uid = decoded.get("sub")
     except SecurityError as e:
         raise HttpError(401, str(e))
+
+    jti = decoded.get("jti")
+    expires_at = int(decoded.get("exp") or 0)
+    ttl_seconds = expires_at - int(timezone.now().timestamp())
+    if not jti or ttl_seconds <= 0:
+        raise HttpError(401, "Token de renovação inválido.")
+    try:
+        if not cache.add(f"auth:refresh-used:{jti}", True, timeout=ttl_seconds):
+            raise HttpError(401, "Token de renovação já utilizado.")
+    except HttpError:
+        raise
+    except Exception as exc:
+        logger.error("Falha no armazenamento de rotação de refresh token: %s", exc)
+        raise HttpError(503, "Renovação de sessão temporariamente indisponível.")
 
     admin = PlatformAdmin.objects.filter(id=uid).first()
     if admin:
@@ -469,7 +503,11 @@ def handle_refresh(request, payload: RefreshPayload):
             "is_platform_admin": True,
             "operator_id": None,
         }
-        return {"access_token": create_access_token(token_payload), "token_type": "bearer"}
+        return {
+            "access_token": create_access_token(token_payload),
+            "refresh_token": create_refresh_token({"sub": str(admin.id)}),
+            "token_type": "bearer",
+        }
 
     staff = StaffMember.objects.filter(id=uid, active=True).first()
     if staff:
@@ -480,7 +518,30 @@ def handle_refresh(request, payload: RefreshPayload):
             "is_platform_admin": False,
             "operator_id": str(staff.operator_id),
         }
-        return {"access_token": create_access_token(token_payload), "token_type": "bearer"}
+        return {
+            "access_token": create_access_token(token_payload),
+            "refresh_token": create_refresh_token({"sub": str(staff.id)}),
+            "token_type": "bearer",
+        }
+
+    from logistics.models import ClientPortalUser
+
+    client_user = ClientPortalUser.objects.filter(id=uid, active=True).first()
+    if client_user:
+        token_payload = {
+            "sub": str(client_user.id),
+            "email": client_user.email,
+            "role": "lojista",
+            "user_type": "client_portal_user",
+            "is_platform_admin": False,
+            "operator_id": str(client_user.operator_id),
+            "client_id": str(client_user.client_id),
+        }
+        return {
+            "access_token": create_access_token(token_payload),
+            "refresh_token": create_refresh_token({"sub": str(client_user.id)}),
+            "token_type": "bearer",
+        }
 
     raise HttpError(401, "Usuário não encontrado.")
 
@@ -489,12 +550,65 @@ def handle_logout(request):
     return {"success": True, "message": "Logout realizado com sucesso."}
 
 
+REFRESH_COOKIE_NAME = "neves_refresh"
+
+
+def _json_with_refresh_cookie(data: dict, refresh_token: str, status: int = 200):
+    response = JsonResponse(data, status=status)
+    response.set_cookie(
+        REFRESH_COOKIE_NAME,
+        refresh_token,
+        max_age=30 * 24 * 60 * 60,
+        httponly=True,
+        secure=not settings.DEBUG,
+        samesite="Lax",
+        path="/api/",
+    )
+    return response
+
+
+def login_endpoint(request, payload: LoginPayload):
+    status_code, data = handle_login(request, payload)
+    refresh_token = data.pop("refresh_token")
+    return _json_with_refresh_cookie(data, refresh_token, status=status_code)
+
+
+def refresh_endpoint(request, payload: RefreshPayload | None = None):
+    refresh_token = (
+        payload.refresh_token if payload and payload.refresh_token else None
+    ) or request.COOKIES.get(REFRESH_COOKIE_NAME)
+    if not refresh_token:
+        raise HttpError(401, "Sessão de renovação ausente.")
+    data = handle_refresh(request, RefreshPayload(refresh_token=refresh_token))
+    rotated_refresh = data.pop("refresh_token")
+    return _json_with_refresh_cookie(data, rotated_refresh)
+
+
+def logout_endpoint(request):
+    refresh_token = request.COOKIES.get(REFRESH_COOKIE_NAME)
+    if refresh_token:
+        try:
+            decoded = decode_token(refresh_token, expected_type="refresh")
+            from django.core.cache import cache
+
+            ttl_seconds = int(decoded.get("exp") or 0) - int(timezone.now().timestamp())
+            if decoded.get("jti") and ttl_seconds > 0:
+                cache.add(
+                    f"auth:refresh-used:{decoded['jti']}", True, timeout=ttl_seconds
+                )
+        except Exception:
+            pass
+    response = JsonResponse(handle_logout(request))
+    response.delete_cookie(REFRESH_COOKIE_NAME, path="/api/", samesite="Lax")
+    return response
+
+
 # Router dedicado para /api/v1/auth/
 api_auth_router = Router(tags=["Native Auth API"])
-api_auth_router.post("/login", auth=None)(handle_login)
+api_auth_router.post("/login", auth=None)(login_endpoint)
 api_auth_router.get("/me")(handle_me)
-api_auth_router.post("/refresh", auth=None)(handle_refresh)
-api_auth_router.post("/logout")(handle_logout)
+api_auth_router.post("/refresh", auth=None)(refresh_endpoint)
+api_auth_router.post("/logout")(logout_endpoint)
 
 # Alias para manter compatibilidade
 auth_router = api_auth_router

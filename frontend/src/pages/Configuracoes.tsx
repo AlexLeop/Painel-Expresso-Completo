@@ -14,9 +14,17 @@ import {
   ClipboardList,
   AlertTriangle,
   Info,
+  Check,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useAuth } from "../contexts/AuthContext";
+import { useBranding } from "../contexts/BrandingContext";
+import {
+  uploadBrandingLogo,
+  uploadBrandingFavicon,
+  DEFAULT_BRANDING,
+} from "../services/branding";
 import { authFetch } from "../lib/api";
 import { useApiQuery } from "../lib/useApiQuery";
 
@@ -48,11 +56,400 @@ function DevBanner() {
   );
 }
 
+function WhiteLabelConfigPanel() {
+  const { branding, updateCustomBranding } = useBranding();
+  const [formData, setFormData] = useState({
+    brand_name: branding.brand_name || "",
+    color_primary: branding.color_primary || "#E55C00",
+    color_secondary: branding.color_secondary || "#4f46e5",
+    color_accent: branding.color_accent || "#f59e0b",
+    color_background: branding.color_background || "#F9F9FA",
+    color_surface: branding.color_surface || "#ffffff",
+    color_text: branding.color_text || "#18181b",
+    dark_color_background: branding.dark_color_background || "#0a0a0a",
+    dark_color_surface: branding.dark_color_surface || "#171717",
+    dark_color_text: branding.dark_color_text || "#fafafa",
+    theme_mode: (branding.theme_mode as "light" | "dark" | "auto") || "light",
+    logo_url: branding.logo_url || "",
+    favicon_url: branding.favicon_url || "",
+  });
+
+  const [saving, setSaving] = useState(false);
+  const [savedSuccess, setSavedSuccess] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingFavicon, setUploadingFavicon] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFormData({
+      brand_name: branding.brand_name || "",
+      color_primary: branding.color_primary || "#E55C00",
+      color_secondary: branding.color_secondary || "#4f46e5",
+      color_accent: branding.color_accent || "#f59e0b",
+      color_background: branding.color_background || "#F9F9FA",
+      color_surface: branding.color_surface || "#ffffff",
+      color_text: branding.color_text || "#18181b",
+      dark_color_background: branding.dark_color_background || "#0a0a0a",
+      dark_color_surface: branding.dark_color_surface || "#171717",
+      dark_color_text: branding.dark_color_text || "#fafafa",
+      theme_mode: (branding.theme_mode as any) || "light",
+      logo_url: branding.logo_url || "",
+      favicon_url: branding.favicon_url || "",
+    });
+  }, [branding]);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingLogo(true);
+    setErrorMsg(null);
+    try {
+      const url = await uploadBrandingLogo(file);
+      setFormData((prev) => ({ ...prev, logo_url: url }));
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Erro no upload do logo.");
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleFaviconUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingFavicon(true);
+    setErrorMsg(null);
+    try {
+      const url = await uploadBrandingFavicon(file);
+      setFormData((prev) => ({ ...prev, favicon_url: url }));
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Erro no upload do favicon.");
+    } finally {
+      setUploadingFavicon(false);
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setErrorMsg(null);
+    setSavedSuccess(false);
+    try {
+      await updateCustomBranding({
+        ...formData,
+        logo_url: formData.logo_url || null,
+        favicon_url: formData.favicon_url || null,
+      });
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 4000);
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Erro ao salvar personalização.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReset = async () => {
+    if (!window.confirm("Deseja restaurar as cores e configurações padrão da marca?")) return;
+    setSaving(true);
+    setErrorMsg(null);
+    try {
+      await updateCustomBranding({
+        ...DEFAULT_BRANDING,
+        brand_name: branding.brand_name,
+        logo_url: null,
+        favicon_url: null,
+      });
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 4000);
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Erro ao restaurar padrões.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm ring-1 ring-zinc-950/5 p-6 space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h3 className="text-lg font-bold text-zinc-900 flex items-center gap-2">
+            <Palette className="w-5 h-5 text-indigo-600" />
+            Personalização de Marca (White-Label)
+          </h3>
+          <p className="text-sm text-zinc-500">
+            Personalize a logo, cores e nome da sua empresa para que lojistas e motoristas vejam a sua marca.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleReset}
+            disabled={saving}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className="w-3.5 h-3.5" /> Restaurar Padrões
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-zinc-900 hover:bg-zinc-800 rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-zinc-900/20 disabled:opacity-50"
+          >
+            {saving ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : savedSuccess ? (
+              <Check className="w-4 h-4 text-emerald-400" />
+            ) : (
+              <Save className="w-4 h-4" />
+            )}
+            {saving ? "Salvando..." : savedSuccess ? "✓ Salvo!" : "Salvar Marca"}
+          </button>
+        </div>
+      </div>
+
+      {savedSuccess && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg p-3 text-xs flex items-center gap-2 animate-fadeIn">
+          <Check className="w-4 h-4 text-emerald-600" />
+          <span>Personalização aplicada com sucesso! Os clientes e lojistas já verão sua marca atualizada.</span>
+        </div>
+      )}
+
+      {errorMsg && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-lg p-3 text-xs flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
+      <div className="h-px w-full bg-zinc-100" />
+
+      {/* Identidade: Nome da Marca */}
+      <div className="space-y-4">
+        <h4 className="text-sm font-semibold text-zinc-900">Nome da Operação / Marca</h4>
+        <div className="max-w-md space-y-1.5">
+          <label className="text-xs font-semibold text-zinc-700 uppercase tracking-wider">
+            Nome de Exibição
+          </label>
+          <input
+            type="text"
+            value={formData.brand_name}
+            onChange={(e) => setFormData({ ...formData, brand_name: e.target.value })}
+            placeholder="Ex: Minha Logística Express"
+            className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+          />
+          <p className="text-[11px] text-zinc-400">
+            Substitui "Expresso Neves" no topo da página, aba do navegador e no cabeçalho dos relatórios PDF.
+          </p>
+        </div>
+      </div>
+
+      {/* Uploads: Logo e Favicon */}
+      <div className="space-y-4 pt-4 border-t border-zinc-100">
+        <h4 className="text-sm font-semibold text-zinc-900">Logotipo e Ícone</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Logo Principal */}
+          <div className="border border-zinc-200 rounded-xl p-4 flex flex-col items-center justify-center text-center gap-3 bg-zinc-50/50">
+            <div className="w-24 h-16 bg-white rounded-lg border border-zinc-200 flex items-center justify-center overflow-hidden p-2 shadow-sm">
+              {formData.logo_url ? (
+                <img src={formData.logo_url} alt="Logo" className="max-h-full max-w-full object-contain" />
+              ) : (
+                <span className="text-[11px] font-semibold text-zinc-400">Sem Logo</span>
+              )}
+            </div>
+            <div>
+              <p className="text-sm font-medium text-zinc-900">Logo Principal</p>
+              <p className="text-[11px] text-zinc-500 mt-0.5">PNG, SVG ou WebP (máx. 2MB)</p>
+            </div>
+            <label className="cursor-pointer text-xs font-semibold px-3 py-1.5 bg-white border border-zinc-200 rounded-lg hover:bg-zinc-50 transition-colors shadow-sm inline-flex items-center gap-1.5">
+              <Upload className="w-3.5 h-3.5 text-zinc-500" />
+              {uploadingLogo ? "Enviando..." : formData.logo_url ? "Trocar Logo" : "Upload Logo"}
+              <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleLogoUpload} className="hidden" disabled={uploadingLogo} />
+            </label>
+          </div>
+
+          {/* Favicon */}
+          <div className="border border-zinc-200 rounded-xl p-4 flex flex-col items-center justify-center text-center gap-3 bg-zinc-50/50">
+            <div className="w-14 h-14 bg-white rounded-lg border border-zinc-200 flex items-center justify-center overflow-hidden p-1 shadow-sm">
+              {formData.favicon_url ? (
+                <img src={formData.favicon_url} alt="Favicon" className="w-8 h-8 object-contain" />
+              ) : (
+                <span className="text-[10px] font-semibold text-zinc-400">Favicon</span>
+              )}
+            </div>
+            <div>
+              <p className="text-sm font-medium text-zinc-900">Favicon (Aba do Navegador)</p>
+              <p className="text-[11px] text-zinc-500 mt-0.5">ICO ou PNG quadrado (máx. 100KB)</p>
+            </div>
+            <label className="cursor-pointer text-xs font-semibold px-3 py-1.5 bg-white border border-zinc-200 rounded-lg hover:bg-zinc-50 transition-colors shadow-sm inline-flex items-center gap-1.5">
+              <Upload className="w-3.5 h-3.5 text-zinc-500" />
+              {uploadingFavicon ? "Enviando..." : formData.favicon_url ? "Trocar Favicon" : "Upload Favicon"}
+              <input type="file" accept="image/x-icon,image/png" onChange={handleFaviconUpload} className="hidden" disabled={uploadingFavicon} />
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* Paleta de Cores */}
+      <div className="space-y-4 pt-4 border-t border-zinc-100">
+        <h4 className="text-sm font-semibold text-zinc-900">Paleta de Cores da Marca</h4>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-zinc-700 uppercase tracking-wider">
+              Cor Primária
+            </label>
+            <div className="flex gap-2 items-center">
+              <input
+                type="color"
+                value={formData.color_primary}
+                onChange={(e) => setFormData({ ...formData, color_primary: e.target.value })}
+                className="w-10 h-10 rounded cursor-pointer border border-zinc-200 p-0.5 shrink-0"
+              />
+              <input
+                type="text"
+                value={formData.color_primary}
+                onChange={(e) => setFormData({ ...formData, color_primary: e.target.value })}
+                className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+              />
+            </div>
+            <p className="text-[10px] text-zinc-400">Botões principais, links e cabeçalho de relatórios.</p>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-zinc-700 uppercase tracking-wider">
+              Cor Secundária
+            </label>
+            <div className="flex gap-2 items-center">
+              <input
+                type="color"
+                value={formData.color_secondary}
+                onChange={(e) => setFormData({ ...formData, color_secondary: e.target.value })}
+                className="w-10 h-10 rounded cursor-pointer border border-zinc-200 p-0.5 shrink-0"
+              />
+              <input
+                type="text"
+                value={formData.color_secondary}
+                onChange={(e) => setFormData({ ...formData, color_secondary: e.target.value })}
+                className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+              />
+            </div>
+            <p className="text-[10px] text-zinc-400">Elementos de destaque, menu lateral e contrastes.</p>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-zinc-700 uppercase tracking-wider">
+              Cor de Acento / CTA
+            </label>
+            <div className="flex gap-2 items-center">
+              <input
+                type="color"
+                value={formData.color_accent}
+                onChange={(e) => setFormData({ ...formData, color_accent: e.target.value })}
+                className="w-10 h-10 rounded cursor-pointer border border-zinc-200 p-0.5 shrink-0"
+              />
+              <input
+                type="text"
+                value={formData.color_accent}
+                onChange={(e) => setFormData({ ...formData, color_accent: e.target.value })}
+                className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+              />
+            </div>
+            <p className="text-[10px] text-zinc-400">Badges de status, alertas e chamadas especiais.</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Modo de Tema */}
+      <div className="space-y-4 pt-4 border-t border-zinc-100">
+        <h4 className="text-sm font-semibold text-zinc-900">Modo de Tema</h4>
+        <div className="flex gap-3">
+          {(["light", "dark", "auto"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setFormData({ ...formData, theme_mode: mode })}
+              className={cn(
+                "px-4 py-2 rounded-lg text-xs font-semibold capitalize border transition-all",
+                formData.theme_mode === mode
+                  ? "bg-zinc-900 text-white border-zinc-900 shadow-sm"
+                  : "bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50"
+              )}
+            >
+              {mode === "light" ? "Claro (Padrão)" : mode === "dark" ? "Escuro" : "Automático (Sistema)"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Live Preview Card */}
+      <div className="space-y-4 pt-4 border-t border-zinc-100">
+        <h4 className="text-sm font-semibold text-zinc-900">Prévia da Identidade Visual</h4>
+        <div
+          className="rounded-xl border border-zinc-200 p-6 transition-all"
+          style={{
+            backgroundColor: formData.color_background,
+            color: formData.color_text,
+          }}
+        >
+          <div
+            className="rounded-xl p-4 border border-zinc-200/60 shadow-sm max-w-md mx-auto space-y-4"
+            style={{ backgroundColor: formData.color_surface }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-white border border-zinc-200 flex items-center justify-center p-1 shadow-sm shrink-0">
+                {formData.logo_url ? (
+                  <img src={formData.logo_url} alt="Logo" className="w-7 h-7 object-contain" />
+                ) : (
+                  <div className="w-5 h-5 rounded-full" style={{ backgroundColor: formData.color_primary }} />
+                )}
+              </div>
+              <div className="min-w-0">
+                <div className="font-extrabold text-sm tracking-tight truncate">
+                  {formData.brand_name || "Sua Marca Logística"}
+                </div>
+                <div className="text-[10px] tracking-wider uppercase opacity-60">Portal do Lojista</div>
+              </div>
+              <span
+                className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full text-white"
+                style={{ backgroundColor: formData.color_accent }}
+              >
+                Ativo
+              </span>
+            </div>
+
+            <p className="text-xs opacity-75">
+              Esta é uma demonstração de como seus lojistas e clientes visualizarão seu painel personalizado.
+            </p>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="px-3 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm transition-opacity hover:opacity-90"
+                style={{ backgroundColor: formData.color_primary }}
+              >
+                Nova Entrega
+              </button>
+              <button
+                type="button"
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors hover:bg-black/5"
+                style={{ borderColor: formData.color_secondary, color: formData.color_secondary }}
+              >
+                Rastrear Pedido
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Configuracoes() {
   const [activeTab, setActiveTab] = useState<TabId>("perfil");
   const { session } = useAuth();
   const user = session?.user;
-  const isAdmin = user?.role === "admin" || user?.role === "administrador";
+  const normalizedRole = String(user?.role || "").toLowerCase();
+  const isAdmin = Boolean(user?.is_platform_admin) || [
+    "admin", "administrador", "operador_admin", "superadmin", "platform_admin",
+  ].includes(normalizedRole);
   const currentCompany: any = Array.isArray(user?.companies) ? user.companies.find(
     (c: any) => String(c.id) === String(user?.machine_empresa_id || user?.company_id),
   ) : undefined;
@@ -211,7 +608,7 @@ export function Configuracoes() {
         </div>
 
         <div className="flex">
-          {FUNCTIONAL_TABS.includes(activeTab) ? (
+          {activeTab === "whitelabel" ? null : FUNCTIONAL_TABS.includes(activeTab) ? (
             <button
               onClick={
                 activeTab === "perfil" ? handleSaveProfile : handleSaveConfigs
@@ -427,186 +824,7 @@ export function Configuracoes() {
           )}
 
           {activeTab === "whitelabel" && (
-            <div className="bg-white rounded-xl shadow-sm ring-1 ring-zinc-950/5 p-6 space-y-6">
-              <div>
-                <h3 className="text-lg font-bold text-zinc-900">
-                  Aparência e White Label
-                </h3>
-                <p className="text-sm text-zinc-500">
-                  Personalize o painel com a sua marca e configure seu domínio
-                  próprio.
-                </p>
-              </div>
-              <div className="h-px w-full bg-zinc-100" />
-
-              <div className="space-y-6">
-                {/* Logos */}
-                <div className="space-y-4">
-                  <h4 className="text-sm font-semibold text-zinc-900">
-                    Identidade Visual
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="border border-zinc-200 rounded-xl p-4 flex flex-col items-center justify-center text-center gap-3">
-                      <div className="w-16 h-16 bg-zinc-100 rounded-lg border border-zinc-200 border-dashed flex items-center justify-center">
-                        <Upload className="w-5 h-5 text-zinc-400" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-zinc-900">
-                          Logo Principal
-                        </p>
-                        <p className="text-[11px] text-zinc-500 mt-0.5">
-                          Fundo transparente, máx 2MB
-                        </p>
-                      </div>
-                      <button className="text-xs font-semibold px-3 py-1.5 bg-white border border-zinc-200 rounded-lg hover:bg-zinc-50">
-                        Upload Logo
-                      </button>
-                    </div>
-                    <div className="border border-zinc-200 rounded-xl p-4 flex flex-col items-center justify-center text-center gap-3">
-                      <div className="w-16 h-16 bg-zinc-100 rounded-lg border border-zinc-200 border-dashed flex items-center justify-center">
-                        <Upload className="w-5 h-5 text-zinc-400" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-zinc-900">
-                          Favicon
-                        </p>
-                        <p className="text-[11px] text-zinc-500 mt-0.5">
-                          Formato quadrado, 32x32px
-                        </p>
-                      </div>
-                      <button className="text-xs font-semibold px-3 py-1.5 bg-white border border-zinc-200 rounded-lg hover:bg-zinc-50">
-                        Upload Favicon
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Cores */}
-                <div className="space-y-4 pt-4 border-t border-zinc-100">
-                  <h4 className="text-sm font-semibold text-zinc-900">
-                    Cores da Plataforma
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-zinc-700 uppercase tracking-wider">
-                        Cor Primária (HEX)
-                      </label>
-                      <div className="flex gap-2">
-                        <input
-                          type="color"
-                          value={primaryColor}
-                          onChange={(e) => setPrimaryColor(e.target.value)}
-                          className="w-10 h-10 rounded cursor-pointer border border-zinc-200 p-0.5"
-                        />
-                        <input
-                          type="text"
-                          value={primaryColor}
-                          onChange={(e) => setPrimaryColor(e.target.value)}
-                          className="flex-1 px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm font-mono uppercase"
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-zinc-700 uppercase tracking-wider">
-                        Cor Secundária (Destaque)
-                      </label>
-                      <div className="flex gap-2 items-center">
-                        <div className="w-10 h-10 rounded-lg bg-indigo-600 border border-zinc-200 shrink-0 shadow-sm" />
-                        <input
-                          type="text"
-                          defaultValue="#4f46e5"
-                          className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm font-mono"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Domínio Personalizado */}
-                <div className="space-y-4 pt-4 border-t border-zinc-100">
-                  <div className="flex justify-between items-center">
-                    <h4 className="text-sm font-semibold text-zinc-900 flex items-center gap-2">
-                      <Globe className="w-4 h-4 text-zinc-400" />
-                      Domínio Personalizado
-                    </h4>
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200/60 shadow-sm">
-                      Ativo
-                    </span>
-                  </div>
-                  <p className="text-sm text-zinc-500">
-                    Configure o endereço em que seus operadores e clientes
-                    acessarão o painel.
-                  </p>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-zinc-700 uppercase tracking-wider">
-                      Seu Domínio
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        defaultValue="painel.minhalogistica.com.br"
-                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
-                      />
-                      <button className="px-4 py-2 bg-zinc-900 text-white rounded-lg text-sm font-semibold hover:bg-zinc-800 transition-colors shadow-sm whitespace-nowrap">
-                        Verificar CNAME
-                      </button>
-                    </div>
-                    <p className="text-[11px] text-zinc-500 mt-2">
-                      Aponte um registro CNAME do seu domínio para{" "}
-                      <strong className="font-mono text-zinc-700">
-                        cname.logisaas.com.br
-                      </strong>
-                      .
-                    </p>
-                  </div>
-                </div>
-
-                {/* Remetente de E-mail */}
-                <div className="space-y-4 pt-4 border-t border-zinc-100">
-                  <h4 className="text-sm font-semibold text-zinc-900">
-                    Servidor de E-mail (SMTP Próprio)
-                  </h4>
-                  <p className="text-sm text-zinc-500">
-                    Envie relatórios e fechamentos utilizando o seu próprio
-                    e-mail (remove marca d'água "Enviado por LogiSaaS").
-                  </p>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-zinc-700 uppercase tracking-wider">
-                        Host SMTP
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="smtp.seudominio.com"
-                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-zinc-700 uppercase tracking-wider">
-                        Porta
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="587"
-                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
-                      />
-                    </div>
-                    <div className="space-y-1.5 md:col-span-2">
-                      <label className="text-xs font-semibold text-zinc-700 uppercase tracking-wider">
-                        E-mail de Remetente
-                      </label>
-                      <input
-                        type="email"
-                        placeholder="contato@minhalogistica.com.br"
-                        className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <WhiteLabelConfigPanel />
           )}
 
           {activeTab === "regras" && (
@@ -924,9 +1142,9 @@ export function Configuracoes() {
                         </p>
                       </div>
                     </div>
-                    <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200/60 shadow-sm">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Conectado
+                    <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200/60 shadow-sm">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                      Não configurado
                     </span>
                   </div>
 
@@ -938,19 +1156,20 @@ export function Configuracoes() {
                       <div className="flex gap-2">
                         <input
                           type="password"
-                          defaultValue="sk_prod_1234567890abcdef"
+                          value=""
+                          placeholder="Disponível após homologação do conector"
                           className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-lg text-sm text-zinc-500 shadow-inner focus:outline-none"
                           disabled
                         />
-                        <button className="px-3 py-2 bg-white border border-zinc-200 text-zinc-700 rounded-lg text-sm font-semibold hover:bg-zinc-50 transition-colors shadow-sm">
-                          Editar
+                        <button disabled className="px-3 py-2 bg-zinc-100 border border-zinc-200 text-zinc-400 rounded-lg text-sm font-semibold cursor-not-allowed">
+                          Indisponível
                         </button>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 pt-2">
                       <Database className="w-3.5 h-3.5 text-zinc-400" />
                       <span className="text-[11px] text-zinc-500 font-medium">
-                        Última sincronização: Hoje às 14:32
+                        Nenhuma sincronização realizada
                       </span>
                     </div>
                   </div>

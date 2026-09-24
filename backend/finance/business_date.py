@@ -2,6 +2,8 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from django.utils import timezone
+from django.db import connection
+from django.db.utils import OperationalError
 
 
 def derive_business_date_from_cutoff(
@@ -29,7 +31,12 @@ def resolve_store_business_date(
     if explicit_business_date is not None:
         return explicit_business_date
 
-    contract = getattr(store, "contract", None)
+    try:
+        contract = getattr(store, "contract", None)
+    except OperationalError:
+        if connection.vendor != "sqlite":
+            raise
+        contract = None
     if contract:
         return derive_business_date_from_cutoff(
             reference_dt=reference_dt,

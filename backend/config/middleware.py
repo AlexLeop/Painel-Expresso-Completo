@@ -24,7 +24,7 @@ class NativeAuthRLSMiddleware:
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header.split(" ")[1]
             try:
-                jwt_payload = decode_token(token)
+                jwt_payload = decode_token(token, expected_type="access")
             except SecurityError as e:
                 # Token expirado ou inválido
                 logger.debug(f"Falha na validação do token nativo: {e}")

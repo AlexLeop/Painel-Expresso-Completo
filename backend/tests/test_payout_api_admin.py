@@ -184,9 +184,10 @@ def test_efi_pix_webhook(rf):
         ]
     }
     req = rf.post(
-        "/api/v1/webhooks/efi/pix",
+        "/api/v1/webhooks/efi/pix?hmac=test-efi-webhook-hmac",
         data=json.dumps(webhook_payload),
         content_type="application/json",
+        HTTP_X_CLIENT_CERT_VERIFIED="SUCCESS",
     )
 
     mock_w = MagicMock()
@@ -195,6 +196,7 @@ def test_efi_pix_webhook(rf):
     mock_w.baasRawResponse = {}
 
     with patch("django.db.transaction.atomic"), \
+         patch("django.db.transaction.on_commit", side_effect=lambda callback: callback()), \
          patch("finance.models.WithdrawalRequest.objects.select_for_update") as mock_lock, \
          patch("finance.tasks.notify_payout_success_task.delay") as mock_notify:
 

@@ -13,8 +13,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Carrega .env nativamente (python-dotenv busca automaticamente em diretórios pais)
 load_dotenv()
 
+ENVIRONMENT = os.environ.get("DJANGO_ENV", "development").strip().lower()
+
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "django-insecure-development-key-only")
+JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", SECRET_KEY)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
@@ -27,6 +30,14 @@ ALLOWED_HOSTS = [
 ]
 if "*" in ALLOWED_HOSTS:
     ALLOWED_HOSTS = ["*"]
+
+if ENVIRONMENT == "production":
+    if SECRET_KEY == "django-insecure-development-key-only" or len(SECRET_KEY) < 32:
+        raise RuntimeError("DJANGO_SECRET_KEY forte é obrigatório em produção.")
+    if JWT_SECRET_KEY == "django-insecure-development-key-only" or len(JWT_SECRET_KEY) < 32:
+        raise RuntimeError("JWT_SECRET_KEY forte é obrigatório em produção.")
+    if ALLOWED_HOSTS == ["*"]:
+        raise RuntimeError("DJANGO_ALLOWED_HOSTS não pode usar '*' em produção.")
 
 # Application definition
 INSTALLED_APPS = [
@@ -62,15 +73,21 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "config.urls"
 
-# Permitir TODAS as origens (CORS) - Necessário para Web (Easypanel) e App (Capacitor/Cordova)
-CORS_ALLOW_ALL_ORIGINS = True
+_cors_origins = [
+    origin.strip()
+    for origin in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+CORS_ALLOW_ALL_ORIGINS = DEBUG and os.environ.get("CORS_ALLOW_ALL_ORIGINS", "False") == "True"
+CORS_ALLOWED_ORIGINS = _cors_origins
 CORS_ALLOW_CREDENTIALS = True
+
+if ENVIRONMENT == "production" and not CORS_ALLOWED_ORIGINS:
+    raise RuntimeError("CORS_ALLOWED_ORIGINS é obrigatório em produção.")
 
 from corsheaders.defaults import default_headers
 CORS_ALLOW_HEADERS = list(default_headers) + [
-    "x-user-role",
-    "x-user-email",
-    "x-tenant-id",
+    "x-operator-id",
 ]
 
 _csrf_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
@@ -78,12 +95,11 @@ CSRF_TRUSTED_ORIGINS = [
     o.strip() for o in _csrf_origins if o.strip() and (o.startswith("http://") or o.startswith("https://"))
 ]
 if not CSRF_TRUSTED_ORIGINS:
-    CSRF_TRUSTED_ORIGINS = [
-        "https://expresso-neves-frontend.a3rpjn.easypanel.host",
-        "https://expresso-neves-django.a3rpjn.easypanel.host",
-        "http://localhost:5173",
-        "http://localhost:3000",
-    ]
+    CSRF_TRUSTED_ORIGINS = (
+        ["http://localhost:5173", "http://localhost:3000"]
+        if ENVIRONMENT != "production"
+        else []
+    )
 
 TEMPLATES = [
     {
@@ -167,6 +183,16 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+# Refresh-token rotation and other distributed security state must be shared by
+# every web worker. Tests override this with LocMemCache.
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/1")
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": REDIS_URL,
+    }
+}
+
 # Internationalization
 LANGUAGE_CODE = "pt-br"
 TIME_ZONE = "America/Sao_Paulo"
@@ -180,6 +206,17 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # Media / Uploaded files (Local volume storage in Docker/EasyPanel)
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+STORAGES = {
+    "default": {
+        "BACKEND": os.environ.get(
+            "MEDIA_STORAGE_BACKEND", "django.core.files.storage.FileSystemStorage"
+        ),
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
 
 if sys.platform == "win32":
     # Desabilita o GIS no Windows nativo para evitar crash por falta de GDAL
@@ -196,10 +233,14 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # ==========================================
 # Celery (Redis)
 # ==========================================
-CELERY_BROKER_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/1")
-CELERY_RESULT_BACKEND = os.environ.get("REDIS_URL", "redis://localhost:6379/1")
+CELERY_BROKER_URL = REDIS_URL
+CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
+
+EFI_WEBHOOK_HMAC = os.environ.get("EFI_WEBHOOK_HMAC", "")
+EFI_REQUIRE_MTLS_HEADER = os.environ.get("EFI_REQUIRE_MTLS_HEADER", "True") == "True"
+ALLOW_PAYMENT_SIMULATION = DEBUG and os.environ.get("ALLOW_PAYMENT_SIMULATION", "False") == "True"
 
 # ==========================================
 # Produção Hardening & Observabilidade
@@ -209,6 +250,11 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "True") == "True"
+    SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "31536000"))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = "DENY"
 
     LOGGING = {
         "version": 1,

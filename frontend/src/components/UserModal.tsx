@@ -257,8 +257,8 @@ export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
                           setFormData({ ...formData, password: e.target.value })
                         }
                         className="w-full px-3 py-2 text-sm bg-white border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all placeholder:text-zinc-400"
-                        placeholder="Mínimo 6 caracteres"
-                        minLength={6}
+                        placeholder="Mínimo 10 caracteres"
+                        minLength={10}
                       />
                     </div>
                   )}

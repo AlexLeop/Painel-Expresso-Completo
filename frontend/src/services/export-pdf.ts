@@ -45,6 +45,21 @@ interface ExportPDFOptions {
   txSupervisao?: number;
   debitoPendente?: number;
   totalALiquidar?: number;
+  brandName?: string;
+  brandLogoUrl?: string | null;
+  brandColorHex?: string;
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const clean = hex.replace("#", "");
+  if (clean.length === 6) {
+    return {
+      r: parseInt(clean.substring(0, 2), 16),
+      g: parseInt(clean.substring(2, 4), 16),
+      b: parseInt(clean.substring(4, 6), 16),
+    };
+  }
+  return { r: 229, g: 92, b: 0 };
 }
 
 function fmtBRL(val: number): string {
@@ -100,19 +115,22 @@ export function exportToPDF(options: ExportPDFOptions): void {
     const pw = doc.internal.pageSize.getWidth(); // 297mm
     const ph = doc.internal.pageSize.getHeight(); // 210mm
 
+    const headerColor = options.brandColorHex ? hexToRgb(options.brandColorHex) : BRAND;
+    const displayBrand = options.brandName || "Expresso Neves";
+
     // ── Cabeçalho ─────────────────────────────────────────────────────────────
-    // Fundo laranja
-    doc.setFillColor(BRAND.r, BRAND.g, BRAND.b);
+    // Fundo da cor da marca
+    doc.setFillColor(headerColor.r, headerColor.g, headerColor.b);
     doc.rect(0, 0, pw, 28, "F");
 
     // Logo textual à esquerda
     doc.setTextColor(WHITE.r, WHITE.g, WHITE.b);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
-    doc.text("NevesGo", 12, 11);
+    doc.text(displayBrand, 12, 12);
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
-    doc.text("Expresso Neves", 12, 16);
+    doc.text("Portal Logístico", 12, 17);
 
     // Nome da empresa + período — centro
     doc.setFont("helvetica", "bold");
@@ -137,7 +155,7 @@ export function exportToPDF(options: ExportPDFOptions): void {
     doc.text(`Emitido em: ${emitidoEm}`, pw - 12, 15, { align: "right" });
 
     // Linha separadora
-    doc.setDrawColor(BRAND.r, BRAND.g, BRAND.b);
+    doc.setDrawColor(headerColor.r, headerColor.g, headerColor.b);
     doc.setLineWidth(0.4);
     doc.line(0, 28, pw, 28);
 
@@ -445,7 +463,7 @@ export function exportToPDF(options: ExportPDFOptions): void {
       doc.setFontSize(6.5);
       doc.setTextColor(150, 150, 160);
       doc.text(
-        `NevesGo · Expresso Neves  |  ${companyName}  |  ${periodLabel}`,
+        `${displayBrand}  |  ${companyName}  |  ${periodLabel}`,
         pw / 2,
         ph - 4,
         { align: "center" },

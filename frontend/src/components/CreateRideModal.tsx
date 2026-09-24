@@ -256,27 +256,29 @@ export function CreateRideModal({
 
   const handleNextStep = async (e: React.FormEvent) => {
     e.preventDefault();
-    setStep(2);
     setIsEstimating(true);
+    setBalanceError(null);
     try {
       let totalVal = 0;
       let totalKm = 0;
       let totalMin = 0;
 
+      const storeId = selectedStore?.id || currentCompany?.id;
+      if (!storeId) throw new Error("Selecione uma loja válida.");
       const defaultLat =
-        currentCompany?.lat ?? currentCompany?.latitude ?? "-23.5505";
+        selectedStore?.lat ?? currentCompany?.lat ?? currentCompany?.latitude;
       const defaultLng =
-        currentCompany?.lng ?? currentCompany?.longitude ?? "-46.6333";
+        selectedStore?.lng ?? currentCompany?.lng ?? currentCompany?.longitude;
       const defaultEnd =
         currentCompany?.endereco ??
         currentCompany?.address ??
         currentCompany?.nome ??
         currentCompany?.name ??
-        "Av. Principal";
-      const defaultBairro = currentCompany?.bairro ?? "Centro";
-      const defaultCidade = currentCompany?.cidade ?? "São Paulo";
+        "";
+      const defaultBairro = currentCompany?.bairro ?? "";
+      const defaultCidade = currentCompany?.cidade ?? "";
       const defaultUF = getStateAbbr(
-        currentCompany?.uf ?? currentCompany?.estado ?? "SP",
+        currentCompany?.uf ?? currentCompany?.estado ?? "",
       );
 
       const pickupStateAbbr = getStateAbbr(
@@ -290,6 +292,12 @@ export function CreateRideModal({
         lat: pickupResult?.lat || defaultLat,
         lng: pickupResult?.lon || defaultLng,
       };
+      if (pickup.lat == null || pickup.lng == null) {
+        throw new Error("Geocodifique o endereço de coleta antes de avançar.");
+      }
+      if (deliveries.some((delivery) => delivery.lat == null || delivery.lng == null)) {
+        throw new Error("Geocodifique todos os endereços de entrega antes de avançar.");
+      }
 
       const legs = [];
       for (let i = 0; i < deliveries.length; i++) {
@@ -302,8 +310,8 @@ export function CreateRideModal({
                 bairro: deliveries[i - 1].bairro || defaultBairro,
                 cidade: deliveries[i - 1].cidade || defaultCidade,
                 estado: getStateAbbr(deliveries[i - 1].estado || defaultUF),
-                lat: deliveries[i - 1].lat || defaultLat,
-                lng: deliveries[i - 1].lng || defaultLng,
+                lat: deliveries[i - 1].lat,
+                lng: deliveries[i - 1].lng,
               };
         legs.push({ from, to: d });
       }
@@ -311,6 +319,7 @@ export function CreateRideModal({
       const results = await Promise.all(
         legs.map(async (leg) => {
           const params = new URLSearchParams({
+            empresa_id: String(storeId),
             endereco_partida: leg.from.endereco,
             bairro_partida: leg.from.bairro,
             cidade_partida: leg.from.cidade,
@@ -321,55 +330,46 @@ export function CreateRideModal({
             bairro_desejado: leg.to.bairro || defaultBairro,
             cidade_desejado: leg.to.cidade || defaultCidade,
             estado_desejado: getStateAbbr(leg.to.estado || defaultUF),
-            lat_desejado: String(leg.to.lat || defaultLat),
-            lng_desejado: String(leg.to.lng || defaultLng),
+            lat_desejado: String(leg.to.lat),
+            lng_desejado: String(leg.to.lng),
           });
 
-          try {
-            const res = await authFetch(
-              `/api/v1/db/orders/estimate?${params.toString()}`,
+          const res = await authFetch(
+            `/api/v1/db/orders/estimate?${params.toString()}`,
+          );
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(
+              data.detail || data.error || "Não foi possível calcular a tarifa.",
             );
-            if (res.ok) {
-              const data = await res.json();
-              return data.response || data;
-            }
-          } catch {
-            /* silent */
           }
-          return null;
+          return data.response || data;
         }),
       );
 
-      let hasSuccess = false;
       results.forEach((resp) => {
-        if (!resp) return;
         const v = resp.estimativa_valor ?? resp.valor_corrida ?? resp.valor;
         const km = resp.estimativa_km ?? resp.distancia_km ?? resp.distancia;
         const min =
           resp.estimativa_minutos ?? resp.tempo_estimado ?? resp.tempo;
-        if (v != null) {
-          totalVal += Number(v);
-          hasSuccess = true;
+        if (v == null || km == null) {
+          throw new Error("O servidor retornou uma estimativa incompleta.");
         }
-        if (km != null) totalKm += Number(km);
+        totalVal += Number(v);
+        totalKm += Number(km);
         if (min != null) totalMin += Number(min);
       });
 
-      if (hasSuccess) {
-        setEstimativa({ valor: totalVal, distancia: totalKm, tempo: totalMin });
-      } else {
-        setEstimativa({
-          valor: deliveries.length * 9.0,
-          distancia: deliveries.length * 5.0,
-          tempo: deliveries.length * 15,
-        });
+      if (!Number.isFinite(totalVal) || !Number.isFinite(totalKm)) {
+        throw new Error("O servidor retornou valores de estimativa inválidos.");
       }
-    } catch (err) {
-      setEstimativa({
-        valor: deliveries.length * 9.0,
-        distancia: deliveries.length * 5.0,
-        tempo: deliveries.length * 15,
-      });
+      setEstimativa({ valor: totalVal, distancia: totalKm, tempo: totalMin });
+      setStep(2);
+    } catch (err: any) {
+      setEstimativa(null);
+      const message = err?.message || "Não foi possível calcular a entrega.";
+      setBalanceError(message);
+      alert(message);
     } finally {
       setIsEstimating(false);
     }
@@ -379,10 +379,13 @@ export function CreateRideModal({
     setIsSubmitting(true);
     setBalanceError(null);
     try {
+      if (!estimativa) throw new Error("Calcule a tarifa antes de solicitar a entrega.");
+      const storeId = selectedStore?.id || currentCompany?.id;
+      if (!storeId) throw new Error("Selecione uma loja válida.");
       const defaultLat =
-        selectedStore?.lat ?? currentCompany?.lat ?? currentCompany?.latitude ?? "-23.5505";
+        selectedStore?.lat ?? currentCompany?.lat ?? currentCompany?.latitude;
       const defaultLng =
-        selectedStore?.lng ?? currentCompany?.lng ?? currentCompany?.longitude ?? "-46.6333";
+        selectedStore?.lng ?? currentCompany?.lng ?? currentCompany?.longitude;
       const defaultEnd =
         selectedStore?.endereco ??
         selectedStore?.nome ??
@@ -390,11 +393,11 @@ export function CreateRideModal({
         currentCompany?.address ??
         currentCompany?.nome ??
         currentCompany?.name ??
-        "Av. Principal";
-      const defaultBairro = currentCompany?.bairro ?? "Centro";
-      const defaultCidade = currentCompany?.cidade ?? "São Paulo";
+        "";
+      const defaultBairro = currentCompany?.bairro ?? "";
+      const defaultCidade = currentCompany?.cidade ?? "";
       const defaultUF = getStateAbbr(
-        currentCompany?.uf ?? currentCompany?.estado ?? "SP",
+        currentCompany?.uf ?? currentCompany?.estado ?? "",
       );
 
       const pickupStateAbbr = getStateAbbr(
@@ -408,14 +411,16 @@ export function CreateRideModal({
         lat: pickupResult?.lat || defaultLat,
         lng: pickupResult?.lon || defaultLng,
       };
-
-      const estimatedVal = estimativa?.valor || deliveries.length * 9.0;
-      const estimatedKm = estimativa?.distancia || deliveries.length * 5.0;
-      const estimatedCents = Math.round(estimatedVal * 100);
+      if (pickup.lat == null || pickup.lng == null) {
+        throw new Error("Coordenadas de coleta ausentes.");
+      }
+      if (deliveries.some((delivery) => delivery.lat == null || delivery.lng == null)) {
+        throw new Error("Coordenadas de uma ou mais entregas estão ausentes.");
+      }
 
       // Despacho nativo via backend operator router (com validação pré-pago e PostGIS seguro)
       const dispatchPayload = {
-        store_id: selectedStore?.id || currentCompany?.id || "default",
+        store_id: storeId,
         coleta_endereco: pickup.endereco || "",
         coleta_lat: Number(pickup.lat) || undefined,
         coleta_lng: Number(pickup.lng) || undefined,
@@ -426,14 +431,12 @@ export function CreateRideModal({
           cliente: d.name || "",
           telefone: d.phone || "",
           notas: d.notes || "",
-          lat: Number(d.lat) || undefined,
-          lng: Number(d.lng) || undefined,
+          lat: Number(d.lat),
+          lng: Number(d.lng),
         })),
         forma_pagamento: formaPagamento,
         troco_para:
           formaPagamento === "DINHEIRO" && trocoPara ? Number(trocoPara) : null,
-        valor_estimado_cents: estimatedCents,
-        distancia_metros: Math.round(estimatedKm * 1000),
         observacao: observacaoGeral || "",
       };
 
@@ -453,10 +456,13 @@ export function CreateRideModal({
         throw new Error(data.error || data.msg || "Erro ao despachar entrega pela loja");
       }
 
-      const id =
-        data?.order_id ||
-        data?.id ||
-        Math.floor(1000 + Math.random() * 9000);
+      const id = data?.order_id || data?.id;
+      if (!id) throw new Error("O servidor não retornou o identificador da corrida.");
+      const confirmedValue = Number(data.fare_reais);
+      const confirmedDistance = Number(data.distance_km);
+      if (!Number.isFinite(confirmedValue) || !Number.isFinite(confirmedDistance)) {
+        throw new Error("O servidor não confirmou tarifa e distância da corrida.");
+      }
 
       const storeName =
         selectedStore?.nome ||
@@ -494,7 +500,7 @@ export function CreateRideModal({
           hora: "--:--",
           endereco: `${deliveries[0].address}, ${deliveries[0].number}`,
         },
-        valor: estimatedVal,
+        valor: confirmedValue,
         horario: new Date().toLocaleTimeString("pt-BR", {
           hour: "2-digit",
           minute: "2-digit",
@@ -503,7 +509,7 @@ export function CreateRideModal({
         updated_at: new Date().toISOString(),
         lastLoc: pickup.endereco,
         lastStop: "Nenhuma",
-        distancia: `${estimatedKm.toFixed(1)} km`,
+        distancia: `${confirmedDistance.toFixed(1)} km`,
         speed: "0 km/h",
       };
 
@@ -994,9 +1000,7 @@ export function CreateRideModal({
                       {isEstimating ? (
                         <Loader2 className="w-5 h-5 animate-spin text-zinc-400 mx-auto" />
                       ) : (
-                        formatCurrency(
-                          estimativa?.valor || deliveries.length * 9.0,
-                        )
+                        estimativa ? formatCurrency(estimativa.valor) : "Indisponível"
                       )}
                     </span>
                   </div>
@@ -1009,7 +1013,9 @@ export function CreateRideModal({
                       {isEstimating ? (
                         <Loader2 className="w-5 h-5 animate-spin text-indigo-400 mx-auto" />
                       ) : (
-                        `${(estimativa?.distancia || deliveries.length * 5.0).toFixed(1).replace(".", ",")} km`
+                        estimativa
+                          ? `${estimativa.distancia.toFixed(1).replace(".", ",")} km`
+                          : "Indisponível"
                       )}
                     </span>
                   </div>
@@ -1022,7 +1028,9 @@ export function CreateRideModal({
                       {isEstimating ? (
                         <Loader2 className="w-5 h-5 animate-spin text-emerald-400 mx-auto" />
                       ) : (
-                        `${Math.round(estimativa?.tempo || deliveries.length * 15)} min`
+                        estimativa?.tempo
+                          ? `${Math.round(estimativa.tempo)} min`
+                          : "Não calculado"
                       )}
                     </span>
                   </div>
@@ -1132,11 +1140,13 @@ export function CreateRideModal({
                 const isPre = String(selectedStore?.billing_mode || "")
                   .toUpperCase()
                   .includes("PRE");
-                const estimatedCents = Math.round(
-                  (estimativa?.valor || deliveries.length * 9.0) * 100,
-                );
+                const estimatedCents = estimativa
+                  ? Math.round(estimativa.valor * 100)
+                  : 0;
                 const balCents = selectedStore?.balance_cents ?? 0;
-                const isBlocked = isPre && balCents < estimatedCents;
+                const isBlocked = Boolean(
+                  estimativa && isPre && balCents < estimatedCents,
+                );
 
                 if (isBlocked || balanceError) {
                   return (
@@ -1226,17 +1236,18 @@ export function CreateRideModal({
                   const isPre = String(selectedStore?.billing_mode || "")
                     .toUpperCase()
                     .includes("PRE");
-                  const estimatedCents = Math.round(
-                    (estimativa?.valor || deliveries.length * 9.0) * 100,
-                  );
+                  const estimatedCents = estimativa
+                    ? Math.round(estimativa.valor * 100)
+                    : 0;
                   const isBlocked =
-                    isPre && (selectedStore?.balance_cents ?? 0) < estimatedCents;
+                    !estimativa ||
+                    (isPre && (selectedStore?.balance_cents ?? 0) < estimatedCents);
 
                   return (
                     <button
                       type="button"
                       onClick={handleSubmit}
-                      disabled={isSubmitting || isEstimating || isBlocked}
+                      disabled={isSubmitting || isEstimating || isBlocked || !estimativa}
                       className={cn(
                         "px-6 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer",
                         isBlocked

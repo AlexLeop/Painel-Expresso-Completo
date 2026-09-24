@@ -6,6 +6,7 @@ Handles PBKDF2 password hashing and JWT token issuance and decoding.
 
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict
+from uuid import uuid4
 import jwt
 from django.conf import settings
 from django.contrib.auth.hashers import make_password, check_password as django_check_password
@@ -18,7 +19,7 @@ class SecurityError(Exception):
 
 def get_jwt_secret() -> str:
     """Returns the secret key used for signing JWT tokens."""
-    return getattr(settings, "SECRET_KEY", "default-secret-key-fallback")
+    return getattr(settings, "JWT_SECRET_KEY", settings.SECRET_KEY)
 
 
 def hash_password(raw_password: str) -> str:
@@ -58,18 +59,21 @@ def create_refresh_token(payload: Dict[str, Any], expires_in_days: int = 30) -> 
     token_payload["iat"] = int(now.timestamp())
     token_payload["exp"] = int((now + timedelta(days=expires_in_days)).timestamp())
     token_payload["type"] = "refresh"
+    token_payload["jti"] = str(uuid4())
 
     secret = get_jwt_secret()
     return jwt.encode(token_payload, secret, algorithm="HS256")
 
 
-def decode_token(token: str) -> Dict[str, Any]:
+def decode_token(token: str, expected_type: str | None = None) -> Dict[str, Any]:
     """
     Decodes and verifies a JWT token. Raises SecurityError on failure.
     """
     secret = get_jwt_secret()
     try:
         payload = jwt.decode(token, secret, algorithms=["HS256"])
+        if expected_type and payload.get("type") != expected_type:
+            raise SecurityError("Tipo de token inválido")
         return payload
     except jwt.ExpiredSignatureError as e:
         raise SecurityError("Token expirado") from e

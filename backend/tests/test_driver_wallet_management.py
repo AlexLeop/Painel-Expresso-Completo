@@ -70,6 +70,20 @@ def setup_driver_wallet_tables(db):
             );
         """)
         cur.execute("""
+            CREATE TABLE IF NOT EXISTS "StaffMember" (
+                id CHAR(32) PRIMARY KEY,
+                operator_id CHAR(32) NOT NULL,
+                supabase_uid CHAR(32),
+                name VARCHAR(255) NOT NULL,
+                email VARCHAR(255) NOT NULL,
+                "passwordHash" VARCHAR(255),
+                role VARCHAR(20) NOT NULL DEFAULT 'OPERATOR_ROLE',
+                active BOOLEAN NOT NULL DEFAULT 1,
+                "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS "Vehicle" (
                 id CHAR(32) PRIMARY KEY,
                 operator_id CHAR(32) NOT NULL,
@@ -176,10 +190,15 @@ def wallet_test_data(db):
         phone="61999990002",
         active=True,
     )
+    staff = StaffMember.objects.create(
+        id=uuid.uuid4(), operator=op, name="Admin Financeiro",
+        email="admin-financeiro@example.com", role="ADMIN", active=True,
+    )
 
     token_operator = create_access_token({
-        "sub": str(uuid.uuid4()),
-        "role": "operador_admin",
+        "sub": str(staff.id),
+        "email": staff.email,
+        "role": "ADMIN",
         "is_platform_admin": False,
         "operator_id": str(op.id),
     })
@@ -195,6 +214,7 @@ def wallet_test_data(db):
         "operator": op,
         "driver1": driver1,
         "driver2": driver2,
+        "staff": staff,
         "token_operator": token_operator,
         "token_admin": token_admin,
     }

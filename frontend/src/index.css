@@ -8,12 +8,34 @@
   --font-mono:
     "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
-  --color-brand: #E55C00;
+  --color-brand: var(--brand-primary, #E55C00);
+  --color-brand-secondary: var(--brand-secondary, #4f46e5);
+  --color-brand-accent: var(--brand-accent, #f59e0b);
+}
+
+:root {
+  --brand-primary: #E55C00;
+  --brand-secondary: #4f46e5;
+  --brand-accent: #f59e0b;
+  --brand-bg: #F9F9FA;
+  --brand-surface: #ffffff;
+  --brand-text: #18181b;
+  --brand-dark-bg: #0a0a0a;
+  --brand-dark-surface: #171717;
+  --brand-dark-text: #fafafa;
+}
+
+[data-theme="dark"] {
+  --brand-bg: var(--brand-dark-bg, #0a0a0a);
+  --brand-surface: var(--brand-dark-surface, #171717);
+  --brand-text: var(--brand-dark-text, #fafafa);
 }
 
 @layer base {
   body {
-    @apply bg-[#F9F9FA] text-zinc-900 antialiased selection:bg-zinc-900 selection:text-white text-[13px] md:text-[14px];
+    background-color: var(--brand-bg, #F9F9FA);
+    color: var(--brand-text, #18181b);
+    @apply antialiased selection:bg-zinc-900 selection:text-white text-[13px] md:text-[14px];
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 }

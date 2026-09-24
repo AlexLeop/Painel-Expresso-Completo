@@ -228,9 +228,13 @@ export async function addManualEntry(
     throw new Error(errorMsg);
   }
 
+  const persistedId = data.id || data.entry_id;
+  if (!persistedId) {
+    throw new Error("O servidor não retornou o identificador do lançamento.");
+  }
   const newEntry: ManualEntry = {
     ...entry,
-    id: data.id || data.entry_id || `me_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    id: persistedId,
     createdAt: data.createdAt || new Date().toISOString(),
   };
 
@@ -405,22 +409,10 @@ export function getCreditLog(): CreditLogEntry[] {
   return getCreditLogCache();
 }
 
-export function addCreditLogEntry(
+export async function addCreditLogEntry(
   entry: Omit<CreditLogEntry, "id" | "createdAt">,
-): CreditLogEntry {
-  const newEntry: CreditLogEntry = {
-    ...entry,
-    id: `cl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-    createdAt: new Date().toISOString(),
-  };
-
-  // 1. Update cache
-  const all = getCreditLogCache();
-  all.unshift(newEntry);
-  saveCreditLogCache(all);
-
-  // 2. Persist to Supabase
-  authFetch("/api/v1/db/entries/credit", {
+): Promise<CreditLogEntry> {
+  const response = await authFetch("/api/v1/db/entries/credit", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -434,9 +426,23 @@ export function addCreditLogEntry(
       error: entry.error,
       processedBy: entry.processedBy,
     }),
-  }).catch((err) =>
-    logger.warn("[EntriesStore] Credit log write failed:", err),
-  );
+  });
+  const persisted = await response.json().catch(() => ({}));
+  if (!response.ok || !persisted.id) {
+    throw new Error(
+      persisted.error || "O servidor não confirmou o registro do crédito.",
+    );
+  }
+  const newEntry: CreditLogEntry = {
+    ...entry,
+    id: persisted.id,
+    createdAt: persisted.createdAt || new Date().toISOString(),
+  };
+
+  // Atualiza o cache apenas depois da confirmação durável do servidor.
+  const all = getCreditLogCache();
+  all.unshift(newEntry);
+  saveCreditLogCache(all);
 
   return newEntry;
 }

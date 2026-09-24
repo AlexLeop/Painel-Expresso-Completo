@@ -10,6 +10,7 @@ e operam com `managed = False` para respeitar a soberania do banco de dados (Sup
 """
 
 from django.db import models
+from django.utils.text import slugify
 from config.core_models import TimeStampedTenantModel
 
 
@@ -117,6 +118,13 @@ class Operator(models.Model):
     notes = models.TextField(
         null=True, blank=True, help_text="Termos contratuais e observações financeiras."
     )
+    slug = models.CharField(
+        max_length=100,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text="Identificador URL-friendly para white-label (ex: fast-delivery-sp).",
+    )
     status = models.CharField(
         max_length=20,
         choices=OperatorStatus.choices,
@@ -134,6 +142,19 @@ class Operator(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        """Gera um slug público estável para o white-label de novos operadores."""
+
+        if not self.slug:
+            base = (slugify(self.name) or "operador")[:80]
+            candidate = base
+            suffix = 2
+            while Operator.objects.filter(slug=candidate).exclude(pk=self.pk).exists():
+                candidate = f"{base[:90 - len(str(suffix))]}-{suffix}"
+                suffix += 1
+            self.slug = candidate
+        return super().save(*args, **kwargs)
 
     def calculate_platform_fee(self, completed_deliveries_count: int) -> dict:
         """
@@ -299,7 +320,7 @@ class StaffMember(TimeStampedTenantModel):
     )
     is_platform_admin: bool = False
 
-    class Meta:
+    class Meta(TimeStampedTenantModel.Meta):
         db_table = "StaffMember"
         managed = False
         verbose_name = "Membro da Equipe"
@@ -355,3 +376,6 @@ class SecurityDenylist(models.Model):
         managed = False
         verbose_name = "Bloqueio de Segurana"
         verbose_name_plural = "Bloqueios de Segurana"
+
+
+from .models_branding import OperatorBranding  # noqa: E402, F401

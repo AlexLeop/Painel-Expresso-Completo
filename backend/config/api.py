@@ -1,5 +1,6 @@
 import os
 import logging
+from django.conf import settings
 from ninja import NinjaAPI
 from accounts.auth import NativeJWTAuth, SupabaseJWTAuth
 
@@ -14,6 +15,7 @@ from finance.api import router as finance_router
 from finance.api_admin import router as finance_admin_router
 from accounts.api import router as accounts_router, api_auth_router
 from accounts.api_admin import router as accounts_admin_router
+from accounts.api_branding import router as branding_router
 from integration.api import router as integration_router
 from todos.api import router as todos_router
 from config.db_api import router as db_router
@@ -33,6 +35,7 @@ api.add_router("/operator/", operator_router)
 api.add_router("/client/", client_router)
 api.add_router("/finance/", finance_router)
 api.add_router("/accounts/", accounts_router)
+api.add_router("/branding/", branding_router)
 api.add_router("/integration/", integration_router)
 api.add_router("/todos/", todos_router)
 api.add_router("/admin/accounts/", accounts_admin_router)
@@ -98,10 +101,41 @@ def global_exception_handler(request, exc):
 
 @api.get("/health", auth=None)
 def health_check(request):
-    """Endpoint aberto para liveness probe com check no banco de dados."""
+    """Readiness probe: banco e cache compartilhado precisam estar disponíveis."""
+    from django.core.cache import cache
     from django.db import connection
     try:
         connection.ensure_connection()
+        cache_key = "health:readiness"
+        cache.set(cache_key, "ok", timeout=5)
+        if cache.get(cache_key) != "ok":
+            raise RuntimeError("O cache compartilhado não confirmou escrita e leitura.")
+        if getattr(settings, "ENVIRONMENT", "development") == "production" and connection.vendor == "postgresql":
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user"
+                )
+                role_flags = cursor.fetchone()
+            if not role_flags or role_flags[0] or role_flags[1]:
+                raise RuntimeError(
+                    "A role de runtime do banco não pode ser superuser nem BYPASSRLS."
+                )
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT COUNT(*)
+                      FROM pg_class c
+                      JOIN pg_namespace n ON n.oid = c.relnamespace
+                     WHERE n.nspname = 'public'
+                       AND c.relrowsecurity = TRUE
+                       AND pg_get_userbyid(c.relowner) = current_user
+                    """
+                )
+                owned_rls_tables = cursor.fetchone()[0]
+            if owned_rls_tables:
+                raise RuntimeError(
+                    "A role de runtime do banco não pode ser proprietária de tabelas com RLS."
+                )
         return {"status": "ok", "service": "slow_lane_django_ninja"}
     except Exception as e:
         import logging

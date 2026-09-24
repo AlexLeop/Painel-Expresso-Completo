@@ -1,4 +1,5 @@
 import logging
+from django.core.exceptions import ValidationError
 from django.http import HttpRequest
 from accounts.models import StaffMember, PlatformAdmin
 from typing import Any, List, Optional
@@ -18,7 +19,7 @@ class NativeJWTAuth(HttpBearer):
 
     def authenticate(self, request: HttpRequest, token: str) -> Optional[Any]:
         try:
-            claims = decode_token(token)
+            claims = decode_token(token, expected_type="access")
             setattr(request, "auth", claims)
             return claims
         except SecurityError as e:
@@ -44,9 +45,14 @@ def get_staff_member(request: HttpRequest) -> Optional[StaffMember]:
         from accounts.models import Operator
 
         uid = auth.get("sub")
-        admin = PlatformAdmin.objects.filter(id=uid).first()
+        try:
+            admin = PlatformAdmin.objects.filter(id=uid).first()
+        except (ValidationError, ValueError, TypeError):
+            admin = None
         if not admin and "email" in auth:
-            admin = PlatformAdmin.objects.filter(email=auth["email"]).first()
+            admin = PlatformAdmin.objects.filter(email__iexact=auth["email"]).first()
+        if not admin:
+            return None
 
         target_operator_id = request.headers.get("X-Operator-Id") or auth.get("operator_id")
         op = None
@@ -54,9 +60,9 @@ def get_staff_member(request: HttpRequest) -> Optional[StaffMember]:
             op = Operator.objects.filter(id=target_operator_id).first()
 
         staff = StaffMember(
-            id=admin.id if admin else uid,
-            name=admin.name if admin else "Platform Admin",
-            email=admin.email if admin else auth.get("email", ""),
+            id=admin.id,
+            name=admin.name,
+            email=admin.email,
             role=StaffMember.RoleType.ADMIN,
             operator=op,
             operator_id=op.id if op else None,
@@ -102,9 +108,12 @@ def platform_admin_required(request: HttpRequest):
         raise HttpError(403, "Acesso negado. Requer privilégios de Platform Admin.")
 
     uid = request.auth.get("sub")
-    admin = PlatformAdmin.objects.filter(id=uid).first()
+    try:
+        admin = PlatformAdmin.objects.filter(id=uid).first()
+    except (ValidationError, ValueError, TypeError):
+        admin = None
     if not admin and "email" in request.auth:
-        admin = PlatformAdmin.objects.filter(email=request.auth["email"]).first()
+        admin = PlatformAdmin.objects.filter(email__iexact=request.auth["email"]).first()
     if not admin:
         raise HttpError(403, "Platform Admin não encontrado no banco.")
     return admin
@@ -116,10 +125,18 @@ def get_client_portal_user(request: HttpRequest) -> Optional[ClientPortalUser]:
         return None
     uid = request.auth.get("sub")
     try:
+        user = ClientPortalUser.objects.select_related("client", "operator").filter(
+            id=uid, active=True
+        ).first()
+    except (ValidationError, ValueError, TypeError):
+        user = None
+    if user:
+        return user
+    try:
         return ClientPortalUser.objects.select_related("client", "operator").get(
-            supabase_uid=uid
+            supabase_uid=uid, active=True
         )
-    except ClientPortalUser.DoesNotExist:
+    except (ClientPortalUser.DoesNotExist, ValidationError, ValueError, TypeError):
         return None
 
 

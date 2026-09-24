@@ -17,20 +17,15 @@ export async function authFetch(url: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers || {});
   headers.set("Authorization", `Bearer ${token}`);
 
-  // Injetar X-Tenant-Id opcional se selecionado pelo operador/admin (apenas contexto de tenant, nunca papéis ou e-mail de cliente)
-  const storedSessionStr = localStorage.getItem("nevesgo:session");
-  if (storedSessionStr) {
-    try {
-      const storedSession = JSON.parse(storedSessionStr);
-      if (storedSession?.selected_company_id || storedSession?.user?.company_id) {
-        headers.set(
-          "X-Tenant-Id",
-          String(storedSession.selected_company_id || storedSession.user.company_id),
-        );
-      }
-    } catch {
-      // Ignora erro de parse
-    }
+  // A preferência só é enviada pelo proprietário da plataforma; o backend
+  // revalida o papel e o operador em todas as operações.
+  const storedSession = authStorage.getSession<any>();
+  if (
+    storedSession?.user?.is_platform_admin &&
+    storedSession.user.company_id &&
+    storedSession.user.company_id !== "global"
+  ) {
+    headers.set("X-Operator-Id", String(storedSession.user.company_id));
   }
 
   if (
@@ -78,6 +73,18 @@ export async function authFetch(url: string, options: RequestInit = {}) {
     throw new Error(errorMessage);
   }
 
+  if (response.status === 401) {
+    const renewedToken = await nativeRefreshToken();
+    if (renewedToken) {
+      headers.set("Authorization", `Bearer ${renewedToken}`);
+      response = await fetch(`${BASE_URL}${url}`, {
+        ...options,
+        headers,
+        credentials: "include",
+      });
+    }
+  }
+
   if (response.status === 401 || response.status === 403) {
     const is403 = response.status === 403;
     let customError = "Sessão expirada ou acesso negado (401).";
@@ -95,7 +102,7 @@ export async function authFetch(url: string, options: RequestInit = {}) {
       window.dispatchEvent(new CustomEvent("nevesgo:network-error", { detail: customError }));
     }
     
-    localStorage.removeItem("nevesgo:session");
+    authStorage.clearTokens();
     if (window.location.pathname !== "/login") {
       window.location.href = "/login";
     }
@@ -106,17 +113,11 @@ export async function authFetch(url: string, options: RequestInit = {}) {
 }
 
 /**
- * Returns the parsed session object from localStorage, or null if not authenticated.
+ * Retorna somente o snapshot em memória; credenciais nunca são persistidas no browser.
  */
 export function getSession(): {
   basicAuth: string;
   user: Record<string, unknown>;
 } | null {
-  const sessionString = localStorage.getItem("nevesgo:session");
-  if (!sessionString) return null;
-  try {
-    return JSON.parse(sessionString);
-  } catch {
-    return null;
-  }
+  return authStorage.getSession();
 }

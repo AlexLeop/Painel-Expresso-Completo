@@ -22,22 +22,17 @@ class EntryPayload(BaseModel):
 
 @router.get("/entries")
 def get_entries(request, company_id: Optional[str] = None, start: Optional[str] = None, end: Optional[str] = None):
-    try:
-        from django.core.exceptions import ValidationError
-        auth = getattr(request, "auth", None) or {}
-        is_admin = auth.get("is_platform_admin", False)
-        auth_op_id = auth.get("operator_id")
+    from accounts.auth import get_client_portal_user, require_role
+    from ninja.errors import HttpError
 
+    try:
+        staff = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
+        is_admin = bool(getattr(staff, "is_platform_admin", False))
         qs = ManualEntry.objects.all()
-        if not is_admin and auth_op_id:
-            qs = qs.filter(operator_id=auth_op_id)
+        if not is_admin:
+            qs = qs.filter(operator_id=staff.operator_id)
         elif company_id and company_id != "global":
-            try:
-                qs = qs.filter(operator_id=company_id)
-            except ValidationError:
-                pass
-        elif not is_admin:
-            return []
+            qs = qs.filter(operator_id=company_id)
 
         if start:
             qs = qs.filter(createdAt__gte=start)
@@ -61,24 +56,31 @@ def get_entries(request, company_id: Optional[str] = None, start: Optional[str] 
                 "description": entry.description or ""
             })
         return res
-    except Exception:
-        import traceback
-        traceback.print_exc()
-        return []
+    except HttpError:
+        raise
+    except (ValueError, TypeError):
+        raise HttpError(422, "Filtros de lançamento inválidos.")
 
 @router.post("/entries")
 def create_entry(request, payload: EntryPayload):
-    auth = getattr(request, "auth", None) or {}
-    auth_op_id = auth.get("operator_id")
-    company_id = auth_op_id or payload.company_id or payload.companyId
+    from accounts.auth import require_role
+    from ninja.errors import HttpError
+
+    staff = require_role(["ADMIN", "MANAGER"])(request)
+    requested_company_id = payload.company_id or payload.companyId
+    company_id = requested_company_id if getattr(staff, "is_platform_admin", False) else staff.operator_id
+    if not company_id:
+        raise HttpError(422, "Selecione explicitamente um operador.")
     operator = get_object_or_404(Operator, pk=company_id)
-    
-    driver = None
-    if payload.driverId and payload.driverId != "9999":
-        driver = Driver.objects.filter(id=payload.driverId).first()
+
+    if not payload.driverId or payload.driverId == "9999":
+        raise HttpError(422, "Selecione um motoboy válido.")
+    driver = Driver.objects.filter(id=payload.driverId, operator=operator).first()
+    if not driver:
+        raise HttpError(404, "Motoboy não encontrado neste operador.")
         
     amt_cents = int((payload.amount or 0) * 100)
-    
+
     entry = ManualEntry.objects.create(
         operator=operator,
         driver=driver,
@@ -91,10 +93,18 @@ def create_entry(request, payload: EntryPayload):
 
 @router.put("/entries")
 def update_entry(request, payload: EntryPayload):
+    from accounts.auth import require_role
+    from ninja.errors import HttpError
+
+    staff = require_role(["ADMIN", "MANAGER"])(request)
     if not payload.id:
-        return {"success": False, "error": "ID missing"}
-    
-    entry = get_object_or_404(ManualEntry, pk=payload.id)
+        raise HttpError(422, "ID do lançamento é obrigatório.")
+    entries = ManualEntry.objects.filter(pk=payload.id)
+    if not getattr(staff, "is_platform_admin", False):
+        entries = entries.filter(operator_id=staff.operator_id)
+    entry = entries.first()
+    if not entry:
+        raise HttpError(404, "Lançamento não encontrado.")
     if payload.amount is not None:
         entry.amountCents = int(payload.amount * 100)
     if payload.description or payload.type:
@@ -105,26 +115,39 @@ def update_entry(request, payload: EntryPayload):
 
 @router.delete("/entries")
 def delete_entry(request, id: str):
-    entry = get_object_or_404(ManualEntry, pk=id)
+    from accounts.auth import require_role
+    from ninja.errors import HttpError
+
+    staff = require_role(["ADMIN"])(request)
+    entries = ManualEntry.objects.filter(pk=id)
+    if not getattr(staff, "is_platform_admin", False):
+        entries = entries.filter(operator_id=staff.operator_id)
+    entry = entries.first()
+    if not entry:
+        raise HttpError(404, "Lançamento não encontrado.")
     entry.delete()
     return {"success": True}
 
 @router.get("/companies")
 def get_companies(request):
+    from accounts.auth import get_client_portal_user, require_role
     from accounts.models import Operator
     from logistics.models import Store
     from finance.models import Contract
 
     auth = getattr(request, "auth", None) or {}
-    is_admin = auth.get("is_platform_admin", False)
-    op_id = auth.get("operator_id")
     client_id = auth.get("client_id")
 
     qs = Store.objects.select_related("operator", "client").all()
     if client_id:
-        qs = qs.filter(client_id=client_id)
-    elif op_id and not is_admin:
-        qs = qs.filter(operator_id=op_id)
+        client_user = get_client_portal_user(request)
+        qs = qs.filter(client=client_user.client) if client_user else qs.none()
+    else:
+        staff = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
+        if not getattr(staff, "is_platform_admin", False):
+            qs = qs.filter(operator_id=staff.operator_id)
+        elif staff.operator_id:
+            qs = qs.filter(operator_id=staff.operator_id)
 
     res = []
     for s in qs:
@@ -167,16 +190,16 @@ def get_companies(request):
 
 @router.get("/users")
 def get_users(request):
+    from accounts.auth import require_role
     from accounts.models import StaffMember, PlatformAdmin
     from logistics.models import ClientPortalUser
-    
+
     auth = getattr(request, "auth", None) or {}
-    is_admin = auth.get("is_platform_admin", False)
-    op_id = auth.get("operator_id")
-    client_id = auth.get("client_id")
-    
-    if client_id:
+    if auth.get("client_id") or auth.get("user_type") == "client_portal_user":
         return []
+    actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
+    is_admin = bool(getattr(actor, "is_platform_admin", False))
+    op_id = actor.operator_id
 
     res = []
     if is_admin:
@@ -208,7 +231,7 @@ def get_users(request):
                 "name": c.name,
                 "email": c.email,
                 "role": "lojista",
-                "active": True,
+                "active": c.active,
                 "companies": [{"id": str(c.client_id), "name": c.client.name}] if c.client else [],
             })
     elif op_id:
@@ -230,155 +253,284 @@ def get_users(request):
                 "name": c.name,
                 "email": c.email,
                 "role": "lojista",
-                "active": True,
+                "active": c.active,
                 "companies": [{"id": str(c.client_id), "name": c.client.name}] if c.client else [],
             })
-    else:
-        for u in StaffMember.objects.all().order_by("-createdAt"):
-            res.append({"id": str(u.id), "nome": u.name, "name": u.name, "email": u.email, "role": u.role, "active": u.active})
-
     return res
 
 class UserPayload(BaseModel):
     id: Optional[str] = None
-    fullName: str
+    fullName: Optional[str] = None
     email: Optional[str] = None
     role: Optional[str] = None
     password: Optional[str] = None
     companyId: Optional[str] = None
     companyIds: Optional[list] = None
+    active: Optional[bool] = None
+
+
+def _normalized_user_role(value: Optional[str]) -> str:
+    aliases = {
+        "ADMIN": "ADMIN",
+        "ADMINISTRADOR": "ADMIN",
+        "MANAGER": "MANAGER",
+        "GESTOR": "MANAGER",
+        "OPERATOR": "OPERATOR_ROLE",
+        "OPERADOR": "OPERATOR_ROLE",
+        "OPERATOR_ROLE": "OPERATOR_ROLE",
+        "SUPERVISOR": "OPERATOR_ROLE",
+        "COORDINATOR": "OPERATOR_ROLE",
+        "COORDENADOR": "OPERATOR_ROLE",
+        "VIEWER": "VIEWER",
+        "VISUALIZADOR": "VIEWER",
+        "LOJISTA": "LOJISTA",
+        "SUPERADMIN": "PLATFORM_ADMIN",
+        "SUPERADMIN MASTER": "PLATFORM_ADMIN",
+        "PLATFORM_ADMIN": "PLATFORM_ADMIN",
+    }
+    role = aliases.get((value or "OPERATOR_ROLE").strip().upper())
+    if not role:
+        from ninja.errors import HttpError
+
+        raise HttpError(422, "Papel de usuário inválido.")
+    return role
+
+
+def _email_already_in_use(email: str, *, exclude_model=None, exclude_id=None) -> bool:
+    from accounts.models import PlatformAdmin, StaffMember
+    from logistics.models import ClientPortalUser
+
+    for model in (PlatformAdmin, StaffMember, ClientPortalUser):
+        queryset = model.objects.filter(email__iexact=email)
+        if model is exclude_model and exclude_id:
+            queryset = queryset.exclude(pk=exclude_id)
+        if queryset.exists():
+            return True
+    return False
+
+
+def _operator_from_company_reference(company_id: Optional[str]):
+    """Resolve os IDs usados pela UI sem permitir fallback para outro tenant."""
+    from accounts.models import Operator
+    from logistics.models import Client, Store
+
+    if not company_id or company_id == "global":
+        return None
+    operator = Operator.objects.filter(id=company_id).first()
+    if operator:
+        return operator
+    store = Store.objects.select_related("operator").filter(id=company_id).first()
+    if store:
+        return store.operator
+    client = Client.objects.select_related("operator").filter(id=company_id).first()
+    return client.operator if client else None
 
 @router.post("/users")
 def create_user(request, payload: UserPayload):
     from accounts.models import StaffMember, Operator, PlatformAdmin
     from logistics.models import ClientPortalUser, Client
+    from accounts.auth import require_role
+    from django.db import IntegrityError, transaction
+    from ninja.errors import HttpError
     import uuid
-    try:
-        if not payload.email:
-            return {"success": False, "error": "Email é obrigatório."}
 
-        auth = getattr(request, "auth", None) or {}
-        is_admin = auth.get("is_platform_admin", False)
-        auth_op_id = auth.get("operator_id")
+    actor = require_role(["ADMIN", "MANAGER"])(request)
+    try:
+        if not payload.email or not payload.fullName:
+            raise HttpError(422, "Nome e e-mail são obrigatórios.")
+        if not payload.password or len(payload.password) < 10:
+            raise HttpError(422, "A senha deve ter pelo menos 10 caracteres.")
+
+        email = payload.email.strip().lower()
+        if _email_already_in_use(email):
+            raise HttpError(409, "Já existe um usuário com este e-mail.")
+
+        is_platform_admin = bool(getattr(actor, "is_platform_admin", False))
 
         c_id = payload.companyId
         if not c_id and payload.companyIds and len(payload.companyIds) > 0:
             c_id = payload.companyIds[0]
 
-        if not is_admin and auth_op_id:
-            target_operator_id = auth_op_id
-        else:
-            target_operator_id = c_id if (c_id and c_id != "global") else None
+        role = _normalized_user_role(payload.role)
+        if not is_platform_admin and role == "PLATFORM_ADMIN":
+            raise HttpError(403, "Apenas o proprietário da plataforma pode criar administradores globais.")
+        if actor.role == "MANAGER" and role in {"ADMIN", "MANAGER", "PLATFORM_ADMIN"}:
+            raise HttpError(403, "Gestores não podem criar usuários com nível igual ou superior.")
 
-        role = (payload.role or "OPERATOR_ROLE").upper()
-        raw_password = payload.password or "123456"
+        target_operator = None if is_platform_admin else actor.operator
+        if is_platform_admin and role != "PLATFORM_ADMIN":
+            target_operator = _operator_from_company_reference(c_id)
+            if not target_operator:
+                raise HttpError(422, "Selecione um operador válido para o novo usuário.")
 
         if role == "LOJISTA":
             client = None
             if c_id:
                 from logistics.models import Store
-                try:
-                    store = Store.objects.filter(id=c_id).first()
-                    if store and store.client:
-                        client = store.client
-                except Exception:
-                    pass
-                if not client:
-                    try:
-                        client = Client.objects.filter(id=c_id).first()
-                    except Exception:
-                        pass
-            if not client and target_operator_id:
-                client = Client.objects.filter(operator_id=target_operator_id).first()
-            if not client:
-                client = Client.objects.first()
-            if not client:
-                return {"success": False, "error": "Nenhum cliente/loja cadastrado para vincular o lojista."}
 
-            c_user = ClientPortalUser(
-                id=uuid.uuid4(),
-                operator=client.operator,
-                client=client,
-                name=payload.fullName,
-                email=payload.email.strip().lower(),
-            )
-            c_user.set_password(raw_password)
-            c_user.save()
+                stores = Store.objects.select_related("client", "operator").filter(id=c_id)
+                clients = Client.objects.select_related("operator").filter(id=c_id)
+                if not is_platform_admin:
+                    stores = stores.filter(operator=actor.operator)
+                    clients = clients.filter(operator=actor.operator)
+                store = stores.first()
+                if store and store.client:
+                    client = store.client
+                if not client:
+                    client = clients.first()
+            if not client and target_operator:
+                client = Client.objects.filter(operator=target_operator, active=True).first()
+            if not client:
+                raise HttpError(422, "Nenhum cliente válido foi selecionado para o lojista.")
+
+            with transaction.atomic():
+                c_user = ClientPortalUser(
+                    id=uuid.uuid4(),
+                    supabase_uid=uuid.uuid4(),
+                    operator=client.operator,
+                    client=client,
+                    name=payload.fullName.strip(),
+                    email=email,
+                    active=True,
+                )
+                c_user.set_password(payload.password)
+                c_user.save()
             return {"success": True}
 
-        operator = None
-        if target_operator_id:
-            operator = Operator.objects.filter(id=target_operator_id).first()
+        if role == "PLATFORM_ADMIN":
+            if not is_platform_admin:
+                raise HttpError(403, "Permissão insuficiente.")
+            with transaction.atomic():
+                p_admin = PlatformAdmin(id=uuid.uuid4(), name=payload.fullName.strip(), email=email)
+                p_admin.set_password(payload.password)
+                p_admin.save()
+            return {"success": True}
 
-        if operator:
+        if not target_operator:
+            raise HttpError(422, "Operador inválido ou não informado.")
+        with transaction.atomic():
             staff = StaffMember(
                 id=uuid.uuid4(),
-                operator=operator,
-                name=payload.fullName,
-                email=payload.email.strip().lower(),
-                role=payload.role or "OPERATOR_ROLE",
+                operator=target_operator,
+                name=payload.fullName.strip(),
+                email=email,
+                role=role,
                 active=True,
             )
-            staff.set_password(raw_password)
+            staff.set_password(payload.password)
             staff.save()
-            return {"success": True}
-
-        if is_admin:
-            p_admin = PlatformAdmin(
-                id=uuid.uuid4(),
-                name=payload.fullName,
-                email=payload.email.strip().lower(),
-            )
-            p_admin.set_password(raw_password)
-            p_admin.save()
-            return {"success": True}
-        else:
-            return {"success": False, "error": "Operador inválido ou não informado."}
-
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": True}
+    except HttpError:
+        raise
+    except IntegrityError:
+        raise HttpError(409, "Não foi possível criar o usuário porque os dados já estão em uso.")
+    except (ValueError, TypeError):
+        raise HttpError(422, "Dados de usuário inválidos.")
 
 @router.put("/users")
 def update_user(request, payload: UserPayload):
     from accounts.models import StaffMember, PlatformAdmin
-    try:
-        staff = StaffMember.objects.get(id=payload.id)
-        staff.name = payload.fullName
-        if payload.role:
-            staff.role = payload.role
-        staff.save()
-        return {"success": True}
-    except StaffMember.DoesNotExist:
-        try:
-            admin = PlatformAdmin.objects.get(id=payload.id)
-            admin.name = payload.fullName
-            admin.save()
-            return {"success": True}
-        except PlatformAdmin.DoesNotExist:
-            return {"success": False, "error": "User not found"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+    from accounts.auth import require_role
+    from logistics.models import ClientPortalUser
+    from ninja.errors import HttpError
+
+    actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
+    if not payload.id:
+        raise HttpError(422, "ID do usuário é obrigatório.")
+    is_platform_admin = bool(getattr(actor, "is_platform_admin", False))
+    is_self = str(actor.id) == str(payload.id)
+    can_manage = is_platform_admin or actor.role in {"ADMIN", "MANAGER"}
+    if not is_self and not can_manage:
+        raise HttpError(403, "Você só pode editar o próprio perfil.")
+
+    staff_qs = StaffMember.objects.filter(id=payload.id)
+    client_qs = ClientPortalUser.objects.filter(id=payload.id)
+    if not is_platform_admin:
+        staff_qs = staff_qs.filter(operator=actor.operator)
+        client_qs = client_qs.filter(operator=actor.operator)
+
+    target = staff_qs.first()
+    target_kind = "staff"
+    if not target:
+        target = client_qs.first()
+        target_kind = "client"
+    if not target and is_platform_admin:
+        target = PlatformAdmin.objects.filter(id=payload.id).first()
+        target_kind = "platform"
+    if not target:
+        raise HttpError(404, "Usuário não encontrado.")
+
+    if actor.role == "MANAGER" and target_kind == "staff" and target.role in {"ADMIN", "MANAGER"} and not is_self:
+        raise HttpError(403, "Gestores não podem editar usuários com nível igual ou superior.")
+    if not is_self and not can_manage:
+        raise HttpError(403, "Permissão insuficiente.")
+
+    update_fields = []
+    if payload.fullName:
+        target.name = payload.fullName.strip()
+        update_fields.append("name")
+    if payload.email:
+        email = payload.email.strip().lower()
+        if _email_already_in_use(email, exclude_model=type(target), exclude_id=target.pk):
+            raise HttpError(409, "Já existe um usuário com este e-mail.")
+        target.email = email
+        update_fields.append("email")
+    if payload.role:
+        if is_self:
+            raise HttpError(403, "Não é permitido alterar o próprio papel.")
+        role = _normalized_user_role(payload.role)
+        if target_kind != "staff" or role in {"LOJISTA", "PLATFORM_ADMIN"}:
+            raise HttpError(422, "A alteração solicitada não é compatível com este usuário.")
+        if actor.role == "MANAGER" and role in {"ADMIN", "MANAGER"}:
+            raise HttpError(403, "Gestores não podem conceder nível igual ou superior.")
+        target.role = role
+        update_fields.append("role")
+    if payload.active is not None:
+        if is_self:
+            raise HttpError(403, "Não é permitido desativar o próprio acesso.")
+        if target_kind == "platform":
+            raise HttpError(422, "Administradores globais não podem ser desativados por esta rota.")
+        target.active = payload.active
+        update_fields.append("active")
+    if update_fields:
+        target.save(update_fields=update_fields)
+    return {"success": True}
 
 @router.delete("/users")
 def delete_user(request, id: str):
     from accounts.models import StaffMember, PlatformAdmin
+    from accounts.auth import require_role
     from logistics.models import ClientPortalUser
-    try:
-        user = None
-        for model in [StaffMember, PlatformAdmin, ClientPortalUser]:
-            try:
-                user = model.objects.get(id=id)
-                break
-            except (model.DoesNotExist, Exception):
-                pass
-        
-        if not user:
-            return {"success": False, "error": "Usuário não encontrado"}
-            
-        user.delete()
+    from ninja.errors import HttpError
+
+    actor = require_role(["ADMIN", "MANAGER"])(request)
+    if str(actor.id) == str(id):
+        raise HttpError(403, "Não é permitido revogar o próprio acesso.")
+    is_platform_admin = bool(getattr(actor, "is_platform_admin", False))
+
+    staff_qs = StaffMember.objects.filter(id=id)
+    client_qs = ClientPortalUser.objects.filter(id=id)
+    if not is_platform_admin:
+        staff_qs = staff_qs.filter(operator=actor.operator)
+        client_qs = client_qs.filter(operator=actor.operator)
+
+    user = staff_qs.first()
+    if user:
+        if actor.role == "MANAGER" and user.role in {"ADMIN", "MANAGER"}:
+            raise HttpError(403, "Gestores não podem revogar usuários com nível igual ou superior.")
+        user.active = False
+        user.save(update_fields=["active"])
         return {"success": True}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+
+    user = client_qs.first()
+    if user:
+        user.active = False
+        user.save(update_fields=["active"])
+        return {"success": True}
+
+    if is_platform_admin and PlatformAdmin.objects.filter(id=id).exists():
+        raise HttpError(422, "Administradores globais devem ser removidos por um fluxo soberano auditado.")
+    raise HttpError(404, "Usuário não encontrado.")
 
 class CompanyDriverPayload(BaseModel):
     driver_id: Optional[str] = None
@@ -387,31 +539,50 @@ class CompanyDriverPayload(BaseModel):
     companyId: Optional[Any] = None
     active: Optional[bool] = None
 
+
+class DriverTransferPayload(BaseModel):
+    targetCompanyId: str
+    reason: str
+
+
+def _digits(value: Optional[str]) -> str:
+    return "".join(char for char in (value or "") if char.isdigit())
+
 @router.patch("/company-drivers")
 def update_company_driver(request, payload: CompanyDriverPayload):
+    from accounts.auth import require_role
     from logistics.models import Driver
+    from ninja.errors import HttpError
+
+    staff = require_role(["ADMIN", "MANAGER"])(request)
     try:
         d_id = payload.driver_id or payload.driverId
         if not d_id:
-            return {"success": False, "error": "driver_id is required"}
-            
-        driver = Driver.objects.get(id=d_id)
+            raise HttpError(422, "driver_id é obrigatório")
+
+        drivers = Driver.objects.filter(id=d_id)
+        if not getattr(staff, "is_platform_admin", False):
+            drivers = drivers.filter(operator_id=staff.operator_id)
+        driver = drivers.get()
         if payload.active is not None:
             driver.active = payload.active
-            driver.save()
+            driver.save(update_fields=["active", "updatedAt"])
         return {"success": True}
     except Driver.DoesNotExist:
-        return {"success": False, "error": "Driver not found"}
+        raise HttpError(404, "Motoboy não encontrado")
 
 @router.get("/company-drivers")
 def get_company_drivers(request, company_id: Optional[str] = None, active_only: int = 0):
+    from accounts.auth import require_role
+    from ninja.errors import HttpError
+
     try:
         from django.core.exceptions import ValidationError
         from logistics.models import Driver, Vehicle
 
-        auth = getattr(request, "auth", None) or {}
-        is_admin = auth.get("is_platform_admin", False)
-        auth_op_id = auth.get("operator_id")
+        staff = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
+        is_admin = getattr(staff, "is_platform_admin", False)
+        auth_op_id = staff.operator_id
 
         if not is_admin and auth_op_id:
             drivers = Driver.objects.filter(operator_id=auth_op_id)
@@ -447,6 +618,8 @@ def get_company_drivers(request, company_id: Optional[str] = None, active_only: 
                 "pixKey": d.pixKey,
             })
         return res
+    except HttpError:
+        raise
     except Exception:
         import traceback
         traceback.print_exc()
@@ -459,7 +632,7 @@ class DriverCreateSchema(BaseModel):
     phone: Optional[str] = None
     telefone: Optional[str] = None
     email: str
-    password: Optional[str] = "123456"
+    password: Optional[str] = None
     document: Optional[str] = None
     rg: Optional[str] = None
     birthDate: Optional[str] = None
@@ -491,73 +664,90 @@ def create_company_driver(request, payload: DriverCreateSchema):
     Cadastra um novo motoboy de forma 100% nativa sem dependência de Supabase Auth.
     Persiste o Driver, dados do Veículo e Documentação vinculados ao Operador.
     """
+    from accounts.auth import require_role
     from accounts.models import Operator
     from logistics.models import Driver, Store, StoreDriver, Vehicle, DriverDocument
     from accounts.security import hash_password
     from django.core.exceptions import ValidationError
+    from django.db import IntegrityError, transaction
+    from ninja.errors import HttpError
     import uuid
+
+    staff = require_role(["ADMIN", "MANAGER"])(request)
 
     company_id = payload.companyId
     nome = payload.nome
-    phone = payload.phone or payload.telefone
+    phone = _digits(payload.phone or payload.telefone)
+    document = _digits(payload.document)
     email = payload.email
-    password = payload.password or "123456"
+    password = payload.password or ""
     
     if not all([nome, phone, email]):
         return {"success": False, "error": "Nome, telefone e e-mail são obrigatórios"}
+    if len(password) < 10:
+        raise HttpError(422, "A senha inicial deve possuir ao menos 10 caracteres.")
     
     try:
-        auth = getattr(request, "auth", None) or {}
-        auth_op_id = auth.get("operator_id")
-        
         operator = None
-        if auth_op_id:
-            operator = Operator.objects.filter(id=auth_op_id).first()
+        if not getattr(staff, "is_platform_admin", False):
+            operator = staff.operator
         elif company_id and company_id != "global":
             try:
                 operator = Operator.objects.filter(id=company_id).first()
             except (ValidationError, ValueError):
                 operator = None
         if not operator:
-            return {"success": False, "error": "Operador logístico obrigatório não identificado."}
-        
-        # 1. Criar Driver record de forma 100% nativa
-        driver = Driver.objects.create(
-            id=uuid.uuid4(),
-            operator=operator,
-            supabase_uid=uuid.uuid4(),
-            name=nome,
-            phone=phone,
-            document=payload.document,
-            pixKeyType=payload.pixKeyType or "TELEFONE",
-            pixKey=payload.pixKey or phone,
-            maxActiveOrders=payload.maxActiveOrders or 3,
-            tax_classification=payload.tax_classification or "PESSOA_FISICA_AUTONOMO",
-            passwordHash=hash_password(password),
-            active=True
-        )
+            raise HttpError(422, "Operador logístico obrigatório não identificado.")
+
+        duplicate = Driver.objects.filter(active=True, phone=phone)
+        if document:
+            duplicate = duplicate | Driver.objects.filter(active=True, document=document)
+        existing = duplicate.distinct().first()
+        if existing:
+            if existing.operator_id == operator.id:
+                raise HttpError(409, "Este motoboy já está cadastrado neste operador.")
+            raise HttpError(
+                409,
+                "Este motoboy já pertence a outro operador. Somente o proprietário da plataforma pode transferi-lo.",
+            )
+
+        with transaction.atomic():
+            # O operador vem sempre da identidade autenticada; apenas o
+            # proprietário da plataforma pode escolher outro tenant.
+            driver = Driver.objects.create(
+                id=uuid.uuid4(),
+                operator=operator,
+                supabase_uid=uuid.uuid4(),
+                name=nome,
+                phone=phone,
+                document=document or None,
+                pixKeyType=payload.pixKeyType or "TELEFONE",
+                pixKey=payload.pixKey or phone,
+                maxActiveOrders=payload.maxActiveOrders or 3,
+                tax_classification=payload.tax_classification or "PESSOA_FISICA_AUTONOMO",
+                passwordHash=hash_password(password),
+                active=True
+            )
         
         # 2. Se placa foi informada, registrar veículo
-        if payload.placa:
-            clean_plate = payload.placa.strip().upper()
-            try:
+            if payload.placa:
+                clean_plate = payload.placa.strip().upper()
+                if Vehicle.objects.filter(plate=clean_plate).exclude(operator=operator).exists():
+                    raise HttpError(409, "Este veículo já pertence a outro operador.")
                 v_type = (payload.vehicleType or "MOTORCYCLE").upper()
                 if v_type not in ["MOTORCYCLE", "BICYCLE", "CAR"]:
                     v_type = "MOTORCYCLE"
                 Vehicle.objects.update_or_create(
                     plate=clean_plate,
+                    operator=operator,
                     defaults={
-                        "operator": operator,
                         "type": v_type,
                         "active": True
                     }
                 )
-            except Exception:
-                pass
 
         # 3. Se CNH foi informada, registrar DriverDocument
-        if payload.cnhNumero:
-            try:
+            if payload.cnhNumero:
                 DriverDocument.objects.create(
                     id=uuid.uuid4(),
                     operator=operator,
@@ -567,21 +757,112 @@ def create_company_driver(request, payload: DriverCreateSchema):
                     document_type="CNH",
                     status="APPROVED"
                 )
-            except Exception:
-                pass
 
         # 4. Vincular a uma Store do operador (primeira Store encontrada)
-        store = Store.objects.filter(operator_id=operator.id).first()
-        if store:
-            StoreDriver.objects.get_or_create(
-                operator=operator,
-                store=store,
-                driver=driver
-            )
+            store = Store.objects.filter(operator_id=operator.id).first()
+            if store:
+                StoreDriver.objects.get_or_create(
+                    operator=operator,
+                    store=store,
+                    driver=driver
+                )
             
         return {"success": True, "driverId": str(driver.id)}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+    except HttpError:
+        raise
+    except IntegrityError as exc:
+        raise HttpError(409, "Já existe um motoboy ativo com esta identidade.") from exc
+    except Exception:
+        logger.exception("Falha inesperada ao cadastrar motoboy.")
+        raise HttpError(500, "Não foi possível cadastrar o motoboy.")
+
+
+@router.post("/company-drivers/{driver_id}/transfer")
+def transfer_company_driver(request, driver_id: str, payload: DriverTransferPayload):
+    """Transfere a identidade ativa sem reescrever o histórico do tenant antigo."""
+
+    import json
+    import uuid
+
+    from accounts.auth import platform_admin_required
+    from accounts.models import Operator, OperatorAuditLog
+    from django.db import transaction
+    from django.db.models import Q
+    from logistics.models import Driver, StoreDriver
+    from ninja.errors import HttpError
+
+    platform_admin = platform_admin_required(request)
+    reason = payload.reason.strip()
+    if len(reason) < 10:
+        raise HttpError(422, "Informe uma justificativa com ao menos 10 caracteres.")
+
+    with transaction.atomic():
+        source = Driver.objects.select_for_update().filter(id=driver_id, active=True).first()
+        target = Operator.objects.select_for_update().filter(id=payload.targetCompanyId).first()
+        if not source or not target:
+            raise HttpError(404, "Motoboy ou operador de destino não encontrado.")
+        if source.operator_id == target.id:
+            raise HttpError(409, "O motoboy já pertence ao operador de destino.")
+
+        identity_filter = Q(phone=source.phone)
+        if source.document:
+            identity_filter |= Q(document=source.document)
+        collision = Driver.objects.filter(
+            identity_filter, active=True, operator=target
+        ).exists()
+        if collision:
+            raise HttpError(409, "Já existe uma identidade ativa deste motoboy no destino.")
+
+        previous_operator_id = source.operator_id
+        previous_driver_id = source.id
+        original_uid = source.supabase_uid
+        source.active = False
+        source.online = False
+        source.supabase_uid = None
+        source.save(update_fields=["active", "online", "supabase_uid", "updatedAt"])
+        StoreDriver.objects.filter(driver=source).delete()
+
+        transferred = Driver.objects.create(
+            id=uuid.uuid4(),
+            operator=target,
+            supabase_uid=original_uid,
+            name=source.name,
+            phone=source.phone,
+            document=source.document,
+            pixKeyType=source.pixKeyType,
+            pixKey=source.pixKey,
+            passwordHash=source.passwordHash,
+            active=True,
+            online=False,
+            operational_status="OFFLINE",
+            maxActiveOrders=source.maxActiveOrders,
+            onboarding_status=source.onboarding_status,
+            tax_classification=source.tax_classification,
+        )
+
+        OperatorAuditLog.objects.create(
+            id=uuid.uuid4(),
+            operator=target,
+            platformAdmin=platform_admin,
+            action="DRIVER_OPERATOR_TRANSFER",
+            reason=json.dumps(
+                {
+                    "reason": reason,
+                    "source_operator_id": str(previous_operator_id),
+                    "target_operator_id": str(target.id),
+                    "source_driver_id": str(previous_driver_id),
+                    "target_driver_id": str(transferred.id),
+                },
+                ensure_ascii=False,
+            ),
+        )
+
+    return {
+        "success": True,
+        "previousDriverId": str(previous_driver_id),
+        "driverId": str(transferred.id),
+        "operatorId": str(target.id),
+    }
 
 class StoreCreateSchema(BaseModel):
     companyId: Optional[str] = None
@@ -606,99 +887,75 @@ def create_company_store(request, payload: StoreCreateSchema):
     from finance.models import Contract
     from django.core.exceptions import ValidationError
     from django.contrib.gis.geos import Point
+    from accounts.auth import require_role
+    from django.db import transaction
+    from ninja.errors import HttpError
     import uuid
 
-    operator = None
-    # 1. Tentar resolver via JWT auth (operator_id do token ou staff logado)
-    auth = getattr(request, "auth", None)
-    if auth:
-        op_id = auth.get("operator_id")
-        if op_id:
-            try:
-                operator = Operator.objects.filter(id=op_id).first()
-            except (ValidationError, ValueError):
-                pass
-
-    # 2. Tentar via companyId no payload
-    if not operator and payload.companyId and payload.companyId != "global":
-        try:
-            operator = Operator.objects.filter(id=payload.companyId).first()
-        except (ValidationError, ValueError):
-            operator = None
-
-    # 3. Validação estrita de tenant (sem fallback arbitrário)
+    actor = require_role(["ADMIN", "MANAGER"])(request)
+    operator = actor.operator
+    if getattr(actor, "is_platform_admin", False):
+        operator = _operator_from_company_reference(payload.companyId)
     if not operator:
-        return {"success": False, "error": "Operador logístico obrigatório não identificado."}
+        raise HttpError(422, "Operador logístico obrigatório não identificado.")
 
     name = payload.name
     if not name:
-        return {"success": False, "error": "Nome da empresa é obrigatório."}
+        raise HttpError(422, "Nome da empresa é obrigatório.")
 
     try:
-        # 1. Criar Client
-        client = Client.objects.create(
-            id=uuid.uuid4(),
-            operator=operator,
-            name=name,
-            document=payload.documento or "",
-            active=True
-        )
-
-        # 2. Criar Store
-        if payload.lat and payload.lng:
-            geom = Point(payload.lng, payload.lat, srid=4326)
-        else:
-            geom = Point(-43.1729, -22.9068, srid=4326)
-
-        store = Store.objects.create(
-            id=uuid.uuid4(),
-            operator=operator,
-            client=client,
-            name=name,
-            geom=geom,
-            averagePrepTimeMinutes=payload.averagePrepTimeMinutes or 15,
-            operational=True
-        )
-
-        # 3. Criar Contrato financeiro padrão
-        Contract.objects.get_or_create(
-            operator=operator,
-            store=store,
-            defaults={
-                "compensationMode": Contract.CompensationMode.GARANTIDA,
-                "rideFeePerDeliveryCents": int((payload.taxaCorridaPerEntrega or 1.6) * 100),
-                "minimumRidesFeeFloorCents": int((payload.pisoFixo or 350.0) * 100),
-                "minimumFloorBps": 0,
-                "adminTaxThresholdCents": 0,
-                "adminTaxFixedAmountCents": 0,
-                "adminTaxBps": 0,
-                "dailyRateWeekdayCents": int((payload.diaria_weekday or 60.0) * 100),
-            }
-        )
+        if payload.lat is None or payload.lng is None:
+            raise HttpError(422, "Latitude e longitude da loja são obrigatórias.")
+        if not (-90 <= payload.lat <= 90 and -180 <= payload.lng <= 180):
+            raise HttpError(422, "Coordenadas da loja são inválidas.")
+        with transaction.atomic():
+            client = Client.objects.create(
+                id=uuid.uuid4(), operator=operator, name=name.strip(),
+                document=payload.documento or "", active=True,
+            )
+            store = Store.objects.create(
+                id=uuid.uuid4(), operator=operator, client=client, name=name.strip(),
+                geom=Point(payload.lng, payload.lat, srid=4326),
+                averagePrepTimeMinutes=payload.averagePrepTimeMinutes or 15,
+                operational=True,
+            )
+            Contract.objects.create(
+                operator=operator, store=store,
+                compensationMode=Contract.CompensationMode.GARANTIDA,
+                rideFeePerDeliveryCents=int((payload.taxaCorridaPerEntrega or 1.6) * 100),
+                minimumRidesFeeFloorCents=int((payload.pisoFixo or 350.0) * 100),
+                minimumFloorBps=0, adminTaxThresholdCents=0,
+                adminTaxFixedAmountCents=0, adminTaxBps=0,
+                dailyRateWeekdayCents=int((payload.diaria_weekday or 60.0) * 100),
+            )
 
         return {"success": True, "storeId": str(store.id)}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+    except HttpError:
+        raise
+    except (ValueError, TypeError):
+        raise HttpError(422, "Dados da loja são inválidos.")
 @router.get("/configs")
 def get_configs(request, company_id: Optional[str] = None, company_name: Optional[str] = None):
-    from django.core.exceptions import ValidationError
-    from accounts.models import Operator
-    if company_id and company_id != "global":
-        try:
-            op = Operator.objects.filter(id=company_id).first()
-        except ValidationError:
-            op = None
-        if op:
-            return {"id": str(op.id), "nome": op.name, "company_id": str(op.id), "features": {}}
-    return {"company_id": company_id, "features": {}}
+    from accounts.auth import require_role
+    from ninja.errors import HttpError
+
+    actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
+    op = actor.operator
+    if getattr(actor, "is_platform_admin", False):
+        op = _operator_from_company_reference(company_id)
+    if not op:
+        raise HttpError(422, "Selecione um operador válido.")
+    return {"id": str(op.id), "nome": op.name, "company_id": str(op.id), "features": {}}
 
 @router.post("/configs")
 def create_config(request, payload: dict):
-    return {"success": True}
+    from ninja.errors import HttpError
+    raise HttpError(410, "Esta rota legada foi desativada; use os endpoints específicos de configuração.")
 
 @router.put("/configs")
 def update_config(request, payload: dict):
-    return {"success": True}
+    from ninja.errors import HttpError
+    raise HttpError(410, "Esta rota legada foi desativada; use os endpoints específicos de configuração.")
 
 @router.get("/snapshots")
 def get_snapshots(request, company_id: Optional[str] = None, limit: int = 50):
@@ -733,8 +990,15 @@ class StoreUpdateSchema(BaseModel):
 def update_company_store(request, company_id: str, payload: StoreUpdateSchema):
     from django.contrib.gis.geos import Point
     from finance.models import Contract
+    from accounts.auth import require_role
+    from ninja.errors import HttpError
+
+    actor = require_role(["ADMIN", "MANAGER"])(request)
     try:
-        store = Store.objects.get(id=company_id)
+        stores = Store.objects.filter(id=company_id)
+        if not getattr(actor, "is_platform_admin", False):
+            stores = stores.filter(operator=actor.operator)
+        store = stores.get()
         store_name = payload.nome or payload.name
         if store_name is not None:
             store.name = store_name
@@ -792,18 +1056,25 @@ def update_company_store(request, company_id: str, payload: StoreUpdateSchema):
             
         return {'success': True}
     except Store.DoesNotExist:
-        return {'success': False, 'error': 'Store not found'}
-    except Exception as e:
-        return {'success': False, 'error': str(e)}
+        raise HttpError(404, "Loja não encontrada.")
+    except (ValueError, TypeError):
+        raise HttpError(422, "Dados da loja são inválidos.")
 
 @router.delete('/companies/{company_id}')
 def delete_company_store(request, company_id: str):
-    try:
-        store = Store.objects.get(id=company_id)
-        store.delete()
-        return {'success': True}
-    except Exception as e:
-        return {'success': False, 'error': str(e)}
+    from accounts.auth import require_role
+    from ninja.errors import HttpError
+
+    actor = require_role(["ADMIN"])(request)
+    stores = Store.objects.filter(id=company_id)
+    if not getattr(actor, "is_platform_admin", False):
+        stores = stores.filter(operator=actor.operator)
+    store = stores.first()
+    if not store:
+        raise HttpError(404, "Loja não encontrada.")
+    store.operational = False
+    store.save(update_fields=["operational", "updatedAt"])
+    return {'success': True}
 
 # ==============================================================================
 # UNIFIED NATIVE ORDERS API (Replaces Legacy Taxi Machine Proxy)
@@ -846,6 +1117,23 @@ class OrderCreateSchema(BaseModel):
     distancia_estimada: Optional[float] = None
     tempo_estimado: Optional[int] = None
 
+
+def _orders_visible_to_request(request):
+    from accounts.auth import get_client_portal_user, require_role
+    from logistics.models import Order
+
+    auth = getattr(request, "auth", None) or {}
+    if auth.get("client_id") or auth.get("user_type") == "client_portal_user":
+        client_user = get_client_portal_user(request)
+        return Order.objects.filter(store__client=client_user.client) if client_user else Order.objects.none()
+    actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
+    orders = Order.objects.all()
+    if not getattr(actor, "is_platform_admin", False):
+        orders = orders.filter(operator=actor.operator)
+    elif actor.operator_id:
+        orders = orders.filter(operator_id=actor.operator_id)
+    return orders
+
 @router.get("/orders")
 def get_orders(
     request,
@@ -859,24 +1147,10 @@ def get_orders(
     from accounts.models import Operator
     from django.core.exceptions import ValidationError
 
+    qs = _orders_visible_to_request(request).select_related('driver', 'store').order_by("-requestedAt")
     auth = getattr(request, "auth", None) or {}
-    is_admin = auth.get("is_platform_admin", False)
-    auth_op_id = auth.get("operator_id")
-    client_id = auth.get("client_id")
-    
-    qs = Order.objects.select_related('driver', 'store').all().order_by("-requestedAt")
-    
-    if client_id:
-        qs = qs.filter(store__client_id=client_id)
-    elif not is_admin and auth_op_id:
-        qs = qs.filter(operator_id=auth_op_id)
-    elif empresa_id and empresa_id != "global":
-        try:
-            qs = qs.filter(operator_id=empresa_id)
-        except ValidationError:
-            qs = qs.none()
-    elif not is_admin:
-        qs = qs.none()
+    if auth.get("is_platform_admin") and empresa_id and empresa_id != "global":
+        qs = qs.filter(operator_id=empresa_id)
         
     if status_solicitacao:
         status_map = {
@@ -939,70 +1213,100 @@ def get_orders(
 def create_order(request, payload: OrderCreateSchema):
     from logistics.models import Order, Stop, Store
     from django.contrib.gis.geos import Point
-    from accounts.models import Operator
+    from accounts.auth import get_client_portal_user, require_role
     from django.utils import timezone
     from django.db import transaction
+    from finance.business_date import resolve_store_business_date
+    from logistics.pricing import parse_coordinate, price_route
+    from ninja.errors import HttpError
     
     auth = getattr(request, "auth", None) or {}
-    auth_op_id = auth.get("operator_id")
-    operator_id = auth_op_id or (payload.empresa_id if payload.empresa_id != "global" else None)
-    
     if not payload.pontos or len(payload.pontos) == 0:
-        return {"sucesso": False, "msg": "Ao menos um ponto de entrega deve ser informado."}
+        raise HttpError(422, "Ao menos um ponto de entrega deve ser informado.")
+
+    stores = Store.objects.filter(id=payload.empresa_id, operational=True)
+    if auth.get("client_id") or auth.get("user_type") == "client_portal_user":
+        client_user = get_client_portal_user(request)
+        if not client_user:
+            raise HttpError(401, "Usuário lojista não autenticado.")
+        stores = stores.filter(client=client_user.client, operator=client_user.operator)
+    else:
+        actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE"])(request)
+        if not getattr(actor, "is_platform_admin", False):
+            stores = stores.filter(operator=actor.operator)
+    store = stores.select_related("operator").first()
+    if not store:
+        raise HttpError(404, "Loja não encontrada no escopo autenticado.")
+
+    def coordinates(lat_value, lng_value, prefix):
+        lat = parse_coordinate(
+            lat_value, field_name=f"{prefix}.latitude", minimum=-90, maximum=90
+        )
+        lng = parse_coordinate(
+            lng_value, field_name=f"{prefix}.longitude", minimum=-180, maximum=180
+        )
+        return lat, lng
+
+    def point(parsed_coordinates):
+        lat, lng = parsed_coordinates
+        return Point(lng, lat, srid=4326)
 
     try:
+        pickup_coordinates = coordinates(
+            payload.lat_partida, payload.lng_partida, "origem"
+        )
+        stop_coordinates = [
+            coordinates(stop.lat_parada, stop.lng_parada, f"parada_{index}")
+            for index, stop in enumerate(payload.pontos, start=1)
+        ]
+        distance_km, fare_cents = price_route(
+            store, [pickup_coordinates, *stop_coordinates]
+        )
         with transaction.atomic():
-            store = None
-            if operator_id:
-                store = Store.objects.filter(operator_id=operator_id).first()
-            if not store and operator_id:
-                store = Store.objects.create(
-                    operator_id=operator_id,
-                    name="Loja Principal",
-                    operational=True,
-                    averagePrepTimeMinutes=10,
-                    geom=Point(-43.1729, -22.9068, srid=4326) # Default Rio coords
-                )
-                
             order = Order.objects.create(
-                operator_id=operator_id,
+                operator=store.operator,
                 store=store,
-                businessDate=timezone.now().date(),
+                businessDate=resolve_store_business_date(store),
                 status=Order.OrderStatus.OFFERED,
-                fareValueCents=int((payload.valor_estimado or 0) * 100),
-                distanceMeters=int((payload.distancia_estimada or 0) * 1000)
+                fareValueCents=fare_cents,
+                distanceMeters=int(distance_km * 1000),
+                metadata={"distance_method": "HAVERSINE_BUFFERED_30_PERCENT"},
             )
             
             # Origin Stop
-            lat_p = float(payload.lat_partida or -22.9068)
-            lng_p = float(payload.lng_partida or -43.1729)
             Stop.objects.create(
+                operator=store.operator,
                 order=order,
                 sequence=0,
                 type=Stop.StopType.PICKUP,
-                geom=Point(lng_p, lat_p, srid=4326),
-                address=f"{payload.endereco_partida or ''}, {payload.numero_partida or ''} - {payload.bairro_partida or ''}",
-                contactName=payload.nome_cliente_partida or "Origem",
-                contactPhone=payload.telefone_cliente_partida or ""
+                geom=point(pickup_coordinates),
+                metadata={
+                    "address": f"{payload.endereco_partida or ''}, {payload.numero_partida or ''} - {payload.bairro_partida or ''}",
+                    "contact_name": payload.nome_cliente_partida or "Origem",
+                    "contact_phone": payload.telefone_cliente_partida or "",
+                },
             )
             
             # Destinations
-            for idx, stop in enumerate(payload.pontos, start=1):
-                lat_d = float(stop.lat_parada or -22.9068)
-                lng_d = float(stop.lng_parada or -43.1729)
+            for idx, (stop, stop_coordinate) in enumerate(
+                zip(payload.pontos, stop_coordinates), start=1
+            ):
                 Stop.objects.create(
+                    operator=store.operator,
                     order=order,
                     sequence=idx,
                     type=Stop.StopType.DROPOFF,
-                    geom=Point(lng_d, lat_d, srid=4326),
-                    address=f"{stop.endereco_parada or ''}, {stop.numero_parada or ''} - {stop.bairro_parada or ''}",
-                    contactName=stop.nome_cliente_parada or "Destino",
-                    contactPhone=stop.telefone_cliente_parada or ""
+                    geom=point(stop_coordinate),
+                    metadata={
+                        "address": f"{stop.endereco_parada or ''}, {stop.numero_parada or ''} - {stop.bairro_parada or ''}",
+                        "contact_name": stop.nome_cliente_parada or "Destino",
+                        "contact_phone": stop.telefone_cliente_parada or "",
+                    },
                 )
                 
             return {"sucesso": True, "solicitacao_id": str(order.id), "msg": "Pedido criado localmente com sucesso"}
-    except Exception as e:
-        return {"sucesso": False, "msg": str(e)}
+    except (ValueError, TypeError) as exc:
+        raise HttpError(422, str(exc) or "Coordenadas ou preço inválidos.") from exc
 
 class OrderCancelPayload(BaseModel):
     solicitacao_id: Optional[str] = None
@@ -1012,52 +1316,107 @@ class OrderCancelPayload(BaseModel):
 @router.post("/orders/cancel")
 def cancel_order(request, payload: OrderCancelPayload):
     from logistics.models import Order
+    from ninja.errors import HttpError
     order_id = payload.solicitacao_id or payload.id_mch
     if not order_id:
-        return {"sucesso": False, "msg": "ID da corrida obrigatório"}
-    try:
-        order = Order.objects.get(id=order_id)
-        order.status = Order.OrderStatus.CANCELED
-        order.save()
-        return {"sucesso": True, "msg": "Cancelado com sucesso"}
-    except (Order.DoesNotExist, Exception):
-        return {"sucesso": False, "msg": "Corrida não encontrada"}
+        raise HttpError(422, "ID da corrida obrigatório.")
+    order = _orders_visible_to_request(request).filter(id=order_id).first()
+    if not order:
+        raise HttpError(404, "Corrida não encontrada.")
+    order.status = Order.OrderStatus.CANCELED
+    order.save()
+    return {"sucesso": True, "msg": "Cancelado com sucesso"}
 
 @router.get("/orders/estimate")
-def estimate_order(request, payload: Optional[dict] = None):
+def estimate_order(
+    request,
+    empresa_id: str,
+    lat_partida: str,
+    lng_partida: str,
+    lat_desejado: str,
+    lng_desejado: str,
+):
+    from accounts.auth import get_client_portal_user, require_role
+    from logistics.models import Store
+    from logistics.pricing import parse_coordinate, price_route
+    from ninja.errors import HttpError
+
+    stores = Store.objects.filter(id=empresa_id, operational=True)
+    auth = getattr(request, "auth", None) or {}
+    if auth.get("client_id") or auth.get("user_type") == "client_portal_user":
+        client_user = get_client_portal_user(request)
+        stores = stores.filter(
+            client=client_user.client, operator=client_user.operator
+        )
+    else:
+        actor = require_role(
+            ["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"]
+        )(request)
+        if not getattr(actor, "is_platform_admin", False):
+            stores = stores.filter(operator=actor.operator)
+    store = stores.first()
+    if not store:
+        raise HttpError(404, "Loja não encontrada no escopo autenticado.")
+
+    try:
+        pickup = (
+            parse_coordinate(
+                lat_partida, field_name="lat_partida", minimum=-90, maximum=90
+            ),
+            parse_coordinate(
+                lng_partida, field_name="lng_partida", minimum=-180, maximum=180
+            ),
+        )
+        destination = (
+            parse_coordinate(
+                lat_desejado, field_name="lat_desejado", minimum=-90, maximum=90
+            ),
+            parse_coordinate(
+                lng_desejado, field_name="lng_desejado", minimum=-180, maximum=180
+            ),
+        )
+        distance_km, fare_cents = price_route(store, [pickup, destination])
+    except ValueError as exc:
+        raise HttpError(422, str(exc)) from exc
+
     return {
-        "sucesso": True,
-        "valor_total": 15.50,
-        "distancia_total": 5.2,
-        "tempo_total": 12,
-        "msg": "Estimativa nativa"
+        "response": {
+            "distancia": round(distance_km, 2),
+            "valor": fare_cents / 100,
+            "metodo_distancia": "HAVERSINE_BUFFERED_30_PERCENT",
+        }
     }
 
 @router.get("/orders/tracking")
 def get_order_tracking(request, id_mch: str):
-    from logistics.models import Order
-    try:
-        order = Order.objects.get(id=id_mch)
-        tracking_url = f"/rastreio/{order.id}"
-        return {
-            "success": True,
-            "order_id": str(order.id),
-            "status": order.status,
-            "response": [{"link_rastreio": tracking_url}],
-            "links": [{"link_rastreio": tracking_url}],
-        }
-    except (Order.DoesNotExist, Exception):
-        return {"success": False, "error": "Corrida não encontrada para rastreamento."}
+    from ninja.errors import HttpError
+    order = _orders_visible_to_request(request).filter(id=id_mch).first()
+    if not order:
+        raise HttpError(404, "Corrida não encontrada para rastreamento.")
+    tracking_url = f"/rastreio/{order.id}"
+    return {
+        "success": True, "order_id": str(order.id), "status": order.status,
+        "response": [{"link_rastreio": tracking_url}],
+        "links": [{"link_rastreio": tracking_url}],
+    }
 
 @router.get("/orders/receipt")
 def get_order_receipt(request, solicitacao_id: str):
-    from logistics.models import Order, Stop
-    try:
-        order = Order.objects.select_related("store", "operator").get(id=solicitacao_id)
-        stops = list(Stop.objects.filter(order=order).order_by("sequence").values(
-            "sequence", "type", "address", "contactName", "contactPhone"
-        ))
-        return {
+    from logistics.models import Stop
+    from ninja.errors import HttpError
+    order = _orders_visible_to_request(request).select_related("store", "operator").filter(id=solicitacao_id).first()
+    if not order:
+        raise HttpError(404, "Recibo não encontrado.")
+    stops = []
+    for stop in Stop.objects.filter(order=order).order_by("sequence"):
+        metadata = stop.metadata or {}
+        stops.append({
+            "sequence": stop.sequence, "type": stop.type,
+            "address": metadata.get("address", ""),
+            "contactName": metadata.get("contact_name", ""),
+            "contactPhone": metadata.get("contact_phone", ""),
+        })
+    return {
             "id": str(order.id),
             "status": order.status,
             "empresa": order.store.name if order.store else (order.operator.name if order.operator else "Expresso Neves"),
@@ -1065,9 +1424,7 @@ def get_order_receipt(request, solicitacao_id: str):
             "valor_total": float(order.fareValueCents or 0) / 100.0,
             "distancia_km": float(order.distanceMeters or 0) / 1000.0,
             "paradas": stops,
-        }
-    except (Order.DoesNotExist, Exception):
-        return 404, {"error": "Recibo não encontrado."}
+    }
 
 class CreditEntryPayload(BaseModel):
     companyId: Optional[Any] = None
@@ -1086,17 +1443,20 @@ def save_credit_entry(request, payload: CreditEntryPayload):
     from accounts.models import Operator
     from logistics.models import Driver, Store
     from django.utils import timezone
+    from accounts.auth import require_role
+    from ninja.errors import HttpError
     import datetime
 
-    auth = getattr(request, "auth", None) or {}
-    operator_id = auth.get("operator_id") or payload.companyId
-    operator = None
-    if operator_id and operator_id != "global":
-        operator = Operator.objects.filter(id=operator_id).first()
+    actor = require_role(["ADMIN", "MANAGER"])(request)
+    operator = actor.operator
+    if getattr(actor, "is_platform_admin", False):
+        operator = _operator_from_company_reference(str(payload.companyId) if payload.companyId else None)
+    if not operator:
+        raise HttpError(422, "Selecione um operador válido.")
 
-    driver = None
-    if payload.driverId:
-        driver = Driver.objects.filter(id=payload.driverId).first()
+    driver = Driver.objects.filter(id=payload.driverId, operator=operator).first() if payload.driverId else None
+    if not driver:
+        raise HttpError(404, "Motoboy não encontrado neste operador.")
 
     store = None
     if operator:
@@ -1107,13 +1467,14 @@ def save_credit_entry(request, payload: CreditEntryPayload):
         try:
             calc_date = datetime.datetime.strptime(payload.date, "%Y-%m-%d").date()
         except ValueError:
-            pass
+            raise HttpError(422, "Data inválida; use AAAA-MM-DD.")
 
     amount_cents = int((payload.amount or 0) * 100)
     status_mapped = DailyCreditCalculation.CreditStatus.CREDITED if payload.status in ["COMPLETED", "CREDITED"] else DailyCreditCalculation.CreditStatus.PENDING
 
-    if operator and driver and store:
-        entry = DailyCreditCalculation.objects.create(
+    if not store:
+        raise HttpError(422, "O operador não possui loja para associar ao crédito.")
+    entry = DailyCreditCalculation.objects.create(
             operator=operator,
             driver=driver,
             store=store,
@@ -1122,15 +1483,19 @@ def save_credit_entry(request, payload: CreditEntryPayload):
             netAmountCents=amount_cents,
             productionValueCents=amount_cents,
             failReason=payload.error,
-        )
-        return {"success": True, "id": str(entry.id)}
-    return {"success": True, "note": "Log registrado no sistema"}
+    )
+    return {"success": True, "id": str(entry.id)}
 
 @router.get("/credit-queue")
 def get_credit_queue(request, company_id: Optional[str] = None, status: Optional[str] = None):
     from finance.models import DailyCreditCalculation
+    from accounts.auth import require_role
+
+    actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
     qs = DailyCreditCalculation.objects.select_related("driver", "operator", "store").all()
-    if company_id and company_id != "global":
+    if not getattr(actor, "is_platform_admin", False):
+        qs = qs.filter(operator=actor.operator)
+    elif company_id and company_id != "global":
         qs = qs.filter(operator_id=company_id)
     if status:
         status_list = [s.strip().upper() for s in status.split(",")]
@@ -1172,20 +1537,36 @@ class CreditQueueRetryPayload(BaseModel):
 @router.post("/credit-queue/retry")
 def retry_credit_queue(request, payload: CreditQueueRetryPayload):
     from finance.models import DailyCreditCalculation
-    DailyCreditCalculation.objects.filter(id__in=payload.queue_ids).update(
+    from accounts.auth import require_role
+
+    actor = require_role(["ADMIN", "MANAGER"])(request)
+    calculations = DailyCreditCalculation.objects.filter(id__in=payload.queue_ids)
+    if not getattr(actor, "is_platform_admin", False):
+        calculations = calculations.filter(operator=actor.operator)
+    retried = calculations.update(
         status=DailyCreditCalculation.CreditStatus.PENDING,
         failReason=None
     )
-    return {"success": True, "retried": len(payload.queue_ids)}
+    return {"success": True, "retried": retried}
 
 @router.get("/driver-balance")
 def get_driver_balance(request, driver_id: Optional[str] = None, condutor_id: Optional[str] = None):
     from finance.models import Wallet
+    from logistics.models import Driver
+    from accounts.auth import require_role
+    from ninja.errors import HttpError
+
+    actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
     d_id = driver_id or condutor_id
     if not d_id:
-        return {"saldo": 0.0}
+        raise HttpError(422, "Motoboy é obrigatório.")
+    drivers = Driver.objects.filter(id=d_id)
+    if not getattr(actor, "is_platform_admin", False):
+        drivers = drivers.filter(operator=actor.operator)
+    if not drivers.exists():
+        raise HttpError(404, "Motoboy não encontrado.")
     try:
-        w = Wallet.objects.get(driver_id=d_id)
+        w = Wallet.objects.get(driver_id=d_id, operator_id=drivers.first().operator_id)
         return {"saldo": w.balanceCents / 100.0}
     except Wallet.DoesNotExist:
         return {"saldo": 0.0}
@@ -1234,28 +1615,31 @@ def compute_store_balance(store):
         "credit_limit_cents": 0,
     }
 
+
+def _stores_visible_to_request(request):
+    from accounts.auth import get_client_portal_user, require_role
+    from logistics.models import Store
+
+    auth = getattr(request, "auth", None) or {}
+    if auth.get("client_id") or auth.get("user_type") == "client_portal_user":
+        client_user = get_client_portal_user(request)
+        return Store.objects.filter(client=client_user.client) if client_user else Store.objects.none()
+    actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
+    stores = Store.objects.all()
+    if not getattr(actor, "is_platform_admin", False):
+        stores = stores.filter(operator=actor.operator)
+    elif actor.operator_id:
+        stores = stores.filter(operator_id=actor.operator_id)
+    return stores
+
 @router.get("/client/balance")
 def get_client_balance(request, store_id: Optional[str] = None):
     from logistics.models import Store
-    auth = getattr(request, "auth", None) or {}
-    client_id = auth.get("client_id")
-    op_id = auth.get("operator_id")
 
-    store = None
+    stores = _stores_visible_to_request(request).select_related("client", "operator")
     if store_id:
-        try:
-            store = Store.objects.filter(id=store_id).select_related("client", "operator").first()
-        except Exception:
-            pass
-
-    if not store and client_id:
-        store = Store.objects.filter(client_id=client_id).select_related("client", "operator").first()
-
-    if not store and op_id:
-        store = Store.objects.filter(operator_id=op_id).select_related("client", "operator").first()
-
-    if not store:
-        store = Store.objects.select_related("client", "operator").first()
+        stores = stores.filter(id=store_id)
+    store = stores.first()
 
     if not store:
         return {
@@ -1279,32 +1663,27 @@ class ClientRechargePayload(BaseModel):
 
 @router.post("/client/recharge")
 def client_recharge(request, payload: ClientRechargePayload):
+    from django.conf import settings
     from logistics.models import Store
     from finance.models import WeeklyStoreInvoice
     from django.utils import timezone
     from datetime import timedelta
     import uuid
 
+    if not settings.ALLOW_PAYMENT_SIMULATION:
+        from ninja.errors import HttpError
+        raise HttpError(
+            503,
+            "Recarga PIX indisponível até a ativação do provedor de cobrança homologado.",
+        )
+
     if payload.amount_cents < 1000:
         return {"success": False, "error": "Valor mínimo para recarga é R$ 10,00"}
 
-    auth = getattr(request, "auth", None) or {}
-    client_id = auth.get("client_id")
-    op_id = auth.get("operator_id")
-
-    store = None
+    stores = _stores_visible_to_request(request).select_related("operator")
     if payload.store_id:
-        try:
-            store = Store.objects.filter(id=payload.store_id).select_related("operator").first()
-        except Exception:
-            pass
-    if not store and client_id:
-        store = Store.objects.filter(client_id=client_id).select_related("operator").first()
-    if not store and op_id:
-        store = Store.objects.filter(operator_id=op_id).select_related("operator").first()
-    if not store:
-        store = Store.objects.select_related("operator").first()
-
+        stores = stores.filter(id=payload.store_id)
+    store = stores.first()
     if not store:
         return {"success": False, "error": "Nenhuma loja encontrada para a recarga"}
 
@@ -1345,9 +1724,19 @@ class ConfirmSimulationPayload(BaseModel):
 
 @router.post("/client/recharge/confirm-simulation")
 def confirm_recharge_simulation(request, payload: ConfirmSimulationPayload):
+    from django.conf import settings
+    from ninja.errors import HttpError
     from finance.models import WeeklyStoreInvoice
+
+    if not settings.ALLOW_PAYMENT_SIMULATION:
+        raise HttpError(404, "Endpoint não disponível.")
+
     try:
-        invoice = WeeklyStoreInvoice.objects.get(id=payload.recharge_id)
+        visible_store_ids = _stores_visible_to_request(request).values("id")
+        invoices = WeeklyStoreInvoice.objects.filter(
+            id=payload.recharge_id, store_id__in=visible_store_ids
+        )
+        invoice = invoices.get()
     except WeeklyStoreInvoice.DoesNotExist:
         return {"success": False, "error": "Recarga não encontrada"}
 
@@ -1374,22 +1763,10 @@ def get_financial_statement(
     from finance.models import ManualEntry, WeeklyStoreInvoice
     from datetime import datetime
 
-    auth = getattr(request, "auth", None) or {}
-    client_id = auth.get("client_id")
-    op_id = auth.get("operator_id")
-
-    store = None
+    stores = _stores_visible_to_request(request)
     if store_id:
-        try:
-            store = Store.objects.filter(id=store_id).first()
-        except Exception:
-            pass
-    if not store and client_id:
-        store = Store.objects.filter(client_id=client_id).first()
-    if not store and op_id:
-        store = Store.objects.filter(operator_id=op_id).first()
-    if not store:
-        store = Store.objects.first()
+        stores = stores.filter(id=store_id)
+    store = stores.first()
 
     if not store:
         return {"current_balance_cents": 0, "total_entries": 0, "items": []}
@@ -1500,22 +1877,10 @@ def get_billing_history(request, store_id: Optional[str] = None):
     from logistics.models import Store
     from finance.models import WeeklyStoreInvoice
 
-    auth = getattr(request, "auth", None) or {}
-    client_id = auth.get("client_id")
-    op_id = auth.get("operator_id")
-
-    store = None
+    stores = _stores_visible_to_request(request)
     if store_id:
-        try:
-            store = Store.objects.filter(id=store_id).first()
-        except Exception:
-            pass
-    if not store and client_id:
-        store = Store.objects.filter(client_id=client_id).first()
-    if not store and op_id:
-        store = Store.objects.filter(operator_id=op_id).first()
-    if not store:
-        store = Store.objects.first()
+        stores = stores.filter(id=store_id)
+    store = stores.first()
 
     if not store:
         return []
@@ -1537,16 +1902,16 @@ def get_billing_history(request, store_id: Optional[str] = None):
 
 @router.get("/operator/store-balances")
 def get_operator_store_balances(request):
-    from accounts.models import Operator
+    from accounts.auth import require_role
     from logistics.models import Store
 
-    auth = getattr(request, "auth", None) or {}
-    is_admin = auth.get("is_platform_admin", False)
-    op_id = auth.get("operator_id")
+    actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
 
     qs = Store.objects.select_related("client", "operator").all()
-    if op_id and not is_admin:
-        qs = qs.filter(operator_id=op_id)
+    if not getattr(actor, "is_platform_admin", False):
+        qs = qs.filter(operator=actor.operator)
+    elif actor.operator_id:
+        qs = qs.filter(operator_id=actor.operator_id)
 
     stores_list = []
     total_debito = 0
@@ -1600,35 +1965,24 @@ class AdjustStoreBalancePayload(BaseModel):
 
 @router.post("/operator/adjust-store-balance")
 def adjust_store_balance(request, payload: AdjustStoreBalancePayload):
-    from logistics.models import Store, Driver
+    from logistics.models import Store
     from finance.models import ManualEntry
-    from accounts.models import StaffMember
+    from accounts.auth import get_client_portal_user, require_role
+    from ninja.errors import HttpError
     import uuid
 
-    auth = getattr(request, "auth", None) or {}
-    is_admin = auth.get("is_platform_admin", False)
-    op_id = auth.get("operator_id")
-    staff_id = auth.get("user_id")
+    actor = require_role(["ADMIN", "MANAGER"])(request)
+    if payload.amount_cents <= 0 or not payload.reason.strip():
+        raise HttpError(422, "Valor positivo e justificativa são obrigatórios.")
+    if payload.direction.upper() not in {"CREDIT", "DEBIT"}:
+        raise HttpError(422, "Direção inválida.")
 
-    try:
-        store = Store.objects.select_related("operator").get(id=payload.store_id)
-    except Store.DoesNotExist:
-        return {"success": False, "error": "Loja não encontrada"}
-
-    if not is_admin and op_id and str(store.operator_id) != str(op_id):
-        return {"success": False, "error": "Sem permissão para alterar saldo desta loja"}
-
-    staff = StaffMember.objects.filter(id=staff_id).first() if staff_id else None
-    driver = Driver.objects.filter(operator=store.operator).first()
-    if not driver:
-        driver = Driver.objects.create(
-            id=uuid.uuid4(),
-            operator=store.operator,
-            name="Conta Operacional da Central",
-            phone="00000000000",
-            email="central@expessoneves.com.br",
-            active=True,
-        )
+    stores = Store.objects.select_related("operator").filter(id=payload.store_id)
+    if not getattr(actor, "is_platform_admin", False):
+        stores = stores.filter(operator=actor.operator)
+    store = stores.first()
+    if not store:
+        raise HttpError(404, "Loja não encontrada.")
 
     val_abs = abs(payload.amount_cents)
     signed_amount = val_abs if payload.direction.upper() == "CREDIT" else -val_abs
@@ -1636,15 +1990,15 @@ def adjust_store_balance(request, payload: AdjustStoreBalancePayload):
     entry = ManualEntry.objects.create(
         id=uuid.uuid4(),
         operator=store.operator,
-        driver=driver,
+        driver=None,
         store=store,
-        created_by_staff=staff,
+        created_by_staff=None if getattr(actor, "is_platform_admin", False) else actor,
         amountCents=signed_amount,
         description=payload.reason,
         visibleToStore=True,
         taxCategory="TAXABLE_INCOME",
         status=ManualEntry.EntryStatus.APPROVED,
-        approvedBy=staff,
+        approvedBy=None if getattr(actor, "is_platform_admin", False) else actor,
     )
 
     new_bal = compute_store_balance(store)
@@ -1663,17 +2017,14 @@ def get_operator_financial_dashboard(request, month: Optional[str] = None):
     from accounts.models import Operator
     from django.db.models import Sum, Count
     from django.utils import timezone
+    from accounts.auth import require_role
+    from ninja.errors import HttpError
     import datetime
 
-    auth = getattr(request, "auth", None) or {}
-    is_admin = auth.get("is_platform_admin", False)
-    op_id = auth.get("operator_id")
-
-    operator = None
-    if op_id and op_id != "global":
-        operator = Operator.objects.filter(id=op_id).first()
-    elif is_admin:
-        operator = Operator.objects.first()
+    actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
+    operator = actor.operator
+    if not operator:
+        raise HttpError(422, "Selecione explicitamente um operador.")
 
     now = timezone.now()
     target_year = now.year
@@ -1684,7 +2035,7 @@ def get_operator_financial_dashboard(request, month: Optional[str] = None):
             target_year = dt.year
             target_month = dt.month
         except ValueError:
-            pass
+            raise HttpError(422, "Mês inválido; use AAAA-MM.")
 
     target_date = datetime.date(target_year, target_month, 1)
     month_names_pt = [
@@ -1696,9 +2047,8 @@ def get_operator_financial_dashboard(request, month: Optional[str] = None):
     orders_qs = Order.objects.filter(status="COMPLETED")
     withdrawals_qs = WithdrawalRequest.objects.filter(status="PAID")
 
-    if op_id and not is_admin:
-        orders_qs = orders_qs.filter(operator_id=op_id)
-        withdrawals_qs = withdrawals_qs.filter(operator_id=op_id)
+    orders_qs = orders_qs.filter(operator=operator)
+    withdrawals_qs = withdrawals_qs.filter(operator=operator)
 
     orders_qs = orders_qs.filter(completedAt__year=target_year, completedAt__month=target_month)
     withdrawals_qs = withdrawals_qs.filter(createdAt__year=target_year, createdAt__month=target_month)
@@ -1775,20 +2125,24 @@ def get_cash_reconciliation(request, date: Optional[str] = None):
     from logistics.models import Order, Driver
     from finance.models import ManualEntry
     from django.utils import timezone
+    from accounts.auth import require_role
+    from ninja.errors import HttpError
     from datetime import datetime
 
-    auth = getattr(request, "auth", None) or {}
-    is_admin = auth.get("is_platform_admin", False)
-    op_id = auth.get("operator_id")
+    actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
+    if not actor.operator:
+        raise HttpError(422, "Selecione explicitamente um operador.")
 
-    target_date = datetime.strptime(date, "%Y-%m-%d").date() if date else timezone.now().date()
+    try:
+        target_date = datetime.strptime(date, "%Y-%m-%d").date() if date else timezone.now().date()
+    except ValueError:
+        raise HttpError(422, "Data inválida; use AAAA-MM-DD.")
 
     orders_qs = Order.objects.select_related("driver", "store").filter(
         businessDate=target_date,
         status="COMPLETED"
     )
-    if op_id and not is_admin:
-        orders_qs = orders_qs.filter(operator_id=op_id)
+    orders_qs = orders_qs.filter(operator=actor.operator)
 
     # Filtrar pedidos onde o cliente pagou em dinheiro
     cash_orders = []
@@ -1833,6 +2187,7 @@ def get_cash_reconciliation(request, date: Optional[str] = None):
 
     # Verificar acertos já realizados (ManualEntry com descrição ou categoria de acerto)
     settlements = ManualEntry.objects.filter(
+        operator=actor.operator,
         createdAt__date=target_date,
         description__icontains="ACERTO_DINHEIRO"
     )
@@ -1878,31 +2233,31 @@ def settle_cash_balance(request, payload: SettleCashPayload):
     """
     from logistics.models import Driver
     from finance.models import ManualEntry
-    from accounts.models import StaffMember
+    from accounts.auth import require_role
+    from ninja.errors import HttpError
     import uuid
 
-    auth = getattr(request, "auth", None) or {}
-    staff_id = auth.get("user_id")
-    op_id = auth.get("operator_id")
-
-    try:
-        driver = Driver.objects.get(id=payload.driver_id)
-    except Driver.DoesNotExist:
-        return {"success": False, "error": "Motoboy não encontrado"}
-
-    staff = StaffMember.objects.filter(id=staff_id).first() if staff_id else None
+    actor = require_role(["ADMIN", "MANAGER"])(request)
+    if payload.amount_cents <= 0:
+        raise HttpError(422, "O valor do acerto deve ser positivo.")
+    drivers = Driver.objects.filter(id=payload.driver_id)
+    if not getattr(actor, "is_platform_admin", False):
+        drivers = drivers.filter(operator=actor.operator)
+    driver = drivers.first()
+    if not driver:
+        raise HttpError(404, "Motoboy não encontrado.")
 
     entry = ManualEntry.objects.create(
         id=uuid.uuid4(),
         operator=driver.operator,
         driver=driver,
-        created_by_staff=staff,
+        created_by_staff=None if getattr(actor, "is_platform_admin", False) else actor,
         amountCents=-abs(payload.amount_cents),
         description=f"ACERTO_DINHEIRO: {payload.notes}",
         visibleToStore=False,
         taxCategory="NON_TAXABLE_REIMBURSEMENT",
         status=ManualEntry.EntryStatus.APPROVED,
-        approvedBy=staff,
+        approvedBy=None if getattr(actor, "is_platform_admin", False) else actor,
     )
 
     return {
@@ -1937,8 +2292,8 @@ class DispatchStoreRidePayload(BaseModel):
     destinos: List[DeliveryStopItem]
     forma_pagamento: Optional[str] = "JA_PAGO"  # "DINHEIRO", "PIX", "CARTAO", "JA_PAGO"
     troco_para: Optional[float] = None
-    valor_estimado_cents: int
-    distancia_metros: int = 2000
+    valor_estimado_cents: Optional[int] = None
+    distancia_metros: Optional[int] = None
     observacao: Optional[str] = ""
 
 @router.post("/operator/dispatch-store-ride")
@@ -1950,36 +2305,28 @@ def dispatch_store_ride(request, payload: DispatchStoreRidePayload):
     from logistics.models import Store, Driver, Order, Stop
     from django.contrib.gis.geos import Point
     from django.utils import timezone
+    from accounts.auth import require_role
+    from finance.business_date import resolve_store_business_date
+    from logistics.pricing import parse_coordinate, price_route
+    from ninja.errors import HttpError
     import uuid
 
-    auth = getattr(request, "auth", None) or {}
-    op_id = auth.get("operator_id")
-    is_admin = auth.get("is_platform_admin", False)
-
-    try:
-        store = Store.objects.select_related("operator", "client").get(id=payload.store_id)
-    except Store.DoesNotExist:
-        return {"success": False, "error": "Loja parceira não encontrada."}
-
-    if not is_admin and op_id and str(store.operator_id) != str(op_id):
-        return {"success": False, "error": "Sem permissão para despachar corridas por esta loja."}
-
-    # 1. Validação de Saldo Pré-Pago
-    bal = compute_store_balance(store)
-    mode = bal.get("billing_mode", "").upper()
-    if (mode in ("PRE_PAGO", "PRÉ-PAGO")) and bal["balance_cents"] < payload.valor_estimado_cents:
-        return {
-            "success": False,
-            "error": f"Saldo insuficiente na loja {store.name}. Saldo atual: R$ {bal['balance_reais']:.2f}. Valor da entrega: R$ {payload.valor_estimado_cents/100:.2f}.",
-            "insufficient_balance": True,
-            "balance_cents": bal["balance_cents"],
-            "balance_reais": bal["balance_reais"],
-            "required_cents": payload.valor_estimado_cents,
-        }
-
+    actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE"])(request)
+    stores = Store.objects.select_related("operator", "client").filter(
+        id=payload.store_id, operational=True
+    )
+    if not getattr(actor, "is_platform_admin", False):
+        stores = stores.filter(operator=actor.operator)
+    store = stores.first()
+    if not store:
+        raise HttpError(404, "Loja parceira não encontrada.")
     driver = None
     if payload.driver_id:
-        driver = Driver.objects.filter(id=payload.driver_id).first()
+        driver = Driver.objects.filter(
+            id=payload.driver_id, operator=store.operator, active=True
+        ).first()
+        if not driver:
+            raise HttpError(404, "Motoboy não encontrado neste operador.")
 
     now = timezone.now()
     initial_status = "ACCEPTED" if driver else "OFFERED"
@@ -1999,7 +2346,70 @@ def dispatch_store_ride(request, payload: DispatchStoreRidePayload):
         metadata["entrega_endereco"] = f"{first_d.endereco}, {first_d.numero}"
 
     if not payload.destinos:
-        return {"success": False, "error": "A corrida deve conter ao menos um destino (DROPOFF)."}
+        raise HttpError(422, "A corrida deve conter ao menos um destino.")
+
+    def valid_point(lat, lng):
+        from django.db import connection
+
+        if lat is None or lng is None:
+            raise HttpError(422, "Todos os destinos devem possuir latitude e longitude.")
+        if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+            raise HttpError(422, "Coordenadas de destino inválidas.")
+        # The hermetic unit suite uses plain SQLite/TEXT instead of a spatial DB.
+        if connection.vendor == "sqlite":
+            return None
+        return Point(lng, lat, srid=4326)
+
+    if payload.coleta_lat is not None or payload.coleta_lng is not None:
+        pickup_geom = valid_point(payload.coleta_lat, payload.coleta_lng)
+        pickup_coordinates = (
+            parse_coordinate(
+                payload.coleta_lat, field_name="coleta_lat", minimum=-90, maximum=90
+            ),
+            parse_coordinate(
+                payload.coleta_lng, field_name="coleta_lng", minimum=-180, maximum=180
+            ),
+        )
+    else:
+        pickup_geom = store.geom
+        try:
+            pickup_coordinates = (float(store.geom.y), float(store.geom.x))
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise HttpError(
+                422, "A loja não possui coordenadas de coleta configuradas."
+            ) from exc
+    from django.db import connection
+    if pickup_geom is None and connection.vendor != "sqlite":
+        raise HttpError(422, "A loja não possui coordenadas de coleta configuradas.")
+
+    destination_coordinates = [
+        (
+            parse_coordinate(
+                destination.lat,
+                field_name=f"destinos[{index}].lat",
+                minimum=-90,
+                maximum=90,
+            ),
+            parse_coordinate(
+                destination.lng,
+                field_name=f"destinos[{index}].lng",
+                minimum=-180,
+                maximum=180,
+            ),
+        )
+        for index, destination in enumerate(payload.destinos, start=1)
+    ]
+    try:
+        distance_km, fare_cents = price_route(
+            store, [pickup_coordinates, *destination_coordinates]
+        )
+    except ValueError as exc:
+        raise HttpError(422, str(exc)) from exc
+
+    bal = compute_store_balance(store)
+    mode = bal.get("billing_mode", "").upper()
+    if mode in ("PRE_PAGO", "PRÉ-PAGO") and bal["balance_cents"] < fare_cents:
+        raise HttpError(409, "Saldo insuficiente para esta entrega.")
 
     from django.db import transaction
 
@@ -2010,21 +2420,16 @@ def dispatch_store_ride(request, payload: DispatchStoreRidePayload):
             store=store,
             driver=driver,
             status=initial_status,
-            fareValueCents=payload.valor_estimado_cents,
-            distanceMeters=payload.distancia_metros,
-            businessDate=now.date(),
+            fareValueCents=fare_cents,
+            distanceMeters=int(distance_km * 1000),
+            businessDate=resolve_store_business_date(store),
             requestedAt=now,
             acceptedAt=now if driver else None,
-            metadata=metadata,
+            metadata={
+                **metadata,
+                "distance_method": "HAVERSINE_BUFFERED_30_PERCENT",
+            },
         )
-
-        # Criar Parada de Coleta (PICKUP)
-        try:
-            from django.contrib.gis.geos import Point
-            pt = Point(payload.coleta_lng or -47.9292, payload.coleta_lat or -15.7801, srid=4326)
-            pickup_geom = None if hasattr(pt, "resolve_expression") else pt
-        except Exception:
-            pickup_geom = None
 
         Stop.objects.create(
             id=uuid.uuid4(),
@@ -2037,21 +2442,16 @@ def dispatch_store_ride(request, payload: DispatchStoreRidePayload):
         )
 
         # Criar Paradas de Entrega (DROPOFF)
-        for seq, d in enumerate(payload.destinos, start=2):
-            try:
-                from django.contrib.gis.geos import Point
-                dpt = Point(d.lng or -47.9292, d.lat or -15.7801, srid=4326)
-                drop_geom = None if hasattr(dpt, "resolve_expression") else dpt
-            except Exception:
-                drop_geom = None
-
+        for seq, (d, destination_coordinate) in enumerate(
+            zip(payload.destinos, destination_coordinates), start=2
+        ):
             Stop.objects.create(
                 id=uuid.uuid4(),
                 operator=store.operator,
                 order=order,
                 sequence=seq,
                 type="DROPOFF",
-                geom=drop_geom,
+                geom=valid_point(*destination_coordinate),
                 metadata={
                     "endereco": d.endereco,
                     "numero": d.numero,
@@ -2068,7 +2468,8 @@ def dispatch_store_ride(request, payload: DispatchStoreRidePayload):
         "status": order.status,
         "store_name": store.name,
         "driver_name": driver.name if driver else "Fila de Oferta",
-        "fare_reais": round(payload.valor_estimado_cents / 100.0, 2),
+        "fare_reais": round(fare_cents / 100.0, 2),
+        "distance_km": round(distance_km, 2),
     }
 
 
@@ -2090,17 +2491,9 @@ def list_client_customers(request, q: Optional[str] = None, store_id: Optional[s
     Agrupa pedidos e entregas com dados cadastrais, endereço padrão, pedidos e ticket médio.
     """
     from logistics.models import Order, Store
-    auth = getattr(request, "auth", None) or {}
-    client_id = auth.get("client_id")
-    op_id = auth.get("operator_id")
-
-    qs = Order.objects.select_related("store").order_by("-requestedAt")
+    qs = _orders_visible_to_request(request).select_related("store").order_by("-requestedAt")
     if store_id:
         qs = qs.filter(store_id=store_id)
-    elif client_id:
-        qs = qs.filter(store__client_id=client_id)
-    elif op_id and not auth.get("is_platform_admin", False):
-        qs = qs.filter(operator_id=op_id)
 
     orders = qs[:300]
     customers_map = {}
@@ -2163,21 +2556,8 @@ def list_client_customers(request, q: Optional[str] = None, store_id: Optional[s
 
 @router.post("/client/customers")
 def create_client_customer(request, payload: CreateCustomerPayload):
-    from django.utils import timezone
-    full_addr = f"{payload.address}, {payload.number}".strip(", ")
-    return {
-        "success": True,
-        "customer": {
-            "id": payload.phone or payload.name,
-            "name": payload.name,
-            "phone": payload.phone,
-            "address": full_addr,
-            "orders_count": 0,
-            "total_spent_reais": 0.0,
-            "ticket_medio_reais": 0.0,
-            "last_order_at": timezone.now().isoformat(),
-        }
-    }
+    from ninja.errors import HttpError
+    raise HttpError(501, "Cadastro persistente de clientes finais ainda não está implementado.")
 
 
 @router.get("/dashboard-stats")
@@ -2207,11 +2587,22 @@ def get_dashboard_stats(
     from django.db.models import Sum
     from logistics.models import Order, Store, Driver
     from finance.models import ManualEntry
+    from accounts.auth import get_client_portal_user, require_role
     
     auth = getattr(request, "auth", None) or {}
-    is_admin = auth.get("is_platform_admin", False)
-    auth_op_id = auth.get("operator_id")
     client_id = auth.get("client_id")
+    is_admin = False
+    auth_op_id = None
+    if client_id or auth.get("user_type") == "client_portal_user":
+        client_user = get_client_portal_user(request)
+        client_id = client_user.client_id if client_user else None
+        if not client_id:
+            from ninja.errors import HttpError
+            raise HttpError(401, "Usuário lojista não autenticado.")
+    else:
+        actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
+        is_admin = bool(getattr(actor, "is_platform_admin", False))
+        auth_op_id = actor.operator_id
     
     selected_range = range or period or "last7"
     
@@ -2436,10 +2827,11 @@ def get_operator_driver_wallets(request, company_id: Optional[str] = None):
     from logistics.models import Driver, Vehicle
     from finance.models import Wallet
     from django.core.exceptions import ValidationError
+    from accounts.auth import require_role
 
-    auth = getattr(request, "auth", None) or {}
-    is_admin = auth.get("is_platform_admin", False)
-    auth_op_id = auth.get("operator_id")
+    actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
+    is_admin = bool(getattr(actor, "is_platform_admin", False))
+    auth_op_id = actor.operator_id
 
     if not is_admin and auth_op_id:
         drivers_qs = Driver.objects.filter(operator_id=auth_op_id)
@@ -2521,12 +2913,13 @@ def adjust_driver_wallet(request, payload: AdjustDriverWalletPayload):
     from finance.models import Wallet, OperatorInternalWallet, WalletTransaction, ManualEntry
     from django.db import transaction
     from ninja.errors import HttpError
+    from accounts.auth import require_role
     import uuid
 
-    auth = getattr(request, "auth", None) or {}
-    is_admin = auth.get("is_platform_admin", False)
-    auth_op_id = auth.get("operator_id")
-    staff_id = auth.get("user_id") or auth.get("sub")
+    actor = require_role(["ADMIN", "MANAGER"])(request)
+    is_admin = bool(getattr(actor, "is_platform_admin", False))
+    auth_op_id = actor.operator_id
+    staff_id = actor.id
 
     if payload.amount_cents <= 0:
         raise HttpError(400, "O valor do lançamento deve ser maior que zero.")
@@ -2549,8 +2942,8 @@ def adjust_driver_wallet(request, payload: AdjustDriverWalletPayload):
         raise HttpError(404, "Motoboy não encontrado.")
 
     # Verifica permissão de tenant
-    if not is_admin and auth_op_id and str(driver.operator_id) != str(auth_op_id):
-        raise HttpError(403, "Sem permissão para alterar carteira deste motoboy.")
+    if not is_admin and str(driver.operator_id) != str(auth_op_id):
+        raise HttpError(404, "Motoboy não encontrado.")
 
 
     with transaction.atomic():
@@ -2638,18 +3031,19 @@ def get_driver_wallet_transactions(request, driver_id: str, limit: int = 50):
     from finance.models import Wallet, WalletTransaction, ManualEntry
     from django.db.models import Q
     from ninja.errors import HttpError
+    from accounts.auth import require_role
 
-    auth = getattr(request, "auth", None) or {}
-    is_admin = auth.get("is_platform_admin", False)
-    auth_op_id = auth.get("operator_id")
+    actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
+    is_admin = bool(getattr(actor, "is_platform_admin", False))
+    auth_op_id = actor.operator_id
 
     try:
         driver = Driver.objects.get(id=driver_id)
     except Driver.DoesNotExist:
         raise HttpError(404, "Motoboy não encontrado.")
 
-    if not is_admin and auth_op_id and str(driver.operator_id) != str(auth_op_id):
-        raise HttpError(403, "Sem permissão para consultar extrato deste motoboy.")
+    if not is_admin and str(driver.operator_id) != str(auth_op_id):
+        raise HttpError(404, "Motoboy não encontrado.")
 
 
     wallet, _ = Wallet.objects.get_or_create(

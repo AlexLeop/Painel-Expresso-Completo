@@ -43,6 +43,7 @@ import { FilaDinamica } from "../components/FilaDinamica";
 import { RideChatModal } from "../components/RideChatModal";
 import { authFetch } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
+import { useBranding } from "../contexts/BrandingContext";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 
 export interface RideData {
@@ -237,6 +238,7 @@ function haversineKm(
 }
 
 export function Corridas() {
+  const { branding } = useBranding();
   const [viewMode, setViewMode] = useState<"map" | "history">("map");
   const [selectedCorrida, setSelectedCorrida] = useState<any | null>(null);
   const [activeTab, setActiveTab] = useState("Informações do motorista");
@@ -2456,6 +2458,24 @@ export function Corridas() {
                                         return isoStr;
                                       }
                                     };
+                                    const escapeReceiptText = (value: unknown) =>
+                                      String(value ?? "")
+                                        .replaceAll("&", "&amp;")
+                                        .replaceAll("<", "&lt;")
+                                        .replaceAll(">", "&gt;")
+                                        .replaceAll('"', "&quot;")
+                                        .replaceAll("'", "&#039;");
+                                    const receiptBrand = escapeReceiptText(
+                                      branding.brand_name || "Portal Logístico",
+                                    );
+                                    const receiptColor = /^#[0-9a-f]{6}$/i.test(
+                                      branding.color_primary,
+                                    )
+                                      ? branding.color_primary
+                                      : "#0f172a";
+                                    const receiptId = escapeReceiptText(
+                                      rc.order_id || corrida.id,
+                                    );
 
                                     const stopsHtml = (rc.stops || [])
                                       .map(
@@ -2467,9 +2487,9 @@ export function Corridas() {
                                           <div style="flex:1">
                                             <div style="font-weight:600;font-size:13px;color:#18181b">
                                               ${s.type === 'C' ? 'Coleta' : 'Entrega ' + (idx)}
-                                              ${s.recipient ? `<span style="font-weight:normal;color:#71717a"> — Dest: ${s.recipient}</span>` : ''}
+                                              ${s.recipient ? `<span style="font-weight:normal;color:#71717a"> — Dest: ${escapeReceiptText(s.recipient)}</span>` : ''}
                                             </div>
-                                            <div style="font-size:12px;color:#52525b;margin-top:2px">${s.address || 'Endereço não informado'}</div>
+                                            <div style="font-size:12px;color:#52525b;margin-top:2px">${escapeReceiptText(s.address || 'Endereço não informado')}</div>
                                           </div>
                                         </div>
                                       `
@@ -2483,12 +2503,12 @@ export function Corridas() {
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <title>Comprovante #${rc.order_id || corrida.id} — Expresso Neves</title>
+  <title>Comprovante #${receiptId} — ${receiptBrand}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f8fafc; color: #1e293b; padding: 24px; }
     .receipt-container { max-width: 680px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 16px rgba(0,0,0,0.04); overflow: hidden; }
-    .header-bar { background: #0f172a; color: #fff; padding: 24px 32px; display: flex; justify-content: space-between; align-items: center; }
+    .header-bar { background: ${receiptColor}; color: #fff; padding: 24px 32px; display: flex; justify-content: space-between; align-items: center; }
     .brand-title { font-size: 20px; font-weight: 800; letter-spacing: -0.5px; }
     .brand-sub { font-size: 11px; color: #94a3b8; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
     .badge-status { background: #10b981; color: #ffffff; font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 9999px; text-transform: uppercase; }
@@ -2518,7 +2538,7 @@ export function Corridas() {
   <div class="receipt-container">
     <div class="header-bar">
       <div>
-        <div class="brand-title">EXPRESSO NEVES</div>
+        <div class="brand-title">${receiptBrand}</div>
         <div class="brand-sub">Comprovante Oficial de Entrega</div>
       </div>
       <div class="badge-status">Concluída</div>
@@ -2527,17 +2547,17 @@ export function Corridas() {
       <div class="grid-2">
         <div class="card-info">
           <div class="card-title">Dados da Corrida</div>
-          <div class="card-row"><span class="card-label">Identificador:</span><span class="card-val">#${rc.order_id || corrida.id}</span></div>
-          <div class="card-row"><span class="card-label">Criada em:</span><span class="card-val">${formatDate(rc.created_at)}</span></div>
-          <div class="card-row"><span class="card-label">Concluída em:</span><span class="card-val">${formatDate(rc.completed_at)}</span></div>
-          <div class="card-row"><span class="card-label">Cliente / Solicitante:</span><span class="card-val">${rc.client_name || rc.company_name || 'Expresso Neves'}</span></div>
+          <div class="card-row"><span class="card-label">Identificador:</span><span class="card-val">#${receiptId}</span></div>
+          <div class="card-row"><span class="card-label">Criada em:</span><span class="card-val">${escapeReceiptText(formatDate(rc.created_at))}</span></div>
+          <div class="card-row"><span class="card-label">Concluída em:</span><span class="card-val">${escapeReceiptText(formatDate(rc.completed_at))}</span></div>
+          <div class="card-row"><span class="card-label">Cliente / Solicitante:</span><span class="card-val">${escapeReceiptText(rc.client_name || rc.company_name || branding.brand_name)}</span></div>
         </div>
         <div class="card-info">
           <div class="card-title">Entregador Responsável</div>
-          <div class="card-row"><span class="card-label">Nome:</span><span class="card-val">${rc.driver_name || 'Não atribuído'}</span></div>
-          <div class="card-row"><span class="card-label">Telefone:</span><span class="card-val">${rc.driver_phone || '—'}</span></div>
-          <div class="card-row"><span class="card-label">Chave PIX:</span><span class="card-val">${rc.driver_pix || '—'}</span></div>
-          <div class="card-row"><span class="card-label">Forma Pagto:</span><span class="card-val">${rc.payment_method || 'PIX'}</span></div>
+          <div class="card-row"><span class="card-label">Nome:</span><span class="card-val">${escapeReceiptText(rc.driver_name || 'Não atribuído')}</span></div>
+          <div class="card-row"><span class="card-label">Telefone:</span><span class="card-val">${escapeReceiptText(rc.driver_phone || '—')}</span></div>
+          <div class="card-row"><span class="card-label">Chave PIX:</span><span class="card-val">${escapeReceiptText(rc.driver_pix || '—')}</span></div>
+          <div class="card-row"><span class="card-label">Forma Pagto:</span><span class="card-val">${escapeReceiptText(rc.payment_method || 'PIX')}</span></div>
         </div>
       </div>
 
@@ -2561,7 +2581,7 @@ export function Corridas() {
         </div>
       </div>
       <div style="font-size:11px;color:#94a3b8;text-align:center">
-        Comprovante emitido eletronicamente pela plataforma Expresso Neves / NevesGo.
+        Comprovante emitido eletronicamente por ${receiptBrand}.
       </div>
     </div>
     <div class="actions">

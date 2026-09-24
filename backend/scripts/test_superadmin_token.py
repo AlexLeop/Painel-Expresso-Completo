@@ -1,28 +1,52 @@
-import urllib.request, urllib.error, json
-import os, sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+"""Opt-in smoke check for an already-issued platform-admin access token.
 
-from django.conf import settings
-if not settings.configured:
-    settings.configure(SECRET_KEY="django-insecure-development-key-only")
+This script never creates credentials and never assumes a production host. Both
+inputs must be supplied explicitly so an accidental local run cannot contact a
+real environment with a forged development token.
+"""
 
-from accounts.security import create_access_token
+import os
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 
-token_superadmin = create_access_token({
-    "sub": "00000000-0000-0000-0000-000000000001",
-    "email": "admin@expressoneves.com.br",
-    "role": "superadmin",
-    "user_type": "platform_admin",
-    "is_platform_admin": True,
-    "operator_id": None,
-})
 
-print("[*] Testing with Superadmin token (operator_id: None)...")
-for endpoint in ['/api/v1/admin/finance/payout-policy', '/api/v1/admin/finance/withdrawals?limit=100']:
-    full_url = f'https://expresso-neves-django.a3rpjn.easypanel.host{endpoint}'
-    req = urllib.request.Request(full_url, headers={'Authorization': f'Bearer {token_superadmin}'})
-    try:
-        with urllib.request.urlopen(req) as resp:
-            print(f"[{resp.status}] {endpoint}: {resp.read().decode()[:150]}")
-    except urllib.error.HTTPError as e:
-        print(f"[{e.code}] {endpoint} HTTPError: {e.read().decode()}")
+TARGET_API_URL = os.environ.get("TARGET_API_URL", "").rstrip("/")
+ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN", "")
+ENDPOINTS = (
+    "/api/v1/admin/finance/payout-policy",
+    "/api/v1/admin/finance/withdrawals?limit=100",
+)
+
+
+def main() -> int:
+    if not TARGET_API_URL or not ACCESS_TOKEN:
+        print("Defina TARGET_API_URL e ACCESS_TOKEN explicitamente para executar este smoke test.")
+        return 2
+
+    parsed = urllib.parse.urlparse(TARGET_API_URL)
+    if parsed.scheme != "https" or not parsed.netloc:
+        print("TARGET_API_URL deve ser uma origem HTTPS válida.")
+        return 2
+
+    exit_code = 0
+    for endpoint in ENDPOINTS:
+        request = urllib.request.Request(
+            f"{TARGET_API_URL}{endpoint}",
+            headers={"Authorization": f"Bearer {ACCESS_TOKEN}"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                print(f"[{response.status}] {endpoint}")
+        except urllib.error.HTTPError as exc:
+            print(f"[{exc.code}] {endpoint}")
+            exit_code = 1
+        except urllib.error.URLError as exc:
+            print(f"[erro de rede] {endpoint}: {exc.reason}")
+            exit_code = 1
+    return exit_code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

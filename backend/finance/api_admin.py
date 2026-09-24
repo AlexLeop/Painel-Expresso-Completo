@@ -142,17 +142,23 @@ def list_contracts(request):
 def _resolve_operator(request, allow_sovereign_fallback=False):
     """
     Resolve o Operador do contexto multi-tenant.
-    Para PlatformAdmin sem X-Operator-Id e allow_sovereign_fallback=True,
-    usa o primeiro Operator como fallback para visão soberana de suporte.
+    PlatformAdmin deve selecionar explicitamente o operador em toda mutação.
     """
     staff = get_staff_member(request)
+    is_admin = getattr(staff, 'is_platform_admin', False) or (
+        request.auth.get('is_platform_admin', False) if request.auth else False
+    )
+    if not staff and not is_admin:
+        raise HttpError(401, "Usuário autenticado não encontrado.")
+    if staff and not is_admin and staff.role not in {"ADMIN", "MANAGER"}:
+        raise HttpError(403, "Acesso financeiro restrito a administradores e gerentes.")
 
     # Tenta obter operator do staff (cuidado: PlatformAdmin pode ter operator=None)
     if staff:
         try:
             if staff.operator_id and staff.operator:
                 return staff.operator, staff
-        except StaffMember.operator.RelatedObjectDoesNotExist:
+        except (StaffMember.DoesNotExist, ValueError, AttributeError):
             pass
 
     # Tenta via header X-Operator-Id ou query param
@@ -167,16 +173,6 @@ def _resolve_operator(request, allow_sovereign_fallback=False):
             return op, staff
         except Operator.DoesNotExist:
             raise HttpError(404, "Operador logístico não encontrado.")
-
-    # PlatformAdmin: fallback soberano para o primeiro operador (suporte)
-    is_admin = getattr(staff, 'is_platform_admin', False) or (
-        request.auth.get('is_platform_admin', False) if request.auth else False
-    )
-    if is_admin and allow_sovereign_fallback:
-        fallback_op = Operator.objects.first()
-        if fallback_op:
-            return fallback_op, staff
-        return None, staff
 
     if is_admin:
         return None, staff
@@ -266,6 +262,8 @@ def approve_withdrawal(request, withdrawal_id: UUID):
     Aprova individualmente uma solicitação de saque pendente e despacha a task Celery.
     """
     operator, staff = _resolve_operator(request, allow_sovereign_fallback=True)
+    if not operator:
+        raise HttpError(400, "Selecione explicitamente o operador para aprovar o saque.")
 
     with transaction.atomic():
         try:
@@ -306,6 +304,8 @@ def bulk_approve_withdrawals(request, payload: BulkApprovalPayload):
     Aprova em lote múltiplas solicitações de saque pendentes.
     """
     operator, staff = _resolve_operator(request, allow_sovereign_fallback=True)
+    if not operator:
+        raise HttpError(400, "Selecione explicitamente o operador para aprovação em lote.")
     approved_ids = []
 
     for w_id in payload.withdrawal_ids:
@@ -340,6 +340,8 @@ def reject_withdrawal(request, withdrawal_id: UUID, payload: WithdrawalRejection
     Rejeita a solicitação de saque, devolvendo integralmente o saldo à carteira do motorista.
     """
     operator, staff = _resolve_operator(request, allow_sovereign_fallback=True)
+    if not operator:
+        raise HttpError(400, "Selecione explicitamente o operador para rejeitar o saque.")
 
     try:
         if operator:

@@ -35,7 +35,10 @@ class TestDenyListSignals:
         # Chama a função de signal manualmente (post_save)
         from accounts.signals import block_deactivated_driver
 
-        block_deactivated_driver(sender=Driver, instance=new_driver)
+        with patch(
+            "accounts.signals.transaction.on_commit", side_effect=lambda callback: callback()
+        ):
+            block_deactivated_driver(sender=Driver, instance=new_driver)
 
         # Verifica se o Source of Truth foi gravado
         mock_create_denylist.assert_called_once_with(
@@ -71,7 +74,10 @@ class TestDenyListSignals:
 
         from accounts.signals import block_deactivated_driver
 
-        block_deactivated_driver(sender=Driver, instance=driver)
+        with patch(
+            "accounts.signals.transaction.on_commit", side_effect=lambda callback: callback()
+        ):
+            block_deactivated_driver(sender=Driver, instance=driver)
 
         # NÃO deve criar duplicata
         mock_create.assert_not_called()

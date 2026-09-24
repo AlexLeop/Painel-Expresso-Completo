@@ -26,10 +26,12 @@ import {
   Plus,
   CreditCard,
   ShieldCheck,
+  Plug,
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { cn, formatCurrency } from "../../lib/utils";
 import { useAuth } from "../../contexts/AuthContext";
+import { useBranding } from "../../contexts/BrandingContext";
 import { authFetch } from "../../lib/api";
 
 // ─── 3-Tier Access Control Hierarchy ─────────────────────────
@@ -48,6 +50,7 @@ const SUPERADMIN_ONLY_ROUTES = [
 const OPERATOR_ONLY_ROUTES = [
   "/motoboys",
   "/empresas",
+  "/integracoes",
   "/financeiro",
   "/saques",
   "/escala",
@@ -106,6 +109,12 @@ const navigationGroups = [
         href: "/empresas",
         icon: Store,
         roles: ["operador_admin"],
+      },
+      {
+        name: "Integrações (PDV/Hub)",
+        href: "/integracoes",
+        icon: Plug,
+        roles: ["superadmin", "operador_admin"],
       },
       {
         name: "Usuários",
@@ -210,6 +219,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   const { session, logout, changeTenant, globalSearch, setGlobalSearch } =
     useAuth();
+  const { branding } = useBranding();
+  const displayLogo = branding.logo_url || branding.favicon_url || "/favicon.ico";
+  const displayName = branding.brand_name || "Expresso Neves";
   const user = session?.user;
   const isPlatformAdmin = Boolean(user?.is_platform_admin);
   const rawRole = (user?.role || "").toLowerCase();
@@ -406,15 +418,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           >
             <div className="bg-white p-1 rounded-md min-w-[28px] h-[28px] flex items-center justify-center">
               <img
-                src="/favicon.ico"
-                alt="Expresso Neves"
+                src={displayLogo}
+                alt={displayName}
                 className="h-5 w-5 object-contain"
               />
             </div>
             {!sidebarCollapsed && (
               <div className="min-w-0">
                 <div className="text-[13px] font-extrabold tracking-tight text-white leading-tight truncate">
-                  Expresso Neves
+                  {displayName}
                 </div>
                 <div className="text-[10px] font-semibold tracking-[0.18em] uppercase text-zinc-500 truncate">
                   Portal Logístico
