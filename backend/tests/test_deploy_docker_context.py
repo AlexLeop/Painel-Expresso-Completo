@@ -35,6 +35,24 @@ def test_frontend_dockerfile_uses_repository_root_context():
     assert "COPY frontend/ ./" in content
 
 
+def test_easypanel_fast_lane_uses_repository_root_context():
+    dockerfile = REPO_ROOT / "fast_lane" / "Dockerfile"
+
+    assert dockerfile.is_file(), (
+        "O EasyPanel procura o Fast Lane em fast_lane/Dockerfile"
+    )
+    assert not (REPO_ROOT / "backend" / "fast_lane" / "Dockerfile").exists()
+
+    content = dockerfile.read_text(encoding="utf-8")
+    assert "COPY backend/requirements.txt" in content
+    assert "COPY backend/ /app/" in content
+
+    for compose_name in ("docker-compose.yml", "docker-compose.local.yml"):
+        compose = (REPO_ROOT / compose_name).read_text(encoding="utf-8")
+        assert "context: ./backend" not in compose
+        assert "dockerfile: fast_lane/Dockerfile" in compose
+
+
 def test_docker_context_excludes_local_secrets_and_build_caches():
     content = (REPO_ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
 

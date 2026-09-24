@@ -92,5 +92,9 @@ def test_vps_auth_password_hash_columns():
             )
             tables_with_password_hash = {row[0] for row in cur.fetchall()}
 
-    assert "PlatformAdmin" in tables_with_password_hash
-    assert "StaffMember" in tables_with_password_hash
+    assert {
+        "PlatformAdmin",
+        "StaffMember",
+        "ClientPortalUser",
+        "Driver",
+    }.issubset(tables_with_password_hash)

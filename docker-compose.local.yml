@@ -52,7 +52,7 @@ services:
 
   fastapi:
     build:
-      context: ./backend
+      context: .
       dockerfile: fast_lane/Dockerfile
     volumes:
       - ./backend:/app

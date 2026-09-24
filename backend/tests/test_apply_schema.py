@@ -89,6 +89,24 @@ def test_baseline_records_only_ordered_prefix(tmp_path):
     ]
 
 
+def test_native_auth_schema_alignment_is_in_canonical_migration_set():
+    migrations_dir = Path(__file__).resolve().parents[2] / "database" / "migrations"
+    migrations = discover_migrations(migrations_dir)
+    migration = next(
+        item
+        for item in migrations
+        if item.name == "20260924070000_native_auth_schema_alignment.sql"
+    )
+
+    for table in ("PlatformAdmin", "StaffMember", "ClientPortalUser", "Driver"):
+        assert f'ALTER TABLE "{table}"' in migration.sql
+        assert 'ADD COLUMN IF NOT EXISTS "passwordHash" VARCHAR(255)' in migration.sql
+
+    for table in ("PlatformAdmin", "StaffMember", "Driver"):
+        table_block = migration.sql.split(f'ALTER TABLE "{table}"')[-1]
+        assert "ALTER COLUMN supabase_uid DROP NOT NULL" in table_block
+
+
 @pytest.mark.parametrize(
     "name",
     ["manual.sql", "2026_UPPER.sql", "20260101000000-hyphen.sql"],

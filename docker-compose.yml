@@ -89,7 +89,7 @@ services:
 
   fastapi:
     build:
-      context: ./backend
+      context: .
       dockerfile: fast_lane/Dockerfile
     environment:
       - DATABASE_URL=${DATABASE_URL:?DATABASE_URL is required}

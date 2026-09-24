@@ -1,12 +1,14 @@
 FROM python:3.14-slim-bookworm
 
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
-COPY requirements.txt /app/
+COPY backend/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copia tudo para permitir a leitura do shared_schemas
-COPY . /app/
+COPY backend/ /app/
 
 RUN useradd --create-home --uid 10001 appuser && chown -R appuser:appuser /app
 
