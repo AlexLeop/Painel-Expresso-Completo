@@ -60,3 +60,36 @@ def test_docker_context_excludes_local_secrets_and_build_caches():
     assert "**/.venv" in content
     assert "**/node_modules" in content
     assert "mobile" in content
+
+
+def test_compose_uses_shell_free_release_entrypoint():
+    for compose_name in ("docker-compose.yml", "docker-compose.local.yml"):
+        content = (REPO_ROOT / compose_name).read_text(encoding="utf-8")
+        assert 'command: ["python", "scripts/deploy_release.py"]' in content
+        assert "bash -ec" not in content
+
+
+def test_static_root_matches_shared_volume_and_nginx_alias():
+    settings = (REPO_ROOT / "backend" / "config" / "settings.py").read_text(
+        encoding="utf-8"
+    )
+    nginx = (REPO_ROOT / "nginx.conf").read_text(encoding="utf-8")
+
+    assert 'STATIC_ROOT = BASE_DIR / "static"' in settings
+    assert "alias /app/static/;" in nginx
+    for compose_name in ("docker-compose.yml", "docker-compose.local.yml"):
+        content = (REPO_ROOT / compose_name).read_text(encoding="utf-8")
+        assert "static_volume:/app/static" in content
+
+
+def test_denylist_warmup_never_changes_database_schema():
+    content = (
+        REPO_ROOT
+        / "backend"
+        / "accounts"
+        / "management"
+        / "commands"
+        / "warmup_denylist.py"
+    ).read_text(encoding="utf-8")
+
+    assert "ALTER TABLE" not in content.upper()

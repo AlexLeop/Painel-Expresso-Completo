@@ -39,13 +39,13 @@ Não execute produção com os valores ilustrativos de `.env.example`.
 
 ## Migrations em deploy
 
-O deploy executa primeiro o runner SQL canônico e depois as migrations de estado do Django:
+O deploy usa um entrypoint único, sem encadeamento frágil de comandos pelo shell:
 
 ```bash
-python scripts/apply_schema.py
-python manage.py migrate --settings=config.settings_migrate --noinput
-python manage.py collectstatic --noinput
+python scripts/deploy_release.py
 ```
+
+No EasyPanel, informe exatamente esse comando. Não use `bash python ...`. O entrypoint executa, em ordem e com falha imediata: migrations SQL, estado Django, reconstrução da deny-list e coleta de arquivos estáticos.
 
 Um banco existente sem `schema_migration` nunca deve receber baseline por tentativa. Execute a auditoria somente leitura:
 

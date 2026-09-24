@@ -5,14 +5,13 @@ Lê a tabela SecurityDenylist (PostgreSQL) e reconstrói as chaves
 deny_list:driver:{id} e deny_list:operator:{id} no Redis.
 
 Deve ser executado:
-- Na inicialização de cada container Django (entrypoint do Docker)
+- Após as migrations, pelo job único de deploy
 - Após qualquer reinício do Redis
 - Manualmente via: python manage.py warmup_denylist
 """
 
 from django.core.management.base import BaseCommand
 from django.db.models import Q
-from django.db import connection
 from django.utils import timezone
 from accounts.models import SecurityDenylist, Operator
 from config.redis_client import get_redis
@@ -22,22 +21,6 @@ class Command(BaseCommand):
     help = "Reconstrói a Deny-list no Redis a partir da tabela SecurityDenylist no PostgreSQL."
 
     def handle(self, *args, **options):
-        # Auto-heal: Garante que as colunas da tabela Operator existem no PostgreSQL caso a migração ainda não tenha rodado
-        if connection.vendor == "postgresql":
-            with connection.cursor() as cur:
-                cur.execute("""
-                    ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS phone VARCHAR(50);
-                    ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS city VARCHAR(100);
-                    ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS state VARCHAR(10);
-                    ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS "billingPlanType" VARCHAR(50) DEFAULT 'PERCENT_PER_DELIVERY';
-                    ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS "billingRateValue" NUMERIC(10,2) DEFAULT 0.00;
-                    ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS "billingCycle" VARCHAR(30) DEFAULT 'MENSAL';
-                    ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS "dueDay" INTEGER DEFAULT 10;
-                    ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS "trialDays" INTEGER DEFAULT 14;
-                    ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS "gracePeriodDays" INTEGER DEFAULT 5;
-                    ALTER TABLE "Operator" ADD COLUMN IF NOT EXISTS notes TEXT;
-                """)
-
         r = get_redis()
         now = timezone.now()
 
