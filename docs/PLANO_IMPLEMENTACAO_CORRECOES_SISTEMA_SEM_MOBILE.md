@@ -25,7 +25,7 @@ Esta seção prevalece sobre qualquer marcação histórica de “não iniciado�
 | Financeiro/PIX | **PARCIAL** | Webhook com HMAC/mTLS confiável, limite de corpo, resolução tenant e processamento pós-commit; simulação de pagamento bloqueada em produção | Congelar contrato Efí vigente, executar sandbox/mTLS real, reconciliar ledger e obter aceite financeiro |
 | Deploy e runtime | **IMPLEMENTADO LOCAL / NÃO HOMOLOGADO** | Compose falha sem segredos, separa migrator/runtime, readiness exige banco e cache, containers non-root e Nginx endurecido; os dois arquivos Compose passam em `config -q` com o arquivo de exemplo explícito | Build/scan/SBOM das três imagens em CI, deploy imutável por digest, secrets manager e smoke de staging |
 | Segredos/incidente | **PARCIAL** | Credenciais copiadas em documentação histórica e referência de projeto em script foram redigidas; a varredura local final não encontrou URL com senha, chave privada ou token OpenAI nos artefatos ativos; scripts perigosos exigem alvo/token/tenant explícitos | Rotacionar as credenciais no provedor, sanear histórico/caches/clones/imagens e provar que os valores antigos falham |
-| Qualidade local | **PASS COM RESSALVAS** | Backend: **217 passed, 10 skipped (227 coletados)**; frontend: TypeScript sem erros, build de produção concluído; `npm audit --omit=dev`: **0 vulnerabilidades**; `compileall` e `git diff --check` sem erro | Os 10 skips dependem de infraestrutura/serviços reais; permanecem avisos de depreciação/cache do pytest e dois chunks web próximos/acima de 500 kB; não houve carga, caos, restore nem E2E de staging |
+| Qualidade local | **PASS COM RESSALVAS** | Backend: **224 passed, 10 skipped (234 coletados)**; frontend: TypeScript sem erros, build de produção concluído; `npm audit --omit=dev`: **0 vulnerabilidades**; `compileall` e `git diff --check` sem erro | Os 10 skips dependem de infraestrutura/serviços reais; permanecem avisos de depreciação/cache do pytest e dois chunks web próximos/acima de 500 kB; não houve carga, caos, restore nem E2E de staging |
 
 ### 0.1 Correções adicionais encontradas no duplo cheque
 
@@ -38,6 +38,7 @@ Esta seção prevalece sobre qualquer marcação histórica de “não iniciado�
 - Cadastro de cliente não persistente e cartão visual de integração falsamente “conectada” agora retornam indisponibilidade explícita.
 - Refresh token repetido é rejeitado por JTI de uso único no Redis e a readiness falha quando o cache compartilhado não confirma leitura/escrita.
 - Artefatos EasyPanel antigos com defaults inseguros e configuração divergente foram marcados como obsoletos; `docker-compose.yml` é a única definição canônica atual.
+- `OperatorBranding`, `IntegrationConnector` e `IntegrationWebhookLog`, cujas tabelas pertencem ao runner SQL, agora possuem migrations Django somente de estado e explicitamente sem DDL; `makemigrations --check` não aponta mais divergência.
 
 ### 0.2 Bloqueadores externos e operacionais remanescentes
 
