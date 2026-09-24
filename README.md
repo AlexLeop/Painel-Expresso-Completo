@@ -36,3 +36,21 @@ docker compose --env-file .env.example -f docker-compose.local.yml config -q
 ```
 
 Não execute produção com os valores ilustrativos de `.env.example`.
+
+## Migrations em deploy
+
+O deploy executa primeiro o runner SQL canônico e depois as migrations de estado do Django:
+
+```bash
+python scripts/apply_schema.py
+python manage.py migrate --settings=config.settings_migrate --noinput
+python manage.py collectstatic --noinput
+```
+
+Um banco existente sem `schema_migration` nunca deve receber baseline por tentativa. Execute a auditoria somente leitura:
+
+```bash
+python scripts/audit_schema_baseline.py
+```
+
+Configure `SCHEMA_MIGRATION_BASELINE` somente quando o relatório retornar `safe_to_configure_baseline: true`, usando exatamente o arquivo indicado em `recommended_baseline`. Remova essa variável depois que o runner criar e preencher o ledger.

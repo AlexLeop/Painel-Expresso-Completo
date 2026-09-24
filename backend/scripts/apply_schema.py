@@ -236,9 +236,10 @@ def apply_schema(database_url: str, migrations_dir: Path, baseline_name: str | N
             if not history and existing_schema:
                 if not baseline_name:
                     raise MigrationError(
-                        "Existing business schema has no migration ledger. Set "
-                        "SCHEMA_MIGRATION_BASELINE to the last SQL migration already "
-                        "applied, then redeploy. The runner will not guess."
+                        "Existing business schema has no migration ledger. Run "
+                        "python scripts/audit_schema_baseline.py first and only set "
+                        "SCHEMA_MIGRATION_BASELINE to its verified contiguous "
+                        "recommendation. The runner will not guess."
                     )
                 baseline = migrations_through(migrations, baseline_name)
                 _record_baseline(connection, baseline)
