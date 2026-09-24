@@ -9,17 +9,20 @@ services:
     volumes:
       - redis_data:/data
 
-  django:
+  migrate:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     command: >
-      bash -c "python manage.py migrate &&
+      bash -ec "python scripts/apply_schema.py &&
+               python manage.py migrate --settings=config.settings_migrate --noinput &&
                python manage.py warmup_denylist &&
-               gunicorn --bind 0.0.0.0:8000 --workers 3 config.wsgi:application"
+               python manage.py collectstatic --noinput"
     volumes:
       - ./backend:/app
+      - ./database/migrations:/app/database/migrations:ro
       - static_volume:/app/static
+      - media_volume:/app/media
     environment:
       - DJANGO_DEBUG=False
       - DATABASE_URL=${DATABASE_URL}
@@ -27,6 +30,27 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/1
     depends_on:
       - redis
+
+  django:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: gunicorn --bind 0.0.0.0:8000 --workers 3 config.wsgi:application
+    volumes:
+      - ./backend:/app
+      - ./database/migrations:/app/database/migrations:ro
+      - static_volume:/app/static
+      - media_volume:/app/media
+    environment:
+      - DJANGO_DEBUG=False
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379/1
+      - CELERY_BROKER_URL=redis://redis:6379/1
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
 
   fastapi:
     build:
@@ -41,8 +65,8 @@ services:
 
   celery_worker:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     command: celery -A config worker -l info --concurrency=2
     volumes:
       - ./backend:/app
@@ -56,8 +80,8 @@ services:
 
   celery_beat:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     command: celery -A config beat -l info
     volumes:
       - ./backend:/app
@@ -96,3 +120,4 @@ services:
 volumes:
   redis_data:
   static_volume:
+  media_volume:

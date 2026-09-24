@@ -18,6 +18,9 @@ COPY backend/requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
 COPY backend/ /app/
+COPY database/migrations/ /app/database/migrations/
+
+ENV SCHEMA_MIGRATIONS_DIR=/app/database/migrations
 
 EXPOSE 8000
 
