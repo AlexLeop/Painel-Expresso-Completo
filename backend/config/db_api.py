@@ -396,7 +396,7 @@ def create_user(request, payload: UserPayload):
         if not client:
             raise HttpError(404, "Loja parceira não encontrada ou inativa.")
 
-        req_role = str(payload.role or "").strip().lower()
+        req_role = (payload.role or "").strip().lower()
         role_to_set = "lojista" if req_role in ("lojista", "gestor", "gestor_loja") else "operador_loja"
 
         with transaction.atomic():
@@ -550,7 +550,7 @@ def update_user(request, payload: UserPayload):
             target.active = payload.active
             update_fields.append("active")
         if payload.role and not is_self and caller_role in ("lojista", "gestor", "gestor_loja"):
-            req_role = str(payload.role).strip().lower()
+            req_role = (payload.role or "").strip().lower()
             target.role = "lojista" if req_role in ("lojista", "gestor", "gestor_loja") else "operador_loja"
             update_fields.append("role")
 
@@ -607,15 +607,15 @@ def update_user(request, payload: UserPayload):
         if is_self:
             raise HttpError(403, "Não é permitido alterar o próprio papel.")
         role = _normalized_user_role(payload.role)
-        if target_kind == "client":
+        if target_kind == "client" and isinstance(target, ClientPortalUser):
             target.role = "operador_loja" if role == "OPERADOR_LOJA" else "lojista"
             update_fields.append("role")
-        elif target_kind == "staff":
+        elif target_kind == "staff" and isinstance(target, StaffMember):
             if role in {"LOJISTA", "OPERADOR_LOJA", "PLATFORM_ADMIN"}:
                 raise HttpError(422, "A alteração solicitada não é compatível com este usuário.")
             if actor_role == "MANAGER" and role in {"ADMIN", "MANAGER"}:
                 raise HttpError(403, "Gestores não podem conceder nível igual ou superior.")
-            setattr(target, "role", role)
+            target.role = role
             update_fields.append("role")
     if payload.active is not None:
         if is_self:
