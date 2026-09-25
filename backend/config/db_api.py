@@ -769,6 +769,14 @@ class CompanyDriverPayload(BaseModel):
     company_id: Optional[Any] = None
     companyId: Optional[Any] = None
     active: Optional[bool] = None
+    # Editable fields
+    nome: Optional[str] = None
+    telefone: Optional[str] = None
+    phone: Optional[str] = None
+    document: Optional[str] = None
+    pixKeyType: Optional[str] = None
+    pixKey: Optional[str] = None
+    maxActiveOrders: Optional[int] = None
 
 
 class DriverTransferPayload(BaseModel):
@@ -795,9 +803,31 @@ def update_company_driver(request, payload: CompanyDriverPayload):
         if not getattr(staff, "is_platform_admin", False):
             drivers = drivers.filter(operator_id=staff.operator_id)
         driver = drivers.get()
+        update_fields = ["updatedAt"]
         if payload.active is not None:
             driver.active = payload.active
-            driver.save(update_fields=["active", "updatedAt"])
+            update_fields.append("active")
+        name_val = payload.nome
+        if name_val:
+            driver.name = name_val
+            update_fields.append("name")
+        phone_val = payload.telefone or payload.phone
+        if phone_val:
+            driver.phone = phone_val
+            update_fields.append("phone")
+        if payload.document is not None:
+            driver.document = payload.document
+            update_fields.append("document")
+        if payload.pixKeyType is not None:
+            driver.pixKeyType = payload.pixKeyType
+            update_fields.append("pixKeyType")
+        if payload.pixKey is not None:
+            driver.pixKey = payload.pixKey
+            update_fields.append("pixKey")
+        if payload.maxActiveOrders is not None:
+            driver.maxActiveOrders = payload.maxActiveOrders
+            update_fields.append("maxActiveOrders")
+        driver.save(update_fields=update_fields)
         return {"success": True}
     except Driver.DoesNotExist:
         raise HttpError(404, "Motoboy não encontrado")

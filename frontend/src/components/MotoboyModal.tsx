@@ -65,6 +65,7 @@ interface MotoboyModalProps {
     nextActive: boolean,
   ) => Promise<void> | void;
   onSave?: (data: Partial<MotoboyType>) => Promise<void>;
+  onUpdate?: (id: string, data: Partial<MotoboyType>) => Promise<void>;
 }
 
 type TabType = "geral" | "endereco" | "veiculo" | "documentos" | "financeiro";
@@ -75,6 +76,7 @@ export function MotoboyModal({
   motoboy,
   onToggleActive,
   onSave,
+  onUpdate,
 }: MotoboyModalProps) {
   const [saving, setSaving] = useState(false);
   const [loadingCep, setLoadingCep] = useState(false);
@@ -217,10 +219,14 @@ export function MotoboyModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!onSave) return;
     setSaving(true);
     try {
-      await onSave(formData);
+      if (isCreating) {
+        if (!onSave) return;
+        await onSave(formData);
+      } else if (motoboy?.id && onUpdate) {
+        await onUpdate(motoboy.id, formData);
+      }
       onClose();
     } finally {
       setSaving(false);
@@ -315,7 +321,6 @@ export function MotoboyModal({
             </div>
 
             {/* Segmented Control Navigation */}
-            {isCreating && (
               <div className="px-6 md:px-8 py-3 bg-zinc-100/80 border-b border-zinc-200 shrink-0">
                 <div className="grid grid-cols-5 gap-1.5 p-1 bg-zinc-200/70 rounded-2xl">
                   <TabButton id="geral" icon={User} label="Pessoais" />
@@ -325,12 +330,10 @@ export function MotoboyModal({
                   <TabButton id="financeiro" icon={Wallet} label="Financeiro" />
                 </div>
               </div>
-            )}
 
             {/* Content */}
             <div className="flex-1 flex flex-col overflow-hidden">
               <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-zinc-50/30">
-                {isCreating ? (
                   <form
                     id="motoboy-form"
                     onSubmit={handleSubmit}
@@ -435,10 +438,10 @@ export function MotoboyModal({
 
                         <div>
                           <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                            E-mail de Acesso *
+                            E-mail {isCreating ? "de Acesso *" : "(opcional)"}
                           </label>
                           <input
-                            required
+                            required={isCreating}
                             type="email"
                             value={formData.email}
                             onChange={(e) =>
@@ -447,9 +450,11 @@ export function MotoboyModal({
                             className="w-full px-3 py-2 text-sm bg-white border border-zinc-300 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none rounded-lg text-zinc-900"
                             placeholder="motoboy@email.com"
                           />
-                          <p className="text-[11px] text-zinc-500 mt-1">
-                            Será criada uma conta de login no aplicativo com este e-mail.
-                          </p>
+                          {isCreating && (
+                            <p className="text-[11px] text-zinc-500 mt-1">
+                              Será criada uma conta de login no aplicativo com este e-mail.
+                            </p>
+                          )}
                         </div>
                       </motion.div>
                     )}
@@ -881,143 +886,30 @@ export function MotoboyModal({
                             </p>
                           </div>
 
-                          <div>
-                            <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                              Senha Inicial do App
-                            </label>
-                            <input
-                              type="password"
-                              value={formData.password}
-                              onChange={(e) =>
-                                setFormData({
-                                  ...formData,
-                                  password: e.target.value,
-                                })
-                              }
-                              className="w-full px-3 py-2 text-sm bg-white border border-zinc-300 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none rounded-lg text-zinc-900"
-                              placeholder="Mínimo 10 caracteres"
-                              minLength={10}
-                            />
-                          </div>
+                          {isCreating && (
+                            <div>
+                              <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                                Senha Inicial do App
+                              </label>
+                              <input
+                                type="password"
+                                value={formData.password}
+                                onChange={(e) =>
+                                  setFormData({
+                                    ...formData,
+                                    password: e.target.value,
+                                  })
+                                }
+                                className="w-full px-3 py-2 text-sm bg-white border border-zinc-300 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none rounded-lg text-zinc-900"
+                                placeholder="Mínimo 10 caracteres"
+                                minLength={10}
+                              />
+                            </div>
+                          )}
                         </div>
                       </motion.div>
                     )}
                   </form>
-                ) : (
-                  /* VIEW MODE: PERFIL COMPLETO DO ENTREGADOR */
-                  <div className="space-y-6">
-                    <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-zinc-200">
-                      <div className="h-14 w-14 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-800 font-bold text-xl">
-                        {motoboy.nome ? motoboy.nome.charAt(0).toUpperCase() : "M"}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-base font-bold text-zinc-900 truncate">
-                            {motoboy.nome}
-                          </h3>
-                          <span
-                            className={cn(
-                              "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider",
-                              motoboy.ativo
-                                ? "bg-emerald-100 text-emerald-800"
-                                : "bg-red-100 text-red-800",
-                            )}
-                          >
-                            {motoboy.ativo ? "Ativo" : "Bloqueado"}
-                          </span>
-                        </div>
-                        <p className="text-xs text-zinc-500 flex items-center gap-2 mt-1">
-                          <span>{motoboy.telefone || "Sem telefone"}</span>
-                          {motoboy.placa && (
-                            <>
-                              <span>•</span>
-                              <span className="font-mono uppercase font-bold text-zinc-700">
-                                {motoboy.placa}
-                              </span>
-                            </>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-white p-3 rounded-xl border border-zinc-200">
-                        <span className="text-[11px] font-semibold text-zinc-500 block">
-                          Avaliação
-                        </span>
-                        <span className="text-lg font-bold text-zinc-900">
-                          {motoboy.avaliacao ? motoboy.avaliacao.toFixed(1) : "5.0"} ★
-                        </span>
-                      </div>
-                      <div className="bg-white p-3 rounded-xl border border-zinc-200">
-                        <span className="text-[11px] font-semibold text-zinc-500 block">
-                          Status Operacional
-                        </span>
-                        <span className="text-sm font-bold text-zinc-900">
-                          {motoboy.status || "Disponível"}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Dados Cadastrais Adicionais se houver */}
-                    <div className="bg-white p-4 rounded-xl border border-zinc-200 space-y-3">
-                      <h4 className="text-xs font-bold text-zinc-900 uppercase tracking-wider flex items-center gap-1.5 border-b border-zinc-100 pb-2">
-                        <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                        Identificação e Documentos
-                      </h4>
-                      <div className="grid grid-cols-2 gap-3 text-xs">
-                        <div>
-                          <span className="text-zinc-500 block">CPF / CNPJ:</span>
-                          <span className="font-semibold text-zinc-900">
-                            {motoboy.document || "—"}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-zinc-500 block">Chave PIX:</span>
-                          <span className="font-semibold text-zinc-900">
-                            {motoboy.pixKey || motoboy.telefone || "—"}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-zinc-500 block">Veículo / Placa:</span>
-                          <span className="font-semibold text-zinc-900">
-                            {motoboy.modelo || "Motocicleta"} ({motoboy.placa || "—"})
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-zinc-500 block">Limite de Corridas:</span>
-                          <span className="font-semibold text-zinc-900">
-                            {motoboy.maxActiveOrders || 3} na bag
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="pt-2">
-                      <button
-                        type="button"
-                        disabled={saving}
-                        onClick={async () => {
-                          setSaving(true);
-                          try {
-                            await onToggleActive(motoboy.id!, !!motoboy.ativo);
-                            onClose();
-                          } finally {
-                            setSaving(false);
-                          }
-                        }}
-                        className={cn(
-                          "w-full px-4 py-2.5 rounded-lg text-sm font-bold shadow-sm transition-all border",
-                          motoboy.ativo
-                            ? "bg-white border-zinc-200 text-rose-700 hover:bg-rose-50"
-                            : "bg-zinc-900 border-zinc-900 text-white hover:bg-zinc-800",
-                        )}
-                      >
-                        {motoboy.ativo ? "Bloquear Acesso" : "Liberar Acesso"}
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -1031,32 +923,29 @@ export function MotoboyModal({
                 {isCreating ? "Cancelar" : "Fechar"}
               </button>
 
-              {isCreating && (
-                <button
+              <button
                   type="submit"
                   form="motoboy-form"
                   disabled={
                     saving ||
                     !formData.nome ||
                     !formData.telefone ||
-                    !formData.email ||
-                    !formData.document
+                    (isCreating && (!formData.email || !formData.document))
                   }
                   className="px-6 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-sm shadow-emerald-600/20"
                 >
                   {saving ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      <span>Registrando...</span>
+                      <span>{isCreating ? "Registrando..." : "Salvando..."}</span>
                     </>
                   ) : (
                     <>
                       <CheckCircle2 className="h-4 w-4" />
-                      <span>Registrar Parceiro</span>
+                      <span>{isCreating ? "Registrar Parceiro" : "Salvar Alterações"}</span>
                     </>
                   )}
                 </button>
-              )}
             </div>
           </motion.div>
         </div>

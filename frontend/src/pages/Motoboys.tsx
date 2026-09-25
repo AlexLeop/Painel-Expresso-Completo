@@ -224,6 +224,28 @@ export function Motoboys() {
     }
   };
 
+  const handleUpdateMotoboy = async (id: string, data: Partial<MotoboyType>) => {
+    try {
+      const res = await authFetch(`/api/v1/db/company-drivers`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          companyId,
+          driverId: id,
+          ...data,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || "Failed to update driver");
+      }
+      alert("Motoboy atualizado com sucesso!");
+      refresh();
+    } catch (err: any) {
+      alert("Erro ao atualizar motoboy: " + err.message);
+      throw err;
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 py-2">
@@ -445,6 +467,7 @@ export function Motoboys() {
         motoboy={selectedMotoboy}
         onToggleActive={handleToggleActive}
         onSave={handleSaveMotoboy}
+        onUpdate={handleUpdateMotoboy}
       />
     </div>
   );
