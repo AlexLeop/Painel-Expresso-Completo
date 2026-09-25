@@ -56,8 +56,11 @@ def get_staff_member(request: HttpRequest) -> Optional[StaffMember]:
 
         target_operator_id = request.headers.get("X-Operator-Id") or auth.get("operator_id")
         op = None
-        if target_operator_id:
-            op = Operator.objects.filter(id=target_operator_id).first()
+        if target_operator_id and str(target_operator_id) not in ("global", "NaN", "undefined"):
+            try:
+                op = Operator.objects.filter(id=target_operator_id).first()
+            except (ValidationError, ValueError, TypeError):
+                op = None
 
         staff = StaffMember(
             id=admin.id,

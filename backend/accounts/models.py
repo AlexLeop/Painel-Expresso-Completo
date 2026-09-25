@@ -303,7 +303,7 @@ class StaffMember(TimeStampedTenantModel):
 
     operator = models.ForeignKey(
         Operator, on_delete=models.CASCADE, db_column="operator_id"
-    )
+    , null=True, blank=True)
     supabase_uid = models.UUIDField(
         null=True, blank=True, help_text="Vínculo legado Supabase Auth (opcional)."
     )

@@ -81,11 +81,17 @@ def create_entry(request, payload: EntryPayload):
         
     amt_cents = int((payload.amount or 0) * 100)
 
+    from accounts.models import StaffMember
+    staff_member = staff if not getattr(staff, "is_platform_admin", False) else None
+    if not staff_member:
+        staff_member = StaffMember.objects.filter(operator=operator).order_by("createdAt").first()
+
     entry = ManualEntry.objects.create(
         operator=operator,
         driver=driver,
+        created_by_staff=staff_member,
         amountCents=amt_cents,
-        description=payload.description or payload.type or "",
+        description=f"[PlatformAdmin: {staff.name}] {payload.description or payload.type or ''}" if getattr(staff, "is_platform_admin", False) else (payload.description or payload.type or ""),
         status=ManualEntry.EntryStatus.APPROVED,
         taxCategory="NON_TAXABLE_REIMBURSEMENT" if amt_cents >= 0 else "DEDUCTION"
     )
@@ -313,17 +319,21 @@ def _operator_from_company_reference(company_id: Optional[str]):
     """Resolve os IDs usados pela UI sem permitir fallback para outro tenant."""
     from accounts.models import Operator
     from logistics.models import Client, Store
+    from django.core.exceptions import ValidationError
 
-    if not company_id or company_id == "global":
+    if not company_id or str(company_id) in ("global", "NaN", "undefined"):
         return None
-    operator = Operator.objects.filter(id=company_id).first()
-    if operator:
-        return operator
-    store = Store.objects.select_related("operator").filter(id=company_id).first()
-    if store:
-        return store.operator
-    client = Client.objects.select_related("operator").filter(id=company_id).first()
-    return client.operator if client else None
+    try:
+        operator = Operator.objects.filter(id=company_id).first()
+        if operator:
+            return operator
+        store = Store.objects.select_related("operator").filter(id=company_id).first()
+        if store:
+            return store.operator
+        client = Client.objects.select_related("operator").filter(id=company_id).first()
+        return client.operator if client else None
+    except (ValidationError, ValueError, TypeError):
+        return None
 
 @router.post("/users")
 def create_user(request, payload: UserPayload):
@@ -940,12 +950,58 @@ def get_configs(request, company_id: Optional[str] = None, company_name: Optiona
     from ninja.errors import HttpError
 
     actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
-    op = actor.operator
-    if getattr(actor, "is_platform_admin", False):
+    op = None
+    is_admin = bool(getattr(actor, "is_platform_admin", False))
+
+    if is_admin:
         op = _operator_from_company_reference(company_id)
+        if not op and (not company_id or str(company_id) in ("global", "NaN", "undefined")):
+            # PlatformAdmin sem operador específico selecionado ou consultando global:
+            # Retorna configurações padrão globais da plataforma (200 OK)
+            return {
+                "id": "global",
+                "nome": "Administração Global",
+                "company_id": "global",
+                "company_name": "Administração Global",
+                "ride_fee_per_delivery": 1.6,
+                "minimum_rides_fee_floor": 350.0,
+                "daily_rate_weekday": 60.0,
+                "daily_rate_saturday": 70.0,
+                "daily_rate_sunday": 80.0,
+                "daily_rate_holiday": 80.0,
+                "taxa_supervisao": 10.0,
+                "debito_pendente": 0.0,
+                "guaranteed_mode_enabled": True,
+                "retencao_devolucao": True,
+                "bloquear_fatura": True,
+                "features": {},
+            }
+    else:
+        op = getattr(actor, "operator", None)
+
     if not op:
+        if is_admin:
+            raise HttpError(404, "Operador não encontrado.")
         raise HttpError(422, "Selecione um operador válido.")
-    return {"id": str(op.id), "nome": op.name, "company_id": str(op.id), "features": {}}
+
+    return {
+        "id": str(op.id),
+        "nome": op.name,
+        "company_id": str(op.id),
+        "company_name": op.name,
+        "ride_fee_per_delivery": 1.6,
+        "minimum_rides_fee_floor": 350.0,
+        "daily_rate_weekday": 60.0,
+        "daily_rate_saturday": 70.0,
+        "daily_rate_sunday": 80.0,
+        "daily_rate_holiday": 80.0,
+        "taxa_supervisao": 10.0,
+        "debito_pendente": 0.0,
+        "guaranteed_mode_enabled": True,
+        "retencao_devolucao": True,
+        "bloquear_fatura": True,
+        "features": {},
+    }
 
 @router.post("/configs")
 def create_config(request, payload: dict):
@@ -1602,10 +1658,17 @@ def compute_store_balance(store):
 
     status = "DISPONIVEL" if balance_cents > 0 else ("ZERADO" if balance_cents == 0 else "DEVEDOR")
 
+    client_name = ""
+    if getattr(store, "client_id", None):
+        try:
+            client_name = store.client.name if store.client else ""
+        except Exception:
+            client_name = ""
+
     return {
         "store_id": str(store.id),
         "store_name": store.name,
-        "client_name": store.client.name if store.client else "",
+        "client_name": client_name,
         "billing_mode": "PRE_PAGO",
         "balance_cents": balance_cents,
         "balance_reais": round(balance_cents / 100.0, 2),
@@ -1987,18 +2050,23 @@ def adjust_store_balance(request, payload: AdjustStoreBalancePayload):
     val_abs = abs(payload.amount_cents)
     signed_amount = val_abs if payload.direction.upper() == "CREDIT" else -val_abs
 
+    from accounts.models import StaffMember
+    staff_member = actor if not getattr(actor, "is_platform_admin", False) else None
+    if not staff_member:
+        staff_member = StaffMember.objects.filter(operator=store.operator).order_by("createdAt").first()
+
     entry = ManualEntry.objects.create(
         id=uuid.uuid4(),
         operator=store.operator,
         driver=None,
         store=store,
-        created_by_staff=None if getattr(actor, "is_platform_admin", False) else actor,
+        created_by_staff=staff_member,
         amountCents=signed_amount,
-        description=payload.reason,
+        description=f"[PlatformAdmin: {actor.name}] {payload.reason}" if getattr(actor, "is_platform_admin", False) else payload.reason,
         visibleToStore=True,
         taxCategory="TAXABLE_INCOME",
         status=ManualEntry.EntryStatus.APPROVED,
-        approvedBy=None if getattr(actor, "is_platform_admin", False) else actor,
+        approvedBy=staff_member,
     )
 
     new_bal = compute_store_balance(store)
@@ -2247,17 +2315,22 @@ def settle_cash_balance(request, payload: SettleCashPayload):
     if not driver:
         raise HttpError(404, "Motoboy não encontrado.")
 
+    from accounts.models import StaffMember
+    staff_member = actor if not getattr(actor, "is_platform_admin", False) else None
+    if not staff_member:
+        staff_member = StaffMember.objects.filter(operator=driver.operator).order_by("createdAt").first()
+
     entry = ManualEntry.objects.create(
         id=uuid.uuid4(),
         operator=driver.operator,
         driver=driver,
-        created_by_staff=None if getattr(actor, "is_platform_admin", False) else actor,
+        created_by_staff=staff_member,
         amountCents=-abs(payload.amount_cents),
-        description=f"ACERTO_DINHEIRO: {payload.notes}",
+        description=f"[PlatformAdmin: {actor.name}] ACERTO_DINHEIRO: {payload.notes}" if getattr(actor, "is_platform_admin", False) else f"ACERTO_DINHEIRO: {payload.notes}",
         visibleToStore=False,
         taxCategory="NON_TAXABLE_REIMBURSEMENT",
         status=ManualEntry.EntryStatus.APPROVED,
-        approvedBy=None if getattr(actor, "is_platform_admin", False) else actor,
+        approvedBy=staff_member,
     )
 
     return {

@@ -7,6 +7,7 @@ from scripts.audit_schema_baseline import (
     FINGERPRINTS,
     classify,
     recommend_baseline,
+    summarize_report,
     validate_fingerprint_manifest,
 )
 
@@ -62,3 +63,52 @@ def test_baseline_requires_contiguous_applied_prefix():
     assert recommend_baseline(
         [("001.sql", "APPLIED"), ("002.sql", "MISSING"), ("003.sql", "APPLIED")]
     ) is None
+
+
+def test_summary_exposes_partial_migration_without_verbose_missing_details():
+    report = {
+        "mode": "read-only",
+        "ledger_exists": True,
+        "ledger_rows": 0,
+        "safe_to_configure_baseline": False,
+        "recommended_baseline": None,
+        "migrations": [
+            {"name": "001.sql", "status": "APPLIED", "passed": ["one"], "failed": []},
+            {
+                "name": "002.sql",
+                "status": "PARTIAL",
+                "passed": ["two-a"],
+                "failed": ["two-b"],
+            },
+            {"name": "003.sql", "status": "MISSING", "passed": [], "failed": ["three"]},
+        ],
+    }
+
+    summary = summarize_report(report)
+
+    assert summary["reason"] == "partial_migration_detected"
+    assert summary["last_contiguous_applied"] == "001.sql"
+    assert summary["first_non_applied"]["name"] == "002.sql"
+    assert summary["partial_migrations"] == [
+        {"name": "002.sql", "passed": ["two-a"], "failed": ["two-b"]}
+    ]
+
+
+def test_summary_exposes_applied_migration_after_a_gap():
+    report = {
+        "mode": "read-only",
+        "ledger_exists": True,
+        "ledger_rows": 0,
+        "safe_to_configure_baseline": False,
+        "recommended_baseline": None,
+        "migrations": [
+            {"name": "001.sql", "status": "APPLIED", "passed": [], "failed": []},
+            {"name": "002.sql", "status": "MISSING", "passed": [], "failed": []},
+            {"name": "003.sql", "status": "APPLIED", "passed": [], "failed": []},
+        ],
+    }
+
+    summary = summarize_report(report)
+
+    assert summary["reason"] == "applied_migration_after_gap"
+    assert summary["applied_after_gap"] == ["003.sql"]

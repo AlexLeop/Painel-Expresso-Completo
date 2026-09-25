@@ -122,7 +122,7 @@ def _get_auth_info(request: HttpRequest) -> tuple[Optional[uuid.UUID], bool]:
 
     is_admin = is_platform_admin or role in ("ADMIN", "OPERADOR_ADMIN")
     parsed_uuid: Optional[uuid.UUID] = None
-    if raw_op_id:
+    if raw_op_id and str(raw_op_id) not in ("global", "NaN", "undefined"):
         if isinstance(raw_op_id, uuid.UUID):
             parsed_uuid = raw_op_id
         else:
@@ -256,8 +256,31 @@ def get_branding(request: HttpRequest):
     Branding completo do operador logado.
     Requer autenticação. Retorna todos os campos de personalização.
     """
-    operator_id = _get_operator_id(request)
+    operator_id, is_admin = _get_auth_info(request)
     if not operator_id:
+        if is_admin:
+            # PlatformAdmin sem operadora vinculada: retorna branding de uma das operadoras
+            # existentes ou branding padrão da plataforma para o painel global
+            branding = OperatorBranding.objects.first()
+            if branding:
+                return 200, _serialize_branding(branding)
+            return 200, {
+                "id": "global",
+                "operator_id": "global",
+                "brand_name": "Expresso Neves",
+                "logo_url": None,
+                "favicon_url": None,
+                "color_primary": "#E55C00",
+                "color_secondary": "#4f46e5",
+                "color_accent": "#f59e0b",
+                "color_background": "#F9F9FA",
+                "color_surface": "#ffffff",
+                "color_text": "#18181b",
+                "dark_color_background": "#0a0a0a",
+                "dark_color_surface": "#171717",
+                "dark_color_text": "#fafafa",
+                "theme_mode": "light",
+            }
         return 404, {"error": "Operador não identificado."}
 
     branding = OperatorBranding.objects.filter(operator_id=operator_id).first()

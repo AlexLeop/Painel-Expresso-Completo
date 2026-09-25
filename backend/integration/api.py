@@ -128,7 +128,7 @@ def _get_auth_info(request: HttpRequest) -> tuple[Optional[uuid.UUID], bool]:
 
     is_admin = is_platform_admin or role in ("ADMIN", "OPERADOR_ADMIN")
     parsed_uuid: Optional[uuid.UUID] = None
-    if raw_op_id:
+    if raw_op_id and str(raw_op_id) not in ("global", "NaN", "undefined"):
         if isinstance(raw_op_id, uuid.UUID):
             parsed_uuid = raw_op_id
         else:
@@ -461,8 +461,17 @@ def list_operator_stores(request: HttpRequest):
     """
     Lista as lojas do operador para seleção rápida no cadastro de integrações.
     """
-    operator_id = _get_operator_id(request)
+    operator_id, is_admin = _get_auth_info(request)
     if not operator_id:
+        if is_admin:
+            stores = Store.objects.select_related("operator").order_by("name")
+            return [
+                {
+                    "id": str(s.id),
+                    "name": f"{s.name} ({s.operator.name})" if getattr(s, "operator", None) else s.name,
+                }
+                for s in stores
+            ]
         return []
     stores = Store.objects.filter(operator_id=operator_id).order_by("name")
     return [{"id": str(s.id), "name": s.name} for s in stores]
@@ -473,15 +482,16 @@ def list_store_integrations(request: HttpRequest):
     """
     Lista todas as integrações configuradas nas lojas do operador logado.
     """
-    operator_id = _get_operator_id(request)
-    if not operator_id:
+    operator_id, is_admin = _get_auth_info(request)
+    if not operator_id and not is_admin:
         return 401, {"error": "Autenticação requerida."}
 
     integrations = (
-        StoreIntegration.objects.filter(operator_id=operator_id)
-        .select_related("store", "connector")
+        StoreIntegration.objects.select_related("store", "connector")
         .order_by("-createdAt")
     )
+    if operator_id:
+        integrations = integrations.filter(operator_id=operator_id)
     return [_serialize_integration(item, show_secret=False) for item in integrations]
 
 

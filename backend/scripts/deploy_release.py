@@ -48,7 +48,11 @@ def run(commands: Sequence[Sequence[str]]) -> None:
             subprocess.run(command, cwd=APP_ROOT, check=True)
         except subprocess.CalledProcessError:
             if len(command) > 1 and command[1] == "scripts/apply_schema.py":
-                diagnostic = (command[0], "scripts/audit_schema_baseline.py")
+                diagnostic = (
+                    command[0],
+                    "scripts/audit_schema_baseline.py",
+                    "--summary",
+                )
                 print(
                     "[deploy] Schema application failed; emitting the read-only "
                     "baseline audit for diagnosis.",

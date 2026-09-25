@@ -54,7 +54,7 @@ def test_schema_failure_emits_audit_then_stops(monkeypatch):
 
     assert attempted == [
         ("python-test", "scripts/apply_schema.py"),
-        ("python-test", "scripts/audit_schema_baseline.py"),
+        ("python-test", "scripts/audit_schema_baseline.py", "--summary"),
     ]
 
 

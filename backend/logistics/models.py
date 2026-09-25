@@ -84,7 +84,7 @@ class Store(TimeStampedTenantModel):
     operator = models.ForeignKey(
         Operator, on_delete=models.CASCADE, db_column="operator_id"
     )
-    client = models.ForeignKey(Client, on_delete=models.CASCADE, db_column="client_id")
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, db_column="client_id", null=True, blank=True)
     name = models.CharField(
         max_length=255, help_text="Identificação única da loja na rede."
     )

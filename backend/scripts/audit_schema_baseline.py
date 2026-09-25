@@ -9,6 +9,7 @@ reported as unsafe and require manual reconciliation.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
@@ -458,7 +459,73 @@ def run_audit(connection: psycopg.Connection) -> dict[str, object]:
     }
 
 
+def summarize_report(report: dict[str, object]) -> dict[str, object]:
+    migrations = list(report["migrations"])
+    last_contiguous_applied: str | None = None
+    first_non_applied: dict[str, object] | None = None
+    applied_after_gap: list[str] = []
+    partial_migrations: list[dict[str, object]] = []
+
+    for item in migrations:
+        status = item["status"]
+        if first_non_applied is None and status == "APPLIED":
+            last_contiguous_applied = item["name"]
+            continue
+        if first_non_applied is None:
+            first_non_applied = {
+                "name": item["name"],
+                "status": status,
+                "passed": item["passed"],
+                "failed": item["failed"],
+            }
+        elif status == "APPLIED":
+            applied_after_gap.append(item["name"])
+        if status == "PARTIAL":
+            partial_migrations.append(
+                {
+                    "name": item["name"],
+                    "passed": item["passed"],
+                    "failed": item["failed"],
+                }
+            )
+
+    if report["safe_to_configure_baseline"]:
+        reason = "contiguous_applied_prefix"
+    elif report["ledger_rows"]:
+        reason = "ledger_is_not_empty"
+    elif partial_migrations:
+        reason = "partial_migration_detected"
+    elif applied_after_gap:
+        reason = "applied_migration_after_gap"
+    else:
+        reason = "no_applied_initial_migration"
+
+    return {
+        "mode": report["mode"],
+        "ledger_exists": report["ledger_exists"],
+        "ledger_rows": report["ledger_rows"],
+        "safe_to_configure_baseline": report["safe_to_configure_baseline"],
+        "recommended_baseline": report["recommended_baseline"],
+        "reason": reason,
+        "last_contiguous_applied": last_contiguous_applied,
+        "first_non_applied": first_non_applied,
+        "partial_migrations": partial_migrations,
+        "applied_after_gap": applied_after_gap,
+        "migration_statuses": [
+            {"name": item["name"], "status": item["status"]} for item in migrations
+        ],
+    }
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="print a compact decision report suitable for deployment logs",
+    )
+    args = parser.parse_args()
+
     migrations_dir = resolve_migrations_dir()
     validate_fingerprint_manifest(migrations_dir)
 
@@ -480,7 +547,8 @@ def main() -> int:
         print(f"Schema baseline audit failed: {exc}", file=sys.stderr)
         return 1
 
-    print(json.dumps(report, indent=2, ensure_ascii=False))
+    output = summarize_report(report) if args.summary else report
+    print(json.dumps(output, indent=2, ensure_ascii=False))
     return 0 if report["safe_to_configure_baseline"] else 1
 
 
