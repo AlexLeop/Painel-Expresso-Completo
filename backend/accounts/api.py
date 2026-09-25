@@ -328,10 +328,11 @@ def handle_login(request, payload: LoginPayload):
         from logistics.models import ClientPortalUser
         client_user = ClientPortalUser.objects.filter(email__iexact=email, active=True).select_related("client", "operator").first()
         if client_user and client_user.check_password(raw_password):
+            user_role = getattr(client_user, "role", None) or "lojista"
             token_payload = {
                 "sub": str(client_user.id),
                 "email": client_user.email,
-                "role": "lojista",
+                "role": user_role,
                 "user_type": "client_portal_user",
                 "is_platform_admin": False,
                 "operator_id": str(client_user.operator_id),
@@ -354,7 +355,7 @@ def handle_login(request, payload: LoginPayload):
                     "id": str(client_user.id),
                     "email": client_user.email,
                     "name": client_user.name,
-                    "role": "lojista",
+                    "role": user_role,
                     "user_type": "client_portal_user",
                     "is_platform_admin": False,
                     "operator_id": str(client_user.operator_id),
@@ -424,7 +425,7 @@ def handle_me(request):
                     "id": str(client_user.id),
                     "email": client_user.email,
                     "name": client_user.name,
-                    "role": "lojista",
+                    "role": getattr(client_user, "role", None) or "lojista",
                     "user_type": "client_portal_user",
                     "is_platform_admin": False,
                     "operator_id": str(client_user.operator_id),

@@ -36,10 +36,18 @@ interface UserModalProps {
 
 export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
   const { session } = useAuth();
+  const rawRole = (session?.user?.role || "").toLowerCase();
   const isPlatformAdmin = Boolean(session?.user?.is_platform_admin);
-  const rolesList = isPlatformAdmin
-    ? ["SuperAdmin Master", "Administrador", ...DEFAULT_ROLES]
-    : DEFAULT_ROLES;
+  const isLojista =
+    rawRole === "lojista" ||
+    rawRole === "cliente" ||
+    Boolean(session?.user?.client_id);
+
+  const rolesList = isLojista
+    ? ["Operador da Loja", "Gestor da Loja"]
+    : isPlatformAdmin
+      ? ["SuperAdmin Master", "Administrador", ...DEFAULT_ROLES]
+      : DEFAULT_ROLES;
 
   const [availableCompanies, setAvailableCompanies] = useState<
     Array<{
@@ -53,7 +61,7 @@ export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
     nome: "",
     email: "",
     telefone: "",
-    cargo: "Operador",
+    cargo: isLojista ? "Operador da Loja" : "Operador",
     status: "Ativo",
     empresas: [],
     password: "",
@@ -82,13 +90,13 @@ export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
         nome: "",
         email: "",
         telefone: "",
-        cargo: "Operador",
+        cargo: isLojista ? "Operador da Loja" : "Operador",
         status: "Ativo",
-        empresas: [],
+        empresas: session?.user?.client_id ? [String(session.user.client_id)] : [],
         password: "",
       });
     }
-  }, [user, isOpen]);
+  }, [user, isOpen, isLojista, session?.user?.client_id]);
 
   useEffect(() => {
     if (isOpen) {
@@ -161,12 +169,16 @@ export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
                     )}
                   </div>
                   <h2 className="text-xl font-black text-zinc-900 tracking-tight mt-0.5">
-                    {user ? "Editar Usuário" : "Novo Usuário"}
+                    {user
+                      ? (isLojista ? "Editar Membro da Equipe" : "Editar Usuário")
+                      : (isLojista ? "Novo Operador da Loja" : "Novo Usuário")}
                   </h2>
                   <p className="text-xs text-zinc-500 font-medium">
                     {user
                       ? `Edite os privilégios e vínculos de ${user.nome}`
-                      : "Cadastre um novo usuário com cargo e lojas atribuídas"}
+                      : (isLojista
+                          ? "Cadastre um funcionário para operar o painel de entregas da sua loja"
+                          : "Cadastre um novo usuário com cargo e lojas atribuídas")}
                   </p>
                 </div>
               </div>
@@ -257,8 +269,8 @@ export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
                           setFormData({ ...formData, password: e.target.value })
                         }
                         className="w-full px-3 py-2 text-sm bg-white border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all placeholder:text-zinc-400"
-                        placeholder="Mínimo 10 caracteres"
-                        minLength={10}
+                        placeholder="Mínimo 6 caracteres"
+                        minLength={6}
                       />
                     </div>
                   )}
@@ -313,21 +325,35 @@ export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
                 <div className="space-y-4">
                   <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider flex items-center gap-2 border-b border-zinc-100 pb-2">
                     <Building2 className="h-4 w-4 text-emerald-500" />
-                    Empresas Vinculadas
+                    {isLojista ? "Empresa Vinculada" : "Empresas Vinculadas"}
                   </h3>
-                  <p className="text-xs text-zinc-500 -mt-2">
-                    Selecione uma ou mais empresas para as quais este usuário
-                    terá acesso.
-                  </p>
-
-                  <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
-                    {availableCompanies.length === 0 && (
-                      <p className="text-xs text-zinc-400 py-2">
-                        Nenhuma empresa encontrada...
+                  {isLojista ? (
+                    <div className="p-3 bg-zinc-50 border border-zinc-200 rounded-xl flex items-center gap-2.5">
+                      <Building2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <div>
+                        <p className="text-xs font-bold text-zinc-800">
+                          Loja Parceira Atual
+                        </p>
+                        <p className="text-[11px] text-zinc-500">
+                          Este operador terá acesso restrito exclusivamente à gestão de entregas da sua loja.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-xs text-zinc-500 -mt-2">
+                        Selecione uma ou mais empresas para as quais este usuário
+                        terá acesso.
                       </p>
-                    )}
-                    {availableCompanies.map((company) => {
-                      const isSelected = formData.empresas.includes(company.id);
+
+                      <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
+                        {availableCompanies.length === 0 && (
+                          <p className="text-xs text-zinc-400 py-2">
+                            Nenhuma empresa encontrada...
+                          </p>
+                        )}
+                        {availableCompanies.map((company) => {
+                          const isSelected = formData.empresas.includes(company.id);
                       return (
                         <div
                           key={company.id}
@@ -364,7 +390,9 @@ export function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
                       );
                     })}
                   </div>
-                </div>
+                </>
+              )}
+            </div>
               </form>
             </div>
 

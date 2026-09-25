@@ -62,6 +62,22 @@ const LOJISTA_ONLY_ROUTES = [
   "/extrato",
 ];
 
+const OPERADOR_LOJA_BLOCKED_ROUTES = [
+  "/usuarios",
+  "/creditos",
+  "/extrato",
+  "/motoboys",
+  "/empresas",
+  "/integracoes",
+  "/financeiro",
+  "/saques",
+  "/escala",
+  "/lancamentos",
+  "/operadores",
+  "/snapshots",
+  "/sync",
+];
+
 const SUPERVISOR_ONLY_ROUTE = "/escala";
 const SUPERVISOR_ROLES = ["supervisor", "coordinator"];
 
@@ -73,19 +89,19 @@ const navigationGroups = [
         name: "Dashboard",
         href: "/",
         icon: LayoutDashboard,
-        roles: ["superadmin", "operador_admin", "operador_staff", "lojista"],
+        roles: ["superadmin", "operador_admin", "operador_staff", "lojista", "operador_loja"],
       },
       {
         name: "Corridas",
         href: "/corridas",
         icon: MapPin,
-        roles: ["superadmin", "operador_admin", "operador_staff", "lojista"],
+        roles: ["superadmin", "operador_admin", "operador_staff", "lojista", "operador_loja"],
       },
       {
         name: "Meus Clientes",
         href: "/clientes",
         icon: Users,
-        roles: ["lojista"],
+        roles: ["lojista", "operador_loja"],
       },
       {
         name: "Escala",
@@ -120,7 +136,7 @@ const navigationGroups = [
         name: "Usuários",
         href: "/usuarios",
         icon: Users,
-        roles: ["superadmin", "operador_admin"],
+        roles: ["superadmin", "operador_admin", "lojista"],
       },
     ],
   },
@@ -249,6 +265,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     rawRole === "despachante"
   ) {
     role = "operador_staff";
+  } else if (rawRole === "operador_loja" || rawRole === "funcionario_loja") {
+    role = "operador_loja";
   } else if (rawRole === "lojista" || rawRole === "cliente") {
     role = "lojista";
   } else if (SUPERVISOR_ROLES.includes(rawRole)) {
@@ -326,40 +344,49 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [userDropdownOpen]);
 
-  // Route guard — 3-Tier Security
-  useEffect(() => {
-    if (!role) return;
-    // Supervisors can only access /escala
-    if (isSupervisor && location.pathname !== SUPERVISOR_ONLY_ROUTE) {
-      navigate(SUPERVISOR_ONLY_ROUTE, { replace: true });
-      return;
-    }
-    // Only superadmin can access platform-level routes
-    if (
-      role !== "superadmin" &&
-      SUPERADMIN_ONLY_ROUTES.includes(location.pathname)
-    ) {
-      navigate("/", { replace: true });
-      return;
-    }
-    // Lojistas cannot access operator-only routes
-    if (
-      role === "lojista" &&
-      (OPERATOR_ONLY_ROUTES.includes(location.pathname) ||
-        SUPERADMIN_ONLY_ROUTES.includes(location.pathname))
-    ) {
-      navigate("/", { replace: true });
-      return;
-    }
-    // Operators and staff cannot access lojista-only routes
-    if (
-      role !== "lojista" &&
-      LOJISTA_ONLY_ROUTES.includes(location.pathname)
-    ) {
-      navigate("/", { replace: true });
-      return;
-    }
-  }, [location.pathname, role, isSupervisor, navigate]);
+    // Route guard — 4-Tier Security
+    useEffect(() => {
+      if (!role) return;
+      // Supervisors can only access /escala
+      if (isSupervisor && location.pathname !== SUPERVISOR_ONLY_ROUTE) {
+        navigate(SUPERVISOR_ONLY_ROUTE, { replace: true });
+        return;
+      }
+      // Only superadmin can access platform-level routes
+      if (
+        role !== "superadmin" &&
+        SUPERADMIN_ONLY_ROUTES.includes(location.pathname)
+      ) {
+        navigate("/", { replace: true });
+        return;
+      }
+      // Operador da loja (funcionário da loja) cannot access financial or admin routes
+      if (
+        role === "operador_loja" &&
+        OPERADOR_LOJA_BLOCKED_ROUTES.includes(location.pathname)
+      ) {
+        navigate("/", { replace: true });
+        return;
+      }
+      // Lojistas cannot access operator-only routes
+      if (
+        role === "lojista" &&
+        (OPERATOR_ONLY_ROUTES.includes(location.pathname) ||
+          SUPERADMIN_ONLY_ROUTES.includes(location.pathname))
+      ) {
+        navigate("/", { replace: true });
+        return;
+      }
+      // Operators and staff cannot access lojista-only routes
+      if (
+        role !== "lojista" &&
+        role !== "operador_loja" &&
+        LOJISTA_ONLY_ROUTES.includes(location.pathname)
+      ) {
+        navigate("/", { replace: true });
+        return;
+      }
+    }, [location.pathname, role, isSupervisor, navigate]);
 
 
   // Supervisors get a minimal layout (just the page, no sidebar)
@@ -496,13 +523,17 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                       location.pathname === item.href ||
                       (item.href !== "/" &&
                         location.pathname.startsWith(item.href));
+                    const itemName =
+                      item.href === "/usuarios" && role === "lojista"
+                        ? "Equipe da Loja"
+                        : item.name;
                     return (
                       <Link
                         key={item.name}
                         to={item.href}
                         onClick={() => setSidebarOpen(false)}
                         aria-current={isActive ? "page" : undefined}
-                        aria-label={sidebarCollapsed ? item.name : undefined}
+                        aria-label={sidebarCollapsed ? itemName : undefined}
                         className={cn(
                           "flex items-center gap-3 rounded-xl text-[13px] transition-all duration-200 group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E55C00] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]",
                           sidebarCollapsed
@@ -523,9 +554,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                           )}
                         />
                         {!sidebarCollapsed ? (
-                          <span className="truncate">{item.name}</span>
+                          <span className="truncate">{itemName}</span>
                         ) : (
-                          <span className="sr-only">{item.name}</span>
+                          <span className="sr-only">{itemName}</span>
                         )}
                         {isActive && !sidebarCollapsed && (
                           <span
@@ -576,8 +607,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                         : role === "operador_staff"
                           ? "Operador (Despacho)"
                           : role === "lojista"
-                            ? "Cliente / Lojista"
-                            : user?.role || "Usuário"}
+                            ? "Gestor da Loja (Lojista)"
+                            : role === "operador_loja"
+                              ? "Operador da Loja"
+                              : user?.role || "Usuário"}
                   </p>
                 </div>
                 <ChevronDown
@@ -646,8 +679,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="flex items-center gap-3">
-              {/* Saldo em Conta para Lojistas */}
-              {(role === "lojista" || Boolean(user?.client_id)) && (
+              {/* Saldo em Conta apenas para Gestor da Loja (Lojista) */}
+              {role === "lojista" && Boolean(user?.client_id) && (
                 <div className="flex items-center gap-2 mr-1">
                   <Link
                     to="/creditos"

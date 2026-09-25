@@ -259,6 +259,10 @@ export function Empresas() {
             taxaCorridaPerEntrega: empresa.taxaCorridaPerEntrega,
             pisoFixo: empresa.pisoFixo,
             diaria_weekday: empresa.diaria_weekday,
+            managerName: empresa.managerName || undefined,
+            managerEmail: empresa.managerEmail || undefined,
+            managerPassword: empresa.managerPassword || undefined,
+            managerPhone: empresa.managerPhone || undefined,
           }),
         });
         

@@ -3,18 +3,29 @@ import uuid
 import pytest
 from django.test import Client
 from django.db import connection
-from accounts.models import Operator, PlatformAdmin, StaffMember
-from logistics.models import Store, Driver
+from accounts.models import Operator, PlatformAdmin, StaffMember, OperatorBranding
+from logistics.models import Store, Driver, Client as StoreClient, ClientPortalUser
 from accounts.security import create_access_token
 
 
+import importlib
 from django.contrib.gis.db.models.proxy import SpatialProxy
 setattr(SpatialProxy, "__set__", lambda self, instance, value: instance.__dict__.__setitem__(self.field.attname, value))
 setattr(SpatialProxy, "__get__", lambda self, instance, cls=None: instance.__dict__.get(self.field.attname) if instance else self)
 
 
 @pytest.fixture(autouse=True)
-def setup_tables(db):
+def setup_tables(db, monkeypatch):
+    import django.contrib.gis.geos as geos
+    from django.contrib.gis.db.models.fields import PointField
+    PointField.get_prep_value = lambda self, value: str(value) if value is not None else None
+    PointField.get_db_prep_save = lambda self, value, connection: str(value) if value is not None else None
+    PointField.get_db_prep_value = lambda self, value, connection, *args, **kwargs: str(value) if value is not None else None
+    monkeypatch.setattr(geos, "Point", lambda lng, lat, srid=4326: f"POINT ({lng} {lat})")
+    if not hasattr(connection.ops, "select"):
+        setattr(connection.ops, "select", "%s")
+    if not hasattr(connection.ops, "get_geom_placeholder"):
+        setattr(connection.ops, "get_geom_placeholder", lambda f, v, c: "%s")
     with connection.cursor() as cur:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS "Operator" (
@@ -217,6 +228,55 @@ def setup_tables(db):
                 "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS "ClientPortalUser" (
+                id CHAR(32) PRIMARY KEY,
+                supabase_uid CHAR(32),
+                operator_id CHAR(32) NOT NULL,
+                client_id CHAR(32) NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                email VARCHAR(255) UNIQUE NOT NULL,
+                "passwordHash" VARCHAR(255),
+                role VARCHAR(50) NOT NULL DEFAULT 'lojista',
+                active BOOLEAN NOT NULL DEFAULT 1,
+                "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS "Contract" (
+                id CHAR(32) PRIMARY KEY,
+                operator_id CHAR(32) NOT NULL,
+                store_id CHAR(32) NOT NULL,
+                "compensationMode" VARCHAR(20) DEFAULT 'GARANTIDA',
+                "rideFeePerDeliveryCents" INT DEFAULT 160,
+                "minimumRidesFeeFloorCents" INT DEFAULT 35000,
+                "minimumFloorBps" INT DEFAULT 0,
+                "adminTaxThresholdCents" INT DEFAULT 0,
+                "adminTaxFixedAmountCents" INT DEFAULT 0,
+                "adminTaxBps" INT DEFAULT 0,
+                "supervisionFeePerWeekCents" INT DEFAULT 0,
+                "dailyRateWeekdayCents" INT DEFAULT 6000,
+                "dailyRateSaturdayCents" INT DEFAULT 0,
+                "dailyRateSundayCents" INT DEFAULT 0,
+                "dailyRateHolidayCents" INT DEFAULT 0,
+                "kmExcedenteValorCents" INT DEFAULT 0,
+                "allowAutomaticGrouping" BOOLEAN DEFAULT 1,
+                "cloudOverflowAllowed" BOOLEAN DEFAULT 0,
+                "maxStopsPerManifest" INT DEFAULT 3,
+                "maxDetourPercent" INT DEFAULT 20,
+                "cutoffHour" INT DEFAULT 2,
+                "cutoffMinute" INT DEFAULT 0,
+                "returnFeeBps" INT DEFAULT 5000,
+                "overridePayoutPolicy" BOOLEAN DEFAULT 0,
+                "customPayoutMode" VARCHAR(30),
+                "customAutoThresholdCents" BIGINT,
+                "customFeeMode" VARCHAR(30),
+                "customFeeCents" BIGINT,
+                "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
     yield
 
 
@@ -387,4 +447,166 @@ def test_credit_queue_with_nan_company_id(client: Client, sample_data):
     assert resp.status_code == 200
     data = resp.json()
     assert "items" in data
+
+
+@pytest.mark.django_db
+def test_store_creation_with_manager_and_store_operator_flow(client: Client, sample_data, monkeypatch):
+    """
+    Testa a hierarquia completa de 4 níveis:
+    1. PlatformAdmin (Proprietário Global)
+    2. Operador Logístico (B2B Tenant)
+    3. Lojista (Gestor da Loja Parceira)
+    4. Operador da Loja (Funcionário da loja que opera o delivery)
+
+    Garante também que o branding do Operador é herdado pelo Lojista e Operador da Loja (White-label).
+    """
+    import sys
+    import importlib
+    geos = importlib.import_module("django.contrib.gis.geos")
+    monkeypatch.setattr(geos, "Point", lambda lng, lat, srid=4326: f"POINT ({lng} {lat})")
+    if not hasattr(connection.ops, "select"):
+        setattr(connection.ops, "select", "%s")
+    if not hasattr(connection.ops, "get_geom_placeholder"):
+        setattr(connection.ops, "get_geom_placeholder", lambda f, v, c: "%s")
+
+    op = sample_data["operator"]
+    staff = sample_data["staff"]
+    staff_token = create_access_token({
+        "sub": str(staff.id),
+        "operator_id": str(op.id),
+        "email": staff.email,
+        "role": "ADMIN",
+    })
+
+    # 1. Operador logístico cadastra uma Loja Parceira definindo o Gestor da Loja
+    payload_store = {
+        "name": "Pizzaria Napoli",
+        "documento": "12.345.678/0001-90",
+        "endereco": "Rua das Pizzas, 100, Centro",
+        "telefone": "31999998888",
+        "lat": -19.9200,
+        "lng": -43.9400,
+        "averagePrepTimeMinutes": 20,
+        "managerName": "Carlos Napoli",
+        "managerEmail": "carlos@napoli.com",
+        "managerPassword": "SenhaSegura123",
+        "managerPhone": "31999998888",
+    }
+    resp_store = client.post(
+        "/api/v1/db/companies",
+        data=json.dumps(payload_store),
+        content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {staff_token}",
+    )
+    assert resp_store.status_code == 200, f"Error: {resp_store.json()}"
+    store_data = resp_store.json()
+    assert store_data["success"] is True
+    assert "storeId" in store_data
+    assert "managerId" in store_data
+
+    # Verifica que o Gestor da Loja foi criado com papel 'lojista'
+    manager = ClientPortalUser.objects.get(id=store_data["managerId"])
+    assert manager.role == "lojista"
+    assert manager.email == "carlos@napoli.com"
+    assert manager.name == "Carlos Napoli"
+    assert manager.check_password("SenhaSegura123") is True
+
+    # Token de autenticação do Lojista (Gestor da Loja)
+    lojista_token = create_access_token({
+        "sub": str(manager.id),
+        "user_type": "client_portal_user",
+        "client_id": str(manager.client_id),
+        "operator_id": str(op.id),
+        "email": manager.email,
+        "role": manager.role,
+    })
+
+    # 2. Lojista consulta a equipe da sua loja (GET /api/v1/db/users)
+    resp_users = client.get(
+        "/api/v1/db/users",
+        HTTP_AUTHORIZATION=f"Bearer {lojista_token}",
+    )
+    assert resp_users.status_code == 200
+    team = resp_users.json()
+    assert len(team) == 1
+    assert team[0]["email"] == "carlos@napoli.com"
+    assert team[0]["role"] == "lojista"
+
+    # 3. Lojista cadastra um Operador da Loja (funcionário da loja)
+    payload_operator = {
+        "fullName": "Mariana Operadora",
+        "email": "mariana@napoli.com",
+        "password": "SenhaOperador123",
+        "role": "operador_loja",
+    }
+    resp_create_op = client.post(
+        "/api/v1/db/users",
+        data=json.dumps(payload_operator),
+        content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {lojista_token}",
+    )
+    assert resp_create_op.status_code == 200
+    create_op_data = resp_create_op.json()
+    assert create_op_data["success"] is True
+
+    operador = ClientPortalUser.objects.get(email="mariana@napoli.com")
+    assert operador.role == "operador_loja"
+    assert operador.client_id == manager.client_id
+    assert operador.operator_id == op.id
+
+    # Lista de equipe agora contém 2 membros para o Gestor da Loja
+    resp_team_updated = client.get(
+        "/api/v1/db/users",
+        HTTP_AUTHORIZATION=f"Bearer {lojista_token}",
+    )
+    assert resp_team_updated.status_code == 200
+    team_updated = resp_team_updated.json()
+    assert len(team_updated) == 2
+
+    # Token do Operador da Loja (funcionário)
+    operador_token = create_access_token({
+        "sub": str(operador.id),
+        "user_type": "client_portal_user",
+        "client_id": str(operador.client_id),
+        "operator_id": str(op.id),
+        "email": operador.email,
+        "role": operador.role,
+    })
+
+    # 4. Operador da Loja NÃO tem permissão de gerenciar usuários da loja
+    resp_op_list = client.get(
+        "/api/v1/db/users",
+        HTTP_AUTHORIZATION=f"Bearer {operador_token}",
+    )
+    assert resp_op_list.status_code == 200
+    assert resp_op_list.json() == []
+
+    resp_op_create = client.post(
+        "/api/v1/db/users",
+        data=json.dumps({"fullName": "Invasor", "email": "inv@napoli.com", "password": "123456", "role": "operador_loja"}),
+        content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {operador_token}",
+    )
+    assert resp_op_create.status_code == 403
+
+    # 5. White-label: Tanto o Lojista quanto o Operador da Loja recebem o branding do Operador Logístico
+    OperatorBranding.objects.create(
+        id=uuid.uuid4(),
+        operator=op,
+        brand_name="Neves Express Logística",
+    )
+    resp_branding_lojista = client.get(
+        "/api/v1/branding/",
+        HTTP_AUTHORIZATION=f"Bearer {lojista_token}",
+    )
+    assert resp_branding_lojista.status_code == 200
+    assert resp_branding_lojista.json()["brand_name"] == "Neves Express Logística"
+
+    resp_branding_operador = client.get(
+        "/api/v1/branding/",
+        HTTP_AUTHORIZATION=f"Bearer {operador_token}",
+    )
+    assert resp_branding_operador.status_code == 200
+    assert resp_branding_operador.json()["brand_name"] == "Neves Express Logística"
+
 

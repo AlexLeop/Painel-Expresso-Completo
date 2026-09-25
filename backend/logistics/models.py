@@ -54,6 +54,11 @@ class ClientPortalUser(TimeStampedTenantModel):
     name = models.CharField(max_length=255)
     email = models.CharField(max_length=255)
     active = models.BooleanField(default=True)
+    role = models.CharField(
+        max_length=50,
+        default="lojista",
+        help_text="Função no portal: 'lojista' (Gestor da Loja) ou 'operador_loja' (Funcionário da Loja).",
+    )
     passwordHash = models.CharField(
         max_length=255, null=True, blank=True, db_column="passwordHash", help_text="Hash PBKDF2 da senha de acesso."
     )

@@ -204,8 +204,28 @@ def get_users(request):
     from logistics.models import ClientPortalUser
 
     auth = getattr(request, "auth", None) or {}
-    if auth.get("client_id") or auth.get("user_type") == "client_portal_user":
-        return []
+    user_type = auth.get("user_type")
+    client_id = auth.get("client_id")
+    user_role = str(auth.get("role", "")).lower()
+
+    if user_type == "client_portal_user" or client_id:
+        if user_role == "operador_loja":
+            # Operador comum da loja apenas despacha pedidos; não gerencia equipe
+            return []
+        # Gestor da Loja (lojista): lista a si mesmo e os operadores da sua própria loja
+        res = []
+        for c in ClientPortalUser.objects.filter(client_id=client_id).select_related("client").order_by("-createdAt"):
+            res.append({
+                "id": str(c.id),
+                "nome": c.name,
+                "name": c.name,
+                "email": c.email,
+                "role": getattr(c, "role", None) or "lojista",
+                "active": c.active,
+                "companies": [{"id": str(c.client_id), "name": c.client.name}] if c.client else [],
+            })
+        return res
+
     actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
     is_admin = bool(getattr(actor, "is_platform_admin", False))
     op_id = actor.operator_id
@@ -239,12 +259,12 @@ def get_users(request):
                 "nome": c.name,
                 "name": c.name,
                 "email": c.email,
-                "role": "lojista",
+                "role": getattr(c, "role", None) or "lojista",
                 "active": c.active,
                 "companies": [{"id": str(c.client_id), "name": c.client.name}] if c.client else [],
             })
     elif op_id:
-        # Staff do operador vê seus colaboradores e lojistas
+        # Staff do operador vê seus colaboradores e usuários das lojas da sua central
         for u in StaffMember.objects.filter(operator_id=op_id).select_related("operator").order_by("-createdAt"):
             res.append({
                 "id": str(u.id),
@@ -261,7 +281,7 @@ def get_users(request):
                 "nome": c.name,
                 "name": c.name,
                 "email": c.email,
-                "role": "lojista",
+                "role": getattr(c, "role", None) or "lojista",
                 "active": c.active,
                 "companies": [{"id": str(c.client_id), "name": c.client.name}] if c.client else [],
             })
@@ -293,6 +313,12 @@ def _normalized_user_role(value: Optional[str]) -> str:
         "VIEWER": "VIEWER",
         "VISUALIZADOR": "VIEWER",
         "LOJISTA": "LOJISTA",
+        "GESTOR_LOJA": "LOJISTA",
+        "GESTOR DA LOJA": "LOJISTA",
+        "OPERADOR_LOJA": "OPERADOR_LOJA",
+        "OPERADOR DA LOJA": "OPERADOR_LOJA",
+        "FUNCIONARIO_LOJA": "OPERADOR_LOJA",
+        "FUNCIONARIO DA LOJA": "OPERADOR_LOJA",
         "SUPERADMIN": "PLATFORM_ADMIN",
         "SUPERADMIN MASTER": "PLATFORM_ADMIN",
         "PLATFORM_ADMIN": "PLATFORM_ADMIN",
@@ -341,18 +367,60 @@ def _operator_from_company_reference(company_id: Optional[str]):
 @router.post("/users")
 def create_user(request, payload: UserPayload):
     from accounts.models import StaffMember, Operator, PlatformAdmin
-    from logistics.models import ClientPortalUser, Client
+    from logistics.models import ClientPortalUser, Client, Store
     from accounts.auth import require_role
     from django.db import IntegrityError, transaction
     from ninja.errors import HttpError
     import uuid
 
+    auth = getattr(request, "auth", None) or {}
+    user_type = auth.get("user_type")
+    client_id = auth.get("client_id")
+    caller_role = str(auth.get("role", "")).lower()
+
+    # 1. Lojista (Gestor da Loja) cadastrando funcionário/operador da loja
+    if user_type == "client_portal_user" or client_id:
+        if caller_role not in ("lojista", "gestor", "gestor_loja"):
+            raise HttpError(403, "Apenas o gestor da loja pode cadastrar funcionários/operadores para a loja.")
+
+        if not payload.email or not payload.fullName:
+            raise HttpError(422, "Nome e e-mail são obrigatórios.")
+        if not payload.password or len(payload.password) < 6:
+            raise HttpError(422, "A senha deve ter pelo menos 6 caracteres.")
+
+        email = payload.email.strip().lower()
+        if _email_already_in_use(email):
+            raise HttpError(409, "Já existe um usuário com este e-mail.")
+
+        client = Client.objects.filter(id=client_id, active=True).first()
+        if not client:
+            raise HttpError(404, "Loja parceira não encontrada ou inativa.")
+
+        req_role = str(payload.role or "").strip().lower()
+        role_to_set = "lojista" if req_role in ("lojista", "gestor", "gestor_loja") else "operador_loja"
+
+        with transaction.atomic():
+            c_user = ClientPortalUser(
+                id=uuid.uuid4(),
+                supabase_uid=uuid.uuid4(),
+                operator=client.operator,
+                client=client,
+                name=payload.fullName.strip(),
+                email=email,
+                role=role_to_set,
+                active=True,
+            )
+            c_user.set_password(payload.password)
+            c_user.save()
+        return {"success": True, "id": str(c_user.id)}
+
+    # 2. Staff da Central Logística ou PlatformAdmin
     actor = require_role(["ADMIN", "MANAGER"])(request)
     try:
         if not payload.email or not payload.fullName:
             raise HttpError(422, "Nome e e-mail são obrigatórios.")
-        if not payload.password or len(payload.password) < 10:
-            raise HttpError(422, "A senha deve ter pelo menos 10 caracteres.")
+        if not payload.password or len(payload.password) < 6:
+            raise HttpError(422, "A senha deve ter pelo menos 6 caracteres.")
 
         email = payload.email.strip().lower()
         if _email_already_in_use(email):
@@ -376,11 +444,9 @@ def create_user(request, payload: UserPayload):
             if not target_operator:
                 raise HttpError(422, "Selecione um operador válido para o novo usuário.")
 
-        if role == "LOJISTA":
+        if role in ("LOJISTA", "OPERADOR_LOJA"):
             client = None
             if c_id:
-                from logistics.models import Store
-
                 stores = Store.objects.select_related("client", "operator").filter(id=c_id)
                 clients = Client.objects.select_related("operator").filter(id=c_id)
                 if not is_platform_admin:
@@ -394,8 +460,9 @@ def create_user(request, payload: UserPayload):
             if not client and target_operator:
                 client = Client.objects.filter(operator=target_operator, active=True).first()
             if not client:
-                raise HttpError(422, "Nenhum cliente válido foi selecionado para o lojista.")
+                raise HttpError(422, "Nenhum cliente/loja válido foi selecionado.")
 
+            role_to_set = "operador_loja" if role == "OPERADOR_LOJA" else "lojista"
             with transaction.atomic():
                 c_user = ClientPortalUser(
                     id=uuid.uuid4(),
@@ -404,11 +471,12 @@ def create_user(request, payload: UserPayload):
                     client=client,
                     name=payload.fullName.strip(),
                     email=email,
+                    role=role_to_set,
                     active=True,
                 )
                 c_user.set_password(payload.password)
                 c_user.save()
-            return {"success": True}
+            return {"success": True, "id": str(c_user.id)}
 
         if role == "PLATFORM_ADMIN":
             if not is_platform_admin:
@@ -417,7 +485,7 @@ def create_user(request, payload: UserPayload):
                 p_admin = PlatformAdmin(id=uuid.uuid4(), name=payload.fullName.strip(), email=email)
                 p_admin.set_password(payload.password)
                 p_admin.save()
-            return {"success": True}
+            return {"success": True, "id": str(p_admin.id)}
 
         if not target_operator:
             raise HttpError(422, "Operador inválido ou não informado.")
@@ -432,7 +500,7 @@ def create_user(request, payload: UserPayload):
             )
             staff.set_password(payload.password)
             staff.save()
-        return {"success": True}
+        return {"success": True, "id": str(staff.id)}
     except HttpError:
         raise
     except IntegrityError:
@@ -447,9 +515,51 @@ def update_user(request, payload: UserPayload):
     from logistics.models import ClientPortalUser
     from ninja.errors import HttpError
 
-    actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
     if not payload.id:
         raise HttpError(422, "ID do usuário é obrigatório.")
+
+    auth = getattr(request, "auth", None) or {}
+    user_type = auth.get("user_type")
+    client_id = auth.get("client_id")
+    caller_role = str(auth.get("role", "")).lower()
+
+    # 1. Se for usuário da loja (Lojista / Operador da Loja)
+    if user_type == "client_portal_user" or client_id:
+        target = ClientPortalUser.objects.filter(id=payload.id, client_id=client_id).first()
+        if not target:
+            raise HttpError(404, "Usuário da loja não encontrado.")
+
+        is_self = str(auth.get("sub")) == payload.id
+        if not is_self and caller_role not in ("lojista", "gestor", "gestor_loja"):
+            raise HttpError(403, "Apenas o gestor da loja pode editar membros da equipe.")
+
+        update_fields = []
+        if payload.fullName:
+            target.name = payload.fullName.strip()
+            update_fields.append("name")
+        if payload.email:
+            email = payload.email.strip().lower()
+            if _email_already_in_use(email, exclude_model=ClientPortalUser, exclude_id=target.pk):
+                raise HttpError(409, "Já existe um usuário com este e-mail.")
+            target.email = email
+            update_fields.append("email")
+        if payload.password and len(payload.password) >= 6:
+            target.set_password(payload.password)
+            update_fields.append("passwordHash")
+        if payload.active is not None and not is_self and caller_role in ("lojista", "gestor", "gestor_loja"):
+            target.active = payload.active
+            update_fields.append("active")
+        if payload.role and not is_self and caller_role in ("lojista", "gestor", "gestor_loja"):
+            req_role = str(payload.role).strip().lower()
+            target.role = "lojista" if req_role in ("lojista", "gestor", "gestor_loja") else "operador_loja"
+            update_fields.append("role")
+
+        if update_fields:
+            target.save(update_fields=update_fields)
+        return {"success": True}
+
+    # 2. Staff / PlatformAdmin
+    actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
     is_platform_admin = bool(getattr(actor, "is_platform_admin", False))
     is_self = str(actor.id) == payload.id
     actor_role = getattr(actor, "role", None)
@@ -490,16 +600,23 @@ def update_user(request, payload: UserPayload):
             raise HttpError(409, "Já existe um usuário com este e-mail.")
         target.email = email
         update_fields.append("email")
+    if payload.password and len(payload.password) >= 6:
+        target.set_password(payload.password)
+        update_fields.append("passwordHash")
     if payload.role:
         if is_self:
             raise HttpError(403, "Não é permitido alterar o próprio papel.")
         role = _normalized_user_role(payload.role)
-        if target_kind != "staff" or role in {"LOJISTA", "PLATFORM_ADMIN"}:
-            raise HttpError(422, "A alteração solicitada não é compatível com este usuário.")
-        if actor_role == "MANAGER" and role in {"ADMIN", "MANAGER"}:
-            raise HttpError(403, "Gestores não podem conceder nível igual ou superior.")
-        setattr(target, "role", role)
-        update_fields.append("role")
+        if target_kind == "client":
+            target.role = "operador_loja" if role == "OPERADOR_LOJA" else "lojista"
+            update_fields.append("role")
+        elif target_kind == "staff":
+            if role in {"LOJISTA", "OPERADOR_LOJA", "PLATFORM_ADMIN"}:
+                raise HttpError(422, "A alteração solicitada não é compatível com este usuário.")
+            if actor_role == "MANAGER" and role in {"ADMIN", "MANAGER"}:
+                raise HttpError(403, "Gestores não podem conceder nível igual ou superior.")
+            setattr(target, "role", role)
+            update_fields.append("role")
     if payload.active is not None:
         if is_self:
             raise HttpError(403, "Não é permitido desativar o próprio acesso.")
@@ -517,6 +634,23 @@ def delete_user(request, id: str):
     from accounts.auth import require_role
     from logistics.models import ClientPortalUser
     from ninja.errors import HttpError
+
+    auth = getattr(request, "auth", None) or {}
+    user_type = auth.get("user_type")
+    client_id = auth.get("client_id")
+    caller_role = str(auth.get("role", "")).lower()
+
+    if user_type == "client_portal_user" or client_id:
+        if caller_role not in ("lojista", "gestor", "gestor_loja"):
+            raise HttpError(403, "Apenas o gestor da loja pode desativar membros da equipe.")
+        if str(auth.get("sub")) == id:
+            raise HttpError(403, "Não é permitido desativar o próprio acesso.")
+        user = ClientPortalUser.objects.filter(id=id, client_id=client_id).first()
+        if not user:
+            raise HttpError(404, "Usuário não encontrado.")
+        user.active = False
+        user.save(update_fields=["active"])
+        return {"success": True}
 
     actor = require_role(["ADMIN", "MANAGER"])(request)
     if str(actor.id) == id:
@@ -892,14 +1026,20 @@ class StoreCreateSchema(BaseModel):
     taxaCorridaPerEntrega: Optional[float] = 1.6
     pisoFixo: Optional[float] = 350.0
     diaria_weekday: Optional[float] = 60.0
+    # Gestor da Loja (Lojista) opcional no cadastro
+    managerName: Optional[str] = None
+    managerEmail: Optional[str] = None
+    managerPassword: Optional[str] = None
+    managerPhone: Optional[str] = None
 
 @router.post("/companies")
 def create_company_store(request, payload: StoreCreateSchema):
     """
     Cadastra uma nova Empresa/Loja (Store) para o Operador logístico.
+    Opcionalmente cadastra e vincula o usuário Gestor da Loja (Lojista).
     """
     from accounts.models import Operator
-    from logistics.models import Client, Store
+    from logistics.models import Client, Store, ClientPortalUser
     from finance.models import Contract
     from django.core.exceptions import ValidationError
     from django.contrib.gis.geos import Point
@@ -924,6 +1064,16 @@ def create_company_store(request, payload: StoreCreateSchema):
             raise HttpError(422, "Latitude e longitude da loja são obrigatórias.")
         if not (-90 <= payload.lat <= 90 and -180 <= payload.lng <= 180):
             raise HttpError(422, "Coordenadas da loja são inválidas.")
+
+        manager_id = None
+        if payload.managerEmail and payload.managerName:
+            mgr_email = payload.managerEmail.strip().lower()
+            if _email_already_in_use(mgr_email):
+                raise HttpError(409, f"O e-mail '{mgr_email}' já está em uso por outro usuário.")
+            pwd = payload.managerPassword or "Mudar@123456"
+            if len(pwd) < 6:
+                raise HttpError(422, "A senha do gestor da loja deve ter no mínimo 6 caracteres.")
+
         with transaction.atomic():
             client = Client.objects.create(
                 id=uuid.uuid4(), operator=operator, name=name.strip(),
@@ -945,11 +1095,33 @@ def create_company_store(request, payload: StoreCreateSchema):
                 dailyRateWeekdayCents=int((payload.diaria_weekday or 60.0) * 100),
             )
 
-        return {"success": True, "storeId": str(store.id)}
+            if payload.managerEmail and payload.managerName:
+                mgr_email = payload.managerEmail.strip().lower()
+                pwd = payload.managerPassword or "Mudar@123456"
+                manager_user = ClientPortalUser(
+                    id=uuid.uuid4(),
+                    supabase_uid=uuid.uuid4(),
+                    operator=operator,
+                    client=client,
+                    name=payload.managerName.strip(),
+                    email=mgr_email,
+                    role="lojista",
+                    active=True,
+                )
+                manager_user.set_password(pwd)
+                manager_user.save()
+                manager_id = str(manager_user.id)
+
+        res = {"success": True, "storeId": str(store.id)}
+        if manager_id:
+            res["managerId"] = manager_id
+        return res
     except HttpError:
         raise
-    except (ValueError, TypeError):
-        raise HttpError(422, "Dados da loja são inválidos.")
+    except (ValueError, TypeError) as e:
+        import traceback
+        traceback.print_exc()
+        raise HttpError(422, f"Dados da loja são inválidos: {e}")
 @router.get("/configs")
 def get_configs(request, company_id: Optional[str] = None, company_name: Optional[str] = None):
     from accounts.auth import require_role

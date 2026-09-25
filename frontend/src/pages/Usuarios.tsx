@@ -19,8 +19,16 @@ import { cn } from "../lib/utils";
 import { UserModal, UserType } from "../components/UserModal";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { authFetch } from "../lib/api";
+import { useAuth } from "../contexts/AuthContext";
 
 export function Usuarios() {
+  const { session } = useAuth();
+  const rawRole = (session?.user?.role || "").toLowerCase();
+  const isLojista =
+    rawRole === "lojista" ||
+    rawRole === "cliente" ||
+    Boolean(session?.user?.client_id);
+
   const [usuarios, setUsuarios] = useState<UserType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,8 +60,11 @@ export function Usuarios() {
           coordinator: "Coordenador",
           operator: "Operador",
           viewer: "Visualizador",
-          lojista: "Lojista",
-          LOJISTA: "Lojista",
+          lojista: "Gestor da Loja",
+          LOJISTA: "Gestor da Loja",
+          operador_loja: "Operador da Loja",
+          OPERADOR_LOJA: "Operador da Loja",
+          funcionario_loja: "Operador da Loja",
         };
         const fetchedUsers = rawList.map((u: any) => ({
           id: u.id,
@@ -109,6 +120,8 @@ export function Usuarios() {
         Operador: "operator",
         Visualizador: "viewer",
         Lojista: "lojista",
+        "Gestor da Loja": "lojista",
+        "Operador da Loja": "operador_loja",
       };
       const apiRole = ROLE_TO_API[user.cargo] || "operator";
 
@@ -222,10 +235,12 @@ export function Usuarios() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 rounded-xl shadow-sm ring-1 ring-zinc-950/5">
         <div>
           <h1 className="text-xl font-bold text-zinc-900 tracking-tight">
-            Usuários
+            {isLojista ? "Equipe da Loja" : "Usuários"}
           </h1>
           <p className="text-sm text-zinc-500 mt-1">
-            Gerencie os acessos ao painel Administrativo do sistema.
+            {isLojista
+              ? "Gerencie os operadores e funcionários que operam o delivery no dia a dia da sua loja."
+              : "Gerencie os acessos ao painel Administrativo do sistema."}
           </p>
         </div>
 
@@ -234,7 +249,8 @@ export function Usuarios() {
             onClick={() => handleOpenModal()}
             className="flex items-center gap-1.5 px-4 py-2 bg-zinc-900 text-white rounded-md hover:bg-zinc-800 text-sm font-semibold shadow-sm transition-all focus:ring-2 focus:ring-zinc-900/10"
           >
-            <Plus strokeWidth={2} className="h-4 w-4" /> Novo Usuário
+            <Plus strokeWidth={2} className="h-4 w-4" />{" "}
+            {isLojista ? "Novo Operador da Loja" : "Novo Usuário"}
           </button>
         </div>
       </div>
@@ -325,8 +341,10 @@ export function Usuarios() {
                           ? "bg-purple-50 text-purple-700 border-purple-200/60"
                           : usuario.cargo === "Administrador" || usuario.cargo === "Gestor"
                           ? "bg-amber-50 text-amber-700 border-amber-200/60"
-                          : usuario.cargo === "Lojista"
-                          ? "bg-blue-50 text-blue-700 border-blue-200/60"
+                          : usuario.cargo === "Gestor da Loja" || usuario.cargo === "Lojista"
+                          ? "bg-indigo-50 text-indigo-700 border-indigo-200/60 font-semibold"
+                          : usuario.cargo === "Operador da Loja"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200/60 font-semibold"
                           : "bg-zinc-100 text-zinc-700 border-zinc-200/60"
                       )}
                     >

@@ -365,6 +365,8 @@ def update_branding(request: HttpRequest, payload: BrandingUpdateIn):
             setattr(branding, field, value)
 
     branding.save()
+    if "brand_name" in data and data["brand_name"]:
+        Operator.objects.filter(id=operator_id).update(name=data["brand_name"])
     return 200, _serialize_branding(branding)
 
 

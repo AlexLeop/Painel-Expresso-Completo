@@ -22,6 +22,7 @@ import {
   Navigation,
   FileText,
   BadgeCheck,
+  User,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "../lib/utils";
@@ -36,6 +37,11 @@ export interface EmpresaType {
   lat?: number;
   lng?: number;
   averagePrepTimeMinutes?: number;
+  // Gestor da Loja (Lojista)
+  managerName?: string;
+  managerEmail?: string;
+  managerPassword?: string;
+  managerPhone?: string;
   // Campos Estruturados de Endereço (opcionais para UI e retrocompatibilidade)
   cep?: string;
   logradouro?: string;
@@ -204,6 +210,10 @@ export function EmpresaModal({
     extraKmMinDistance: 6,
     extraKmFixedAmount: 3,
     machineEmpresaId: "",
+    managerName: "",
+    managerEmail: "",
+    managerPassword: "",
+    managerPhone: "",
   });
 
   // Estado dos campos individuais de endereço
@@ -334,6 +344,10 @@ export function EmpresaModal({
         extraKmMinDistance: 6,
         extraKmFixedAmount: 3,
         machineEmpresaId: "",
+        managerName: "",
+        managerEmail: "",
+        managerPassword: "",
+        managerPhone: "",
       });
       setAddressFields({
         cep: "",
@@ -749,6 +763,88 @@ export function EmpresaModal({
                           <span className="text-[10px] text-zinc-400">
                             Sincronizado automaticamente com o sistema central
                           </span>
+                        </div>
+                      )}
+
+                      {!empresa && (
+                        <div className="sm:col-span-2 pt-2 border-t border-zinc-200">
+                          <div className="p-4 bg-gradient-to-br from-indigo-50/70 via-blue-50/50 to-indigo-50/70 rounded-2xl border border-indigo-200/80 space-y-3.5">
+                            <div className="flex items-center gap-2.5">
+                              <div className="h-8 w-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                                <User className="h-4 w-4" />
+                              </div>
+                              <div>
+                                <h4 className="text-xs font-black text-indigo-950 uppercase tracking-wider">
+                                  Gestor da Loja (Acesso ao Painel do Delivery)
+                                </h4>
+                                <p className="text-[11px] text-indigo-900/80 font-medium">
+                                  Defina o login do Lojista (gestor da loja parceira). Ele poderá acompanhar os pedidos e cadastrar funcionários/operadores da sua loja.
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                              <div>
+                                <label className="block text-[11px] font-bold text-zinc-700 mb-1">
+                                  Nome do Gestor
+                                </label>
+                                <input
+                                  type="text"
+                                  value={formData.managerName || ""}
+                                  onChange={(e) =>
+                                    setFormData({ ...formData, managerName: e.target.value })
+                                  }
+                                  className="w-full px-3 py-2 text-xs bg-white border border-indigo-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition-all font-medium"
+                                  placeholder="Ex: Carlos Oliveira"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-zinc-700 mb-1">
+                                  E-mail de Login do Gestor
+                                </label>
+                                <input
+                                  type="email"
+                                  value={formData.managerEmail || ""}
+                                  onChange={(e) =>
+                                    setFormData({ ...formData, managerEmail: e.target.value })
+                                  }
+                                  className="w-full px-3 py-2 text-xs bg-white border border-indigo-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition-all font-medium"
+                                  placeholder="carlos@pizzaria.com"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-zinc-700 mb-1">
+                                  Senha Inicial
+                                </label>
+                                <input
+                                  type="password"
+                                  value={formData.managerPassword || ""}
+                                  onChange={(e) =>
+                                    setFormData({ ...formData, managerPassword: e.target.value })
+                                  }
+                                  className="w-full px-3 py-2 text-xs bg-white border border-indigo-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition-all font-medium"
+                                  placeholder="Mínimo 6 caracteres (padrão: Mudar@123456)"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-zinc-700 mb-1">
+                                  WhatsApp / Telefone do Gestor
+                                </label>
+                                <input
+                                  type="text"
+                                  value={formData.managerPhone || ""}
+                                  onChange={(e) =>
+                                    setFormData({ ...formData, managerPhone: maskPhone(e.target.value) })
+                                  }
+                                  className="w-full px-3 py-2 text-xs bg-white border border-indigo-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition-all font-medium"
+                                  placeholder="(31) 98888-7777"
+                                />
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
