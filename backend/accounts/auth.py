@@ -140,6 +140,10 @@ def get_client_portal_user(request: HttpRequest) -> Optional[ClientPortalUser]:
             supabase_uid=uid, active=True
         )
     except (ClientPortalUser.DoesNotExist, ValidationError, ValueError, TypeError):
+        if "email" in request.auth:
+            return ClientPortalUser.objects.select_related("client", "operator").filter(
+                email__iexact=request.auth["email"], active=True
+            ).first()
         return None
 
 

@@ -765,4 +765,76 @@ def test_get_users_platform_admin_and_operator_no_500(client: Client):
     assert any(u["email"] == "admin_users@test.com" for u in users)
 
 
+@pytest.mark.django_db
+def test_company_drivers_client_portal_user_scoping_no_401(client: Client, sample_data):
+    """
+    Garante que um ClientPortalUser (Lojista / Operador da Loja) consiga acessar
+    GET /api/v1/db/company-drivers?active_only=1 sem receber 401 ("Não autenticado ou Staff não encontrado").
+    E valida que apenas os motoboys pertencentes ao Operador da loja sejam retornados.
+    """
+    operator = sample_data["operator"]
+    client_store = StoreClient.objects.create(
+        id=uuid.uuid4(),
+        operator=operator,
+        name="Cliente Loja Teste",
+        document="11222333000199",
+    )
+
+    # Cria motoboy do operador
+    driver1 = Driver.objects.create(
+        id=uuid.uuid4(),
+        operator=operator,
+        name="Motoboy Do Operador",
+        phone="11999990001",
+        active=True,
+    )
+    # Cria outro operador e outro motoboy
+    other_op = Operator.objects.create(id=uuid.uuid4(), name="Outro Operador Logístico", status="ACTIVE")
+    other_driver = Driver.objects.create(
+        id=uuid.uuid4(),
+        operator=other_op,
+        name="Motoboy De Outro Operador",
+        phone="11999990002",
+        active=True,
+    )
+
+    # Cria lojista (ClientPortalUser)
+    lojista = ClientPortalUser.objects.create(
+        id=uuid.uuid4(),
+        operator=operator,
+        client=client_store,
+        name="Gestor da Loja Teste",
+        email="gestor_drivers@lojista.com",
+        role="lojista",
+        active=True,
+    )
+    lojista.set_password("Lojista@123")
+    lojista.save()
+
+    token_lojista = create_access_token({
+        "sub": str(lojista.id),
+        "email": lojista.email,
+        "role": "lojista",
+        "user_type": "client_portal_user",
+        "is_platform_admin": False,
+        "operator_id": str(operator.id),
+        "client_id": str(client_store.id),
+    })
+
+    # Consulta company-drivers com o token do lojista
+    resp = client.get(
+        "/api/v1/db/company-drivers?active_only=1",
+        HTTP_AUTHORIZATION=f"Bearer {token_lojista}",
+    )
+
+    # NÃO PODE ser 401 ("Não autenticado ou Staff não encontrado")!
+    assert resp.status_code == 200, f"Expected 200 but got {resp.status_code}: {resp.content}"
+    drivers = resp.json()
+    assert isinstance(drivers, list)
+    driver_ids = [d["id"] for d in drivers]
+    assert str(driver1.id) in driver_ids
+    assert str(other_driver.id) not in driver_ids
+
+
+
 

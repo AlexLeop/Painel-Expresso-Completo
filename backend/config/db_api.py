@@ -195,7 +195,7 @@ def get_companies(request):
     client_id = auth.get("client_id")
 
     qs = Store.objects.select_related("operator", "client").all()
-    if client_id:
+    if client_id or auth.get("user_type") == "client_portal_user":
         client_user = get_client_portal_user(request)
         qs = qs.filter(client=client_user.client) if client_user else qs.none()
     else:
@@ -811,28 +811,43 @@ def get_company_drivers(request, company_id: Optional[str] = None, active_only: 
         from django.core.exceptions import ValidationError
         from logistics.models import Driver, Vehicle
 
-        staff = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
-        is_admin = getattr(staff, "is_platform_admin", False)
-        auth_op_id = staff.operator_id
-
-        if not is_admin and auth_op_id:
-            drivers = Driver.objects.filter(operator_id=auth_op_id)
-        elif company_id and company_id != "global":
-            try:
-                drivers = Driver.objects.filter(operator_id=company_id)
-            except (ValidationError, ValueError):
+        auth = getattr(request, "auth", None) or {}
+        if auth.get("user_type") == "client_portal_user" or auth.get("client_id"):
+            from accounts.auth import get_client_portal_user
+            client_user = get_client_portal_user(request)
+            if not client_user:
+                raise HttpError(401, "Usuário lojista não autenticado.")
+            if client_user.operator_id:
+                drivers = Driver.objects.filter(operator_id=client_user.operator_id)
+            else:
                 drivers = Driver.objects.none()
-        elif is_admin:
-            drivers = Driver.objects.all()
         else:
-            drivers = Driver.objects.none()
+            staff = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
+            is_admin = getattr(staff, "is_platform_admin", False)
+            auth_op_id = staff.operator_id
+
+            if not is_admin and auth_op_id:
+                drivers = Driver.objects.filter(operator_id=auth_op_id)
+            elif company_id and company_id != "global":
+                try:
+                    drivers = Driver.objects.filter(operator_id=company_id)
+                except (ValidationError, ValueError):
+                    drivers = Driver.objects.none()
+            elif is_admin:
+                drivers = Driver.objects.all()
+            else:
+                drivers = Driver.objects.none()
 
         if active_only:
             drivers = drivers.filter(active=True)
 
         res = []
         for d in drivers.order_by("-createdAt"):
-            veh = Vehicle.objects.filter(operator=d.operator).first()
+            veh = None
+            try:
+                veh = Vehicle.objects.filter(operator=d.operator).first()
+            except Exception:
+                veh = None
             res.append({
                 "id": str(d.id),
                 "driverId": str(d.id),
@@ -1222,8 +1237,35 @@ def create_company_store(request, payload: StoreCreateSchema):
         raise HttpError(400, f"Falha ao cadastrar empresa: {str(e)}")
 @router.get("/configs")
 def get_configs(request, company_id: Optional[str] = None, company_name: Optional[str] = None):
-    from accounts.auth import require_role
+    from accounts.auth import get_client_portal_user, require_role
     from ninja.errors import HttpError
+
+    auth = getattr(request, "auth", None) or {}
+    if auth.get("user_type") == "client_portal_user" or auth.get("client_id"):
+        client_user = get_client_portal_user(request)
+        if not client_user:
+            raise HttpError(401, "Usuário lojista não autenticado.")
+        op = client_user.operator
+        if not op:
+            raise HttpError(404, "Operador da loja não encontrado.")
+        return {
+            "id": str(op.id),
+            "nome": op.name,
+            "company_id": str(client_user.client_id),
+            "company_name": client_user.client.name if client_user.client else op.name,
+            "ride_fee_per_delivery": 1.6,
+            "minimum_rides_fee_floor": 350.0,
+            "daily_rate_weekday": 60.0,
+            "daily_rate_saturday": 70.0,
+            "daily_rate_sunday": 80.0,
+            "daily_rate_holiday": 80.0,
+            "taxa_supervisao": 10.0,
+            "debito_pendente": 0.0,
+            "guaranteed_mode_enabled": True,
+            "retencao_devolucao": True,
+            "bloquear_fatura": True,
+            "features": {},
+        }
 
     actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
     op = None
@@ -2780,13 +2822,24 @@ def dispatch_store_ride(request, payload: DispatchStoreRidePayload):
     from ninja.errors import HttpError
     import uuid
 
-    actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE"])(request)
-    stores = Store.objects.select_related("operator", "client").filter(
-        id=payload.store_id, operational=True
-    )
-    if not getattr(actor, "is_platform_admin", False):
-        stores = stores.filter(operator=actor.operator)
-    store = stores.first()
+    auth = getattr(request, "auth", None) or {}
+    if auth.get("user_type") == "client_portal_user" or auth.get("client_id"):
+        from accounts.auth import get_client_portal_user
+        client_user = get_client_portal_user(request)
+        if not client_user:
+            raise HttpError(401, "Usuário lojista não autenticado.")
+        stores = Store.objects.select_related("operator", "client").filter(
+            id=payload.store_id, client=client_user.client, operational=True
+        )
+        store = stores.first()
+    else:
+        actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE"])(request)
+        stores = Store.objects.select_related("operator", "client").filter(
+            id=payload.store_id, operational=True
+        )
+        if not getattr(actor, "is_platform_admin", False):
+            stores = stores.filter(operator=actor.operator)
+        store = stores.first()
     if not store:
         raise HttpError(404, "Loja parceira não encontrada.")
     driver = None
@@ -3105,7 +3158,10 @@ def get_dashboard_stats(
     if client_id:
         orders_qs = orders_qs.filter(store__client_id=client_id)
         stores_qs = stores_qs.filter(client_id=client_id)
-        drivers_qs = drivers_qs.none()
+        if client_user and client_user.operator_id:
+            drivers_qs = drivers_qs.filter(operator_id=client_user.operator_id)
+        else:
+            drivers_qs = drivers_qs.none()
         entries_qs = entries_qs.none()
     elif not is_admin and auth_op_id:
         orders_qs = orders_qs.filter(operator_id=auth_op_id)

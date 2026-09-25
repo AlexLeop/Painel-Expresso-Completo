@@ -82,6 +82,12 @@ export async function authFetch(url: string, options: RequestInit = {}) {
         headers,
         credentials: "include",
       });
+    } else {
+      authStorage.clearTokens();
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
+      throw new Error("Sessão expirada. Faça login novamente.");
     }
   }
 
@@ -102,10 +108,8 @@ export async function authFetch(url: string, options: RequestInit = {}) {
       window.dispatchEvent(new CustomEvent("nevesgo:network-error", { detail: customError }));
     }
     
-    authStorage.clearTokens();
-    if (window.location.pathname !== "/login") {
-      window.location.href = "/login";
-    }
+    // Se a renovacao funcionou mas o endpoint respondeu 401/403, e restricao de permissao do recurso.
+    // NAO limpamos tokens nem forcamos redirecionamento para /login para evitar loop infinito.
     throw new Error(customError);
   }
 
