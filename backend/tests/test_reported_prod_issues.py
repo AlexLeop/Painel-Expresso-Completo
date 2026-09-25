@@ -264,11 +264,49 @@ def test_db_configs_company_id_global(client: Client, sample_data):
 
 
 @pytest.mark.django_db
-def test_branding_platform_admin_global(client: Client, sample_data):
-    token = sample_data["admin_token"]
-    resp = client.get("/api/v1/branding/", HTTP_AUTHORIZATION=f"Bearer {token}")
-    # Platform admin viewing global dashboard shouldn't get 404!
-    assert resp.status_code == 200
+def test_branding_platform_admin_global_and_multi_tenant_isolation(client: Client, sample_data):
+    from accounts.models_branding import OperatorBranding
+
+    op = sample_data["operator"]
+    admin_token = sample_data["admin_token"]
+    staff_token = create_access_token({
+        "sub": str(sample_data["staff"].id),
+        "operator_id": str(op.id),
+        "role": "ADMIN",
+        "email": sample_data["staff"].email,
+    })
+
+    # 1. Operador logístico customiza o nome da sua empresa (White-Label)
+    OperatorBranding.objects.create(
+        id=uuid.uuid4(),
+        operator=op,
+        brand_name="Transportadora Silva Exclusiva",
+        color_primary="#123456",
+    )
+
+    # 2. Operador autenticado busca seu próprio branding
+    resp_op = client.get("/api/v1/branding/", HTTP_AUTHORIZATION=f"Bearer {staff_token}")
+    assert resp_op.status_code == 200
+    assert resp_op.json()["brand_name"] == "Transportadora Silva Exclusiva"
+    assert resp_op.json()["operator_id"] == str(op.id)
+
+    # 3. Proprietário do sistema (PlatformAdmin) no painel global NÃO pode receber a marca do operador!
+    # Deve receber estritamente a identidade oficial da plataforma ("Expresso Neves").
+    resp_admin = client.get("/api/v1/branding/", HTTP_AUTHORIZATION=f"Bearer {admin_token}")
+    assert resp_admin.status_code == 200
+    assert resp_admin.json()["brand_name"] == "Expresso Neves"
+    assert resp_admin.json()["brand_name"] != "Transportadora Silva Exclusiva"
+    assert resp_admin.json()["operator_id"] == "global"
+
+    # 4. PlatformAdmin inspecionando especificamente o operador (via header X-Operator-Id)
+    resp_admin_scoped = client.get(
+        "/api/v1/branding/",
+        HTTP_AUTHORIZATION=f"Bearer {admin_token}",
+        HTTP_X_OPERATOR_ID=str(op.id),
+    )
+    assert resp_admin_scoped.status_code == 200
+    assert resp_admin_scoped.json()["brand_name"] == "Transportadora Silva Exclusiva"
+
 
 
 @pytest.mark.django_db

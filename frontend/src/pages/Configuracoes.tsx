@@ -183,7 +183,7 @@ function WhiteLabelConfigPanel() {
           <button
             type="button"
             onClick={handleReset}
-            disabled={saving}
+            disabled={saving || branding.operator_id === "global"}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-zinc-600 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors disabled:opacity-50"
           >
             <RefreshCw className="w-3.5 h-3.5" /> Restaurar Padrões
@@ -191,7 +191,8 @@ function WhiteLabelConfigPanel() {
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || branding.operator_id === "global"}
+            title={branding.operator_id === "global" ? "Selecione uma operadora para editar sua marca específica." : undefined}
             className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-zinc-900 hover:bg-zinc-800 rounded-lg shadow-sm transition-all focus:ring-2 focus:ring-zinc-900/20 disabled:opacity-50"
           >
             {saving ? (
@@ -205,6 +206,15 @@ function WhiteLabelConfigPanel() {
           </button>
         </div>
       </div>
+
+      {branding.operator_id === "global" && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg p-3 text-xs flex items-center gap-2">
+          <Info className="w-4 h-4 text-amber-600 shrink-0" />
+          <span>
+            <strong>Identidade Global da Plataforma ({branding.brand_name}):</strong> Você está visualizando o painel como proprietário do sistema. As personalizações de marca (nome, cores e logotipo) realizadas por cada operador logístico em sua central ficam restritas e isoladas exclusivamente na conta dele (White-Label) e nunca alteram a marca global da plataforma.
+          </span>
+        </div>
+      )}
 
       {savedSuccess && (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg p-3 text-xs flex items-center gap-2 animate-fadeIn">

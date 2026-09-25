@@ -34,6 +34,24 @@ router = Router()
 HEX_COLOR_REGEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 VALID_THEME_MODES = {"light", "dark", "auto"}
 
+GLOBAL_PLATFORM_BRANDING = {
+    "id": "global",
+    "operator_id": "global",
+    "brand_name": "Expresso Neves",
+    "logo_url": None,
+    "favicon_url": None,
+    "color_primary": "#E55C00",
+    "color_secondary": "#4f46e5",
+    "color_accent": "#f59e0b",
+    "color_background": "#F9F9FA",
+    "color_surface": "#ffffff",
+    "color_text": "#18181b",
+    "dark_color_background": "#0a0a0a",
+    "dark_color_surface": "#171717",
+    "dark_color_text": "#fafafa",
+    "theme_mode": "light",
+}
+
 
 class BrandingPublicOut(Schema):
     brand_name: str
@@ -108,7 +126,7 @@ def _get_auth_info(request: HttpRequest) -> tuple[Optional[uuid.UUID], bool]:
         role = str(user.get("role", "")).upper()
         is_platform_admin = bool(user.get("is_platform_admin")) or role in ("PLATFORM_ADMIN", "SUPERADMIN")
         if is_platform_admin:
-            raw_op_id = request.headers.get("X-Operator-Id") or user.get("operator_id")
+            raw_op_id = request.headers.get("X-Operator-Id") or request.GET.get("operator_id") or user.get("operator_id")
         else:
             staff = get_staff_member(request)
             raw_op_id = staff.operator_id if staff else user.get("operator_id")
@@ -118,7 +136,7 @@ def _get_auth_info(request: HttpRequest) -> tuple[Optional[uuid.UUID], bool]:
         raw_op_id = getattr(user, "operator_id", None) or getattr(getattr(user, "operator", None), "id", None)
         is_platform_admin = bool(getattr(user, "is_platform_admin", False)) or role in ("PLATFORM_ADMIN", "SUPERADMIN")
         if is_platform_admin and not raw_op_id:
-            raw_op_id = request.headers.get("X-Operator-Id")
+            raw_op_id = request.headers.get("X-Operator-Id") or request.GET.get("operator_id")
 
     is_admin = is_platform_admin or role in ("ADMIN", "OPERADOR_ADMIN")
     parsed_uuid: Optional[uuid.UUID] = None
@@ -259,28 +277,10 @@ def get_branding(request: HttpRequest):
     operator_id, is_admin = _get_auth_info(request)
     if not operator_id:
         if is_admin:
-            # PlatformAdmin sem operadora vinculada: retorna branding de uma das operadoras
-            # existentes ou branding padrão da plataforma para o painel global
-            branding = OperatorBranding.objects.first()
-            if branding:
-                return 200, _serialize_branding(branding)
-            return 200, {
-                "id": "global",
-                "operator_id": "global",
-                "brand_name": "Expresso Neves",
-                "logo_url": None,
-                "favicon_url": None,
-                "color_primary": "#E55C00",
-                "color_secondary": "#4f46e5",
-                "color_accent": "#f59e0b",
-                "color_background": "#F9F9FA",
-                "color_surface": "#ffffff",
-                "color_text": "#18181b",
-                "dark_color_background": "#0a0a0a",
-                "dark_color_surface": "#171717",
-                "dark_color_text": "#fafafa",
-                "theme_mode": "light",
-            }
+            # PlatformAdmin sem operadora vinculada (escopo global):
+            # SEMPRE retorna a marca oficial do sistema ("Expresso Neves").
+            # NUNCA vazar dados ou nomes de empresas de operadoras logísticas.
+            return 200, dict(GLOBAL_PLATFORM_BRANDING)
         return 404, {"error": "Operador não identificado."}
 
     branding = OperatorBranding.objects.filter(operator_id=operator_id).first()
@@ -307,7 +307,7 @@ def update_branding(request: HttpRequest, payload: BrandingUpdateIn):
     """
     operator_id, is_admin = _get_auth_info(request)
     if not operator_id:
-        return 403, {"error": "Acesso negado."}
+        return 403, {"error": "Acesso negado. Selecione uma operadora para personalizar a marca."}
     if not is_admin:
         return 403, {"error": "Apenas administradores podem alterar o branding."}
 
@@ -374,7 +374,7 @@ def upload_logo(request: HttpRequest, file: UploadedFile = File(...)):
     """
     operator_id, is_admin = _get_auth_info(request)
     if not operator_id:
-        return 403, {"error": "Acesso negado."}
+        return 403, {"error": "Acesso negado. Selecione uma operadora para enviar a logo."}
     if not is_admin:
         return 403, {"error": "Apenas administradores podem alterar o branding."}
 
@@ -416,7 +416,7 @@ def upload_favicon(request: HttpRequest, file: UploadedFile = File(...)):
     """
     operator_id, is_admin = _get_auth_info(request)
     if not operator_id:
-        return 403, {"error": "Acesso negado."}
+        return 403, {"error": "Acesso negado. Selecione uma operadora para enviar o favicon."}
     if not is_admin:
         return 403, {"error": "Apenas administradores podem alterar o branding."}
 
