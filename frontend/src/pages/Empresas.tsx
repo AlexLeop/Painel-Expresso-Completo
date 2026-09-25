@@ -304,6 +304,7 @@ export function Empresas() {
         }
 
         setEmpresas(empresas.filter((e) => e.id !== empresaToDelete));
+        await fetchEmpresas();
       } catch (err: any) {
         logger.error("Failed to delete", err);
         alert(`Falha ao excluir empresa: ${err.message}`);

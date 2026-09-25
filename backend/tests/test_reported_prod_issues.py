@@ -99,6 +99,18 @@ def setup_tables(db, monkeypatch):
             )
         """)
         cur.execute("""
+            CREATE TABLE IF NOT EXISTS "Turno" (
+                id CHAR(32) PRIMARY KEY,
+                operator_id CHAR(32) NOT NULL,
+                store_id CHAR(32) NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                "startTime" TIME,
+                "endTime" TIME,
+                "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS "Driver" (
                 id CHAR(32) PRIMARY KEY,
                 operator_id CHAR(32) NOT NULL,
@@ -608,5 +620,149 @@ def test_store_creation_with_manager_and_store_operator_flow(client: Client, sam
     )
     assert resp_branding_operador.status_code == 200
     assert resp_branding_operador.json()["brand_name"] == "Neves Express Logística"
+
+
+@pytest.mark.django_db
+def test_store_creation_with_null_coordinates_uses_safe_fallback(client: Client):
+    """
+    Garante que caso o navegador não envie coordenadas (ou Nominatim falhe/demore),
+    o endpoint POST /api/v1/db/companies não falhe com 500 ou 422, mas use fallback seguro.
+    """
+    admin_user = PlatformAdmin.objects.create(
+        id=uuid.uuid4(),
+        name="Platform Admin Test",
+        email="admin_fallback_coords@test.com",
+    )
+    token = create_access_token({
+        "sub": str(admin_user.id),
+        "user_type": "platform_admin",
+        "email": admin_user.email,
+        "role": "ADMIN",
+        "is_platform_admin": True,
+    })
+    op = Operator.objects.create(
+        id=uuid.uuid4(),
+        name="Operador Logístico BH",
+    )
+
+    payload = {
+        "companyId": str(op.id),
+        "name": "Hamburgueria Artesanal",
+        "documento": "12.345.678/0001-90",
+        "endereco": "Rua das Flores, 123",
+        "lat": None,
+        "lng": None,
+        "managerName": "Pedro Gestor",
+        "managerEmail": "pedro@artesanal.com",
+        "managerPassword": "SenhaForte123",
+    }
+
+    resp = client.post(
+        "/api/v1/db/companies",
+        data=json.dumps(payload),
+        content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+    assert resp.status_code == 200, f"Error: {resp.json()}"
+    data = resp.json()
+    assert data["success"] is True
+    assert "storeId" in data
+
+    store = Store.objects.get(id=data["storeId"])
+    assert store.name == "Hamburgueria Artesanal"
+    assert store.geom is not None
+    assert "-19.9227" in str(store.geom)
+    assert "-43.9451" in str(store.geom)
+    assert store.operational is True
+
+    # Verifica que o gestor da loja foi criado e pode logar
+    manager = ClientPortalUser.objects.get(email="pedro@artesanal.com")
+    assert manager.role == "lojista"
+    assert manager.check_password("SenhaForte123") is True
+
+
+@pytest.mark.django_db
+def test_store_deletion_permanently_removes_from_database(client: Client):
+    """
+    Garante que DELETE /api/v1/db/companies/{id} realmente exclua o registro
+    do banco de dados (Store e Client órfão) em vez de apenas desativar.
+    """
+    admin_user = PlatformAdmin.objects.create(
+        id=uuid.uuid4(),
+        name="Platform Admin Test Delete",
+        email="admin_delete@test.com",
+    )
+    token = create_access_token({
+        "sub": str(admin_user.id),
+        "user_type": "platform_admin",
+        "email": admin_user.email,
+        "role": "ADMIN",
+        "is_platform_admin": True,
+    })
+    op = Operator.objects.create(
+        id=uuid.uuid4(),
+        name="Operador Delete Store",
+    )
+    cli = StoreClient.objects.create(
+        id=uuid.uuid4(),
+        operator=op,
+        name="Loja para Excluir",
+        document="00.000.000/0001-00",
+        active=True,
+    )
+    store = Store.objects.create(
+        id=uuid.uuid4(),
+        operator=op,
+        client=cli,
+        name="Loja para Excluir",
+        geom="POINT (-43.9451 -19.9227)",
+        operational=True,
+    )
+
+    store_id = str(store.id)
+    client_id = str(cli.id)
+
+    # Exclui a loja
+    resp = client.delete(
+        f"/api/v1/db/companies/{store_id}",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True
+
+    # Confirma que a Store NÃO existe mais no banco de dados
+    assert not Store.objects.filter(id=store_id).exists()
+    # Confirma que o Client órfão também foi excluído
+    assert not StoreClient.objects.filter(id=client_id).exists()
+
+
+@pytest.mark.django_db
+def test_get_users_platform_admin_and_operator_no_500(client: Client):
+    """
+    Garante que GET /api/v1/db/users funcione sem retornar 500
+    para PlatformAdmin e StaffMember.
+    """
+    admin_user = PlatformAdmin.objects.create(
+        id=uuid.uuid4(),
+        name="Platform Admin Users",
+        email="admin_users@test.com",
+    )
+    token_admin = create_access_token({
+        "sub": str(admin_user.id),
+        "user_type": "platform_admin",
+        "email": admin_user.email,
+        "role": "ADMIN",
+        "is_platform_admin": True,
+    })
+
+    resp = client.get(
+        "/api/v1/db/users",
+        HTTP_AUTHORIZATION=f"Bearer {token_admin}",
+    )
+    assert resp.status_code == 200
+    users = resp.json()
+    assert isinstance(users, list)
+    assert any(u["email"] == "admin_users@test.com" for u in users)
+
 
 

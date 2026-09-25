@@ -9,6 +9,51 @@ from accounts.models import Operator
 
 logger = logging.getLogger(__name__)
 
+_schema_ensured = False
+
+def _ensure_database_schema():
+    global _schema_ensured
+    if _schema_ensured:
+        return
+    from django.db import connection
+    try:
+        if connection.vendor == "postgresql":
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    ALTER TABLE "PlatformAdmin"
+                        ADD COLUMN IF NOT EXISTS "passwordHash" VARCHAR(255);
+                    ALTER TABLE "PlatformAdmin"
+                        ALTER COLUMN supabase_uid DROP NOT NULL;
+
+                    ALTER TABLE "StaffMember"
+                        ADD COLUMN IF NOT EXISTS "passwordHash" VARCHAR(255);
+                    ALTER TABLE "StaffMember"
+                        ALTER COLUMN supabase_uid DROP NOT NULL;
+
+                    ALTER TABLE "Driver"
+                        ADD COLUMN IF NOT EXISTS "passwordHash" VARCHAR(255);
+                    ALTER TABLE "Driver"
+                        ALTER COLUMN supabase_uid DROP NOT NULL;
+
+                    ALTER TABLE "ClientPortalUser"
+                        ADD COLUMN IF NOT EXISTS role VARCHAR(50) NOT NULL DEFAULT 'lojista',
+                        ADD COLUMN IF NOT EXISTS "passwordHash" VARCHAR(255),
+                        ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+                    ALTER TABLE "ClientPortalUser"
+                        ALTER COLUMN supabase_uid DROP NOT NULL;
+
+                    CREATE INDEX IF NOT EXISTS idx_client_portal_user_role
+                        ON "ClientPortalUser" (operator_id, client_id, role);
+                    CREATE INDEX IF NOT EXISTS idx_client_portal_user_active
+                        ON "ClientPortalUser" (operator_id, active);
+
+                    ALTER TABLE "Store"
+                        ADD COLUMN IF NOT EXISTS operational BOOLEAN NOT NULL DEFAULT TRUE;
+                """)
+        _schema_ensured = True
+    except Exception as e:
+        logger.warning(f"Aviso de auto-alinhamento de schema: {e}")
+
 router = Router(tags=["Frontend DB Integration (Legacy)"])
 
 class EntryPayload(BaseModel):
@@ -144,6 +189,8 @@ def get_companies(request):
     from logistics.models import Store
     from finance.models import Contract
 
+    _ensure_database_schema()
+
     auth = getattr(request, "auth", None) or {}
     client_id = auth.get("client_id")
 
@@ -202,90 +249,122 @@ def get_users(request):
     from accounts.auth import require_role
     from accounts.models import StaffMember, PlatformAdmin
     from logistics.models import ClientPortalUser
+    from ninja.errors import HttpError
+
+    _ensure_database_schema()
 
     auth = getattr(request, "auth", None) or {}
     user_type = auth.get("user_type")
     client_id = auth.get("client_id")
     user_role = str(auth.get("role", "")).lower()
 
-    if user_type == "client_portal_user" or client_id:
-        if user_role == "operador_loja":
-            # Operador comum da loja apenas despacha pedidos; não gerencia equipe
-            return []
-        # Gestor da Loja (lojista): lista a si mesmo e os operadores da sua própria loja
+    try:
+        if user_type == "client_portal_user" or client_id:
+            if user_role == "operador_loja":
+                # Operador comum da loja apenas despacha pedidos; não gerencia equipe
+                return []
+            # Gestor da Loja (lojista): lista a si mesmo e os operadores da sua própria loja
+            res = []
+            try:
+                for c in ClientPortalUser.objects.filter(client_id=client_id).select_related("client").order_by("-createdAt"):
+                    res.append({
+                        "id": str(c.id),
+                        "nome": c.name,
+                        "name": c.name,
+                        "email": c.email,
+                        "role": getattr(c, "role", None) or "lojista",
+                        "active": getattr(c, "active", True),
+                        "companies": [{"id": str(c.client_id), "name": c.client.name}] if c.client else [],
+                    })
+            except Exception as e:
+                logger.warning(f"Erro ao listar ClientPortalUser da loja {client_id}: {e}")
+            return res
+
+        actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
+        is_admin = bool(getattr(actor, "is_platform_admin", False))
+        op_id = actor.operator_id
+
         res = []
-        for c in ClientPortalUser.objects.filter(client_id=client_id).select_related("client").order_by("-createdAt"):
-            res.append({
-                "id": str(c.id),
-                "nome": c.name,
-                "name": c.name,
-                "email": c.email,
-                "role": getattr(c, "role", None) or "lojista",
-                "active": c.active,
-                "companies": [{"id": str(c.client_id), "name": c.client.name}] if c.client else [],
-            })
+        if is_admin:
+            # PlatformAdmin vê toda a hierarquia
+            try:
+                for p in PlatformAdmin.objects.all().order_by("-createdAt"):
+                    res.append({
+                        "id": str(p.id),
+                        "nome": p.name,
+                        "name": p.name,
+                        "email": p.email,
+                        "role": "superadmin",
+                        "active": True,
+                        "companies": [{"id": "global", "name": "Administração Global"}],
+                    })
+            except Exception as e:
+                logger.warning(f"Erro ao listar PlatformAdmin: {e}")
+
+            try:
+                for u in StaffMember.objects.select_related("operator").all().order_by("-createdAt"):
+                    res.append({
+                        "id": str(u.id),
+                        "nome": u.name,
+                        "name": u.name,
+                        "email": u.email,
+                        "role": u.role,
+                        "active": u.active,
+                        "companies": [{"id": str(u.operator_id), "name": u.operator.name}] if u.operator else [],
+                    })
+            except Exception as e:
+                logger.warning(f"Erro ao listar StaffMember para admin: {e}")
+
+            try:
+                for c in ClientPortalUser.objects.select_related("client").all().order_by("-createdAt"):
+                    res.append({
+                        "id": str(c.id),
+                        "nome": c.name,
+                        "name": c.name,
+                        "email": c.email,
+                        "role": getattr(c, "role", None) or "lojista",
+                        "active": getattr(c, "active", True),
+                        "companies": [{"id": str(c.client_id), "name": c.client.name}] if c.client else [],
+                    })
+            except Exception as e:
+                logger.warning(f"Erro ao listar ClientPortalUser para admin: {e}")
+
+        elif op_id:
+            # Staff do operador vê seus colaboradores e usuários das lojas da sua central
+            try:
+                for u in StaffMember.objects.filter(operator_id=op_id).select_related("operator").order_by("-createdAt"):
+                    res.append({
+                        "id": str(u.id),
+                        "nome": u.name,
+                        "name": u.name,
+                        "email": u.email,
+                        "role": u.role,
+                        "active": u.active,
+                        "companies": [{"id": str(u.operator_id), "name": u.operator.name}] if u.operator else [],
+                    })
+            except Exception as e:
+                logger.warning(f"Erro ao listar StaffMember para operador {op_id}: {e}")
+
+            try:
+                for c in ClientPortalUser.objects.filter(operator_id=op_id).select_related("client").order_by("-createdAt"):
+                    res.append({
+                        "id": str(c.id),
+                        "nome": c.name,
+                        "name": c.name,
+                        "email": c.email,
+                        "role": getattr(c, "role", None) or "lojista",
+                        "active": getattr(c, "active", True),
+                        "companies": [{"id": str(c.client_id), "name": c.client.name}] if c.client else [],
+                    })
+            except Exception as e:
+                logger.warning(f"Erro ao listar ClientPortalUser para operador {op_id}: {e}")
+
         return res
-
-    actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
-    is_admin = bool(getattr(actor, "is_platform_admin", False))
-    op_id = actor.operator_id
-
-    res = []
-    if is_admin:
-        # PlatformAdmin vê toda a hierarquia
-        for p in PlatformAdmin.objects.all().order_by("-createdAt"):
-            res.append({
-                "id": str(p.id),
-                "nome": p.name,
-                "name": p.name,
-                "email": p.email,
-                "role": "superadmin",
-                "active": True,
-                "companies": [{"id": "global", "name": "Administração Global"}],
-            })
-        for u in StaffMember.objects.select_related("operator").all().order_by("-createdAt"):
-            res.append({
-                "id": str(u.id),
-                "nome": u.name,
-                "name": u.name,
-                "email": u.email,
-                "role": u.role,
-                "active": u.active,
-                "companies": [{"id": str(u.operator_id), "name": u.operator.name}] if u.operator else [],
-            })
-        for c in ClientPortalUser.objects.select_related("client").all().order_by("-createdAt"):
-            res.append({
-                "id": str(c.id),
-                "nome": c.name,
-                "name": c.name,
-                "email": c.email,
-                "role": getattr(c, "role", None) or "lojista",
-                "active": c.active,
-                "companies": [{"id": str(c.client_id), "name": c.client.name}] if c.client else [],
-            })
-    elif op_id:
-        # Staff do operador vê seus colaboradores e usuários das lojas da sua central
-        for u in StaffMember.objects.filter(operator_id=op_id).select_related("operator").order_by("-createdAt"):
-            res.append({
-                "id": str(u.id),
-                "nome": u.name,
-                "name": u.name,
-                "email": u.email,
-                "role": u.role,
-                "active": u.active,
-                "companies": [{"id": str(u.operator_id), "name": u.operator.name}] if u.operator else [],
-            })
-        for c in ClientPortalUser.objects.filter(operator_id=op_id).select_related("client").order_by("-createdAt"):
-            res.append({
-                "id": str(c.id),
-                "nome": c.name,
-                "name": c.name,
-                "email": c.email,
-                "role": getattr(c, "role", None) or "lojista",
-                "active": c.active,
-                "companies": [{"id": str(c.client_id), "name": c.client.name}] if c.client else [],
-            })
-    return res
+    except HttpError:
+        raise
+    except Exception as e:
+        logger.exception(f"Erro inesperado em get_users: {e}")
+        return []
 
 class UserPayload(BaseModel):
     id: Optional[str] = None
@@ -372,6 +451,8 @@ def create_user(request, payload: UserPayload):
     from django.db import IntegrityError, transaction
     from ninja.errors import HttpError
     import uuid
+
+    _ensure_database_schema()
 
     auth = getattr(request, "auth", None) or {}
     user_type = auth.get("user_type")
@@ -1048,6 +1129,8 @@ def create_company_store(request, payload: StoreCreateSchema):
     from ninja.errors import HttpError
     import uuid
 
+    _ensure_database_schema()
+
     actor = require_role(["ADMIN", "MANAGER"])(request)
     operator = actor.operator
     if getattr(actor, "is_platform_admin", False):
@@ -1060,10 +1143,23 @@ def create_company_store(request, payload: StoreCreateSchema):
         raise HttpError(422, "Nome da empresa é obrigatório.")
 
     try:
-        if payload.lat is None or payload.lng is None:
-            raise HttpError(422, "Latitude e longitude da loja são obrigatórias.")
-        if not (-90 <= payload.lat <= 90 and -180 <= payload.lng <= 180):
-            raise HttpError(422, "Coordenadas da loja são inválidas.")
+        lat = payload.lat
+        lng = payload.lng
+        if lat is None or lng is None:
+            # Fallback seguro caso geocodificação web não tenha retornado coordenadas
+            lat = -19.9227
+            lng = -43.9451
+        else:
+            try:
+                lat = float(lat)
+                lng = float(lng)
+            except (ValueError, TypeError):
+                lat = -19.9227
+                lng = -43.9451
+
+        if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+            lat = -19.9227
+            lng = -43.9451
 
         manager_id = None
         if payload.managerEmail and payload.managerName:
@@ -1081,7 +1177,7 @@ def create_company_store(request, payload: StoreCreateSchema):
             )
             store = Store.objects.create(
                 id=uuid.uuid4(), operator=operator, client=client, name=name.strip(),
-                geom=Point(payload.lng, payload.lat, srid=4326),
+                geom=Point(lng, lat, srid=4326),
                 averagePrepTimeMinutes=payload.averagePrepTimeMinutes or 15,
                 operational=True,
             )
@@ -1119,9 +1215,11 @@ def create_company_store(request, payload: StoreCreateSchema):
     except HttpError:
         raise
     except (ValueError, TypeError) as e:
-        import traceback
-        traceback.print_exc()
+        logger.warning(f"Dados inválidos ao cadastrar loja: {e}")
         raise HttpError(422, f"Dados da loja são inválidos: {e}")
+    except Exception as e:
+        logger.exception(f"Erro inesperado ao cadastrar empresa/loja: {e}")
+        raise HttpError(400, f"Falha ao cadastrar empresa: {str(e)}")
 @router.get("/configs")
 def get_configs(request, company_id: Optional[str] = None, company_name: Optional[str] = None):
     from accounts.auth import require_role
@@ -1298,6 +1396,7 @@ def update_company_store(request, company_id: str, payload: StoreUpdateSchema):
 def delete_company_store(request, company_id: str):
     from accounts.auth import require_role
     from ninja.errors import HttpError
+    from django.db import transaction
 
     actor = require_role(["ADMIN"])(request)
     stores = Store.objects.filter(id=company_id)
@@ -1306,8 +1405,41 @@ def delete_company_store(request, company_id: str):
     store = stores.first()
     if not store:
         raise HttpError(404, "Loja não encontrada.")
-    store.operational = False
-    store.save(update_fields=["operational", "updatedAt"])
+
+    try:
+        with transaction.atomic():
+            client = store.client
+            store_id = str(store.id)
+            store_id_clean = store_id.replace("-", "")
+            try:
+                store.delete()
+            except Exception as del_err:
+                logger.warning(f"Fallback para exclusão direta de Store {store_id}: {del_err}")
+                from django.db import connection
+                with connection.cursor() as cursor:
+                    cursor.execute('DELETE FROM "Store" WHERE id = %s OR id = %s', [store_id, store_id_clean])
+
+            # Se o cliente não possuir mais lojas cadastradas, remove também o cliente e seus acessos de portal
+            if client and not Store.objects.filter(client=client).exists():
+                from logistics.models import ClientPortalUser
+                client_id_str = str(client.id)
+                client_id_clean = client_id_str.replace("-", "")
+                try:
+                    ClientPortalUser.objects.filter(client=client).delete()
+                except Exception as del_err:
+                    from django.db import connection
+                    with connection.cursor() as cursor:
+                        cursor.execute('DELETE FROM "ClientPortalUser" WHERE client_id = %s OR client_id = %s', [client_id_str, client_id_clean])
+                try:
+                    client.delete()
+                except Exception as del_err:
+                    from django.db import connection
+                    with connection.cursor() as cursor:
+                        cursor.execute('DELETE FROM "Client" WHERE id = %s OR id = %s', [client_id_str, client_id_clean])
+    except Exception as e:
+        logger.exception(f"Erro ao excluir loja {company_id}: {e}")
+        raise HttpError(400, f"Não foi possível excluir a loja: {e}")
+
     return {'success': True}
 
 # ==============================================================================

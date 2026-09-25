@@ -14,3 +14,10 @@ from django.core.asgi import get_asgi_application
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 
 application = get_asgi_application()
+
+try:
+    from config.db_api import _ensure_database_schema
+    _ensure_database_schema()
+except Exception as e:
+    import logging
+    logging.getLogger(__name__).warning(f"Could not auto-align database schema on ASGI startup: {e}")
