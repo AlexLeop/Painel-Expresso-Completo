@@ -130,7 +130,7 @@ def _get_auth_info(request: HttpRequest) -> tuple[Optional[uuid.UUID], bool]:
         else:
             staff = get_staff_member(request)
             raw_op_id = staff.operator_id if staff else user.get("operator_id")
-            role = str(staff.role if staff else "").upper()
+            role = (staff.role if staff else "").upper()
     else:
         role = str(getattr(user, "role", "")).upper()
         raw_op_id = getattr(user, "operator_id", None) or getattr(getattr(user, "operator", None), "id", None)
@@ -168,13 +168,15 @@ def _image_signature_is_valid(file: UploadedFile, allowed_types: set[str]) -> bo
 
 
 def _save_brand_asset(file: UploadedFile, operator_id: uuid.UUID, kind: str) -> str:
-    extension = {
+    content_type = file.content_type or ""
+    extensions = {
         "image/png": ".png",
         "image/jpeg": ".jpg",
         "image/webp": ".webp",
         "image/x-icon": ".ico",
         "image/vnd.microsoft.icon": ".ico",
-    }[file.content_type]
+    }
+    extension = extensions.get(content_type, ".png")
     safe_kind = get_valid_filename(kind)
     filename = f"branding/{safe_kind}/{operator_id}/{uuid.uuid4().hex}{extension}"
     stored_name = default_storage.save(filename, file)
