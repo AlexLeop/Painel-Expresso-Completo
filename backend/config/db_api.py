@@ -3115,6 +3115,7 @@ def get_dashboard_stats(
     client_id = auth.get("client_id")
     is_admin = False
     auth_op_id = None
+    client_user = None
     if client_id or auth.get("user_type") == "client_portal_user":
         client_user = get_client_portal_user(request)
         client_id = client_user.client_id if client_user else None
