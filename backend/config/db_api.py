@@ -1546,24 +1546,37 @@ def save_credit_entry(request, payload: CreditEntryPayload):
 def get_credit_queue(request, company_id: Optional[str] = None, status: Optional[str] = None):
     from finance.models import DailyCreditCalculation
     from accounts.auth import require_role
+    from django.core.exceptions import ValidationError
+    import uuid
 
     actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
     qs = DailyCreditCalculation.objects.select_related("driver", "operator", "store").all()
     if not getattr(actor, "is_platform_admin", False):
-        qs = qs.filter(operator=actor.operator)
-    elif company_id and company_id != "global":
-        qs = qs.filter(operator_id=company_id)
+        if getattr(actor, "operator", None):
+            qs = qs.filter(operator=actor.operator)
+        elif getattr(actor, "operator_id", None):
+            qs = qs.filter(operator_id=actor.operator_id)
+    elif company_id and str(company_id) not in ("global", "NaN", "undefined"):
+        try:
+            op_uuid = uuid.UUID(str(company_id))
+            qs = qs.filter(operator_id=op_uuid)
+        except (ValidationError, ValueError, TypeError):
+            pass
+
     if status:
         status_list = [s.strip().upper() for s in status.split(",")]
-        mapped = []
+        mapped = set()
         for s in status_list:
-            if s == "ACTIVE" or s == "PENDING":
-                mapped.extend(["PENDING", "PROCESSING"])
-            elif s == "DEAD" or s == "FAILED":
-                mapped.append("FAILED")
-            else:
-                mapped.append(s)
-        qs = qs.filter(status__in=mapped)
+            if s in ("ACTIVE", "PENDING"):
+                mapped.add("PENDING")
+            elif s in ("DEAD", "FAILED"):
+                mapped.add("FAILED")
+            elif s in ("CREDITED", "SKIPPED"):
+                mapped.add(s)
+            elif s == "PROCESSING":
+                mapped.add("PENDING")
+        if mapped:
+            qs = qs.filter(status__in=list(mapped))
 
     items = []
     for item in qs[:100]:
@@ -1616,10 +1629,14 @@ def get_driver_balance(request, driver_id: Optional[str] = None, condutor_id: Op
     d_id = driver_id or condutor_id
     if not d_id:
         raise HttpError(422, "Motoboy é obrigatório.")
-    drivers = Driver.objects.filter(id=d_id)
-    if not getattr(actor, "is_platform_admin", False):
-        drivers = drivers.filter(operator=actor.operator)
-    if not drivers.exists():
+    from django.core.exceptions import ValidationError
+    try:
+        drivers = Driver.objects.filter(id=d_id)
+        if not getattr(actor, "is_platform_admin", False):
+            drivers = drivers.filter(operator=actor.operator)
+        if not drivers.exists():
+            raise HttpError(404, "Motoboy não encontrado.")
+    except (ValidationError, ValueError, TypeError):
         raise HttpError(404, "Motoboy não encontrado.")
     try:
         w = Wallet.objects.get(driver_id=d_id, operator_id=drivers.first().operator_id)
@@ -2090,8 +2107,16 @@ def get_operator_financial_dashboard(request, month: Optional[str] = None):
     import datetime
 
     actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
-    operator = actor.operator
-    if not operator:
+    is_platform_admin = bool(getattr(actor, "is_platform_admin", False))
+    operator = getattr(actor, "operator", None)
+
+    target_op_id = request.GET.get("operator_id") or request.GET.get("company_id") or request.headers.get("X-Operator-Id")
+    if target_op_id and str(target_op_id) not in ("global", "NaN", "undefined"):
+        op = _operator_from_company_reference(target_op_id)
+        if op:
+            operator = op
+
+    if not operator and not is_platform_admin:
         raise HttpError(422, "Selecione explicitamente um operador.")
 
     now = timezone.now()
@@ -2115,8 +2140,9 @@ def get_operator_financial_dashboard(request, month: Optional[str] = None):
     orders_qs = Order.objects.filter(status="COMPLETED")
     withdrawals_qs = WithdrawalRequest.objects.filter(status="PAID")
 
-    orders_qs = orders_qs.filter(operator=operator)
-    withdrawals_qs = withdrawals_qs.filter(operator=operator)
+    if operator:
+        orders_qs = orders_qs.filter(operator=operator)
+        withdrawals_qs = withdrawals_qs.filter(operator=operator)
 
     orders_qs = orders_qs.filter(completedAt__year=target_year, completedAt__month=target_month)
     withdrawals_qs = withdrawals_qs.filter(createdAt__year=target_year, createdAt__month=target_month)
@@ -2192,13 +2218,23 @@ def get_cash_reconciliation(request, date: Optional[str] = None):
     """
     from logistics.models import Order, Driver
     from finance.models import ManualEntry
+    from accounts.models import Operator
     from django.utils import timezone
     from accounts.auth import require_role
     from ninja.errors import HttpError
     from datetime import datetime
 
     actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
-    if not actor.operator:
+    is_platform_admin = bool(getattr(actor, "is_platform_admin", False))
+    operator = getattr(actor, "operator", None)
+
+    target_op_id = request.GET.get("operator_id") or request.GET.get("company_id") or request.headers.get("X-Operator-Id")
+    if target_op_id and str(target_op_id) not in ("global", "NaN", "undefined"):
+        op = _operator_from_company_reference(target_op_id)
+        if op:
+            operator = op
+
+    if not operator and not is_platform_admin:
         raise HttpError(422, "Selecione explicitamente um operador.")
 
     try:
@@ -2210,10 +2246,10 @@ def get_cash_reconciliation(request, date: Optional[str] = None):
         businessDate=target_date,
         status="COMPLETED"
     )
-    orders_qs = orders_qs.filter(operator=actor.operator)
+    if operator:
+        orders_qs = orders_qs.filter(operator=operator)
 
     # Filtrar pedidos onde o cliente pagou em dinheiro
-    cash_orders = []
     drivers_map = {}
 
     for o in orders_qs:
@@ -2243,22 +2279,35 @@ def get_cash_reconciliation(request, date: Optional[str] = None):
             drivers_map[d_id]["total_corridas"] += 1
             drivers_map[d_id]["total_dinheiro_cents"] += val_dinheiro
             drivers_map[d_id]["total_taxas_cents"] += taxa_motoboy
+
+            created_at_str = ""
+            if getattr(o, "createdAt", None):
+                created_at_str = o.createdAt.isoformat()
+            elif getattr(o, "requestedAt", None):
+                created_at_str = o.requestedAt.isoformat()
+            elif getattr(o, "completedAt", None):
+                created_at_str = o.completedAt.isoformat()
+
             drivers_map[d_id]["pedidos"].append({
                 "order_id": str(o.id),
                 "store_name": o.store.name if o.store else "",
+                "cash_amount_cents": val_dinheiro,
+                "cash_amount_reais": round(val_dinheiro / 100.0, 2),
                 "valor_dinheiro_cents": val_dinheiro,
                 "valor_dinheiro_reais": round(val_dinheiro / 100.0, 2),
                 "taxa_motoboy_cents": taxa_motoboy,
                 "taxa_motoboy_reais": round(taxa_motoboy / 100.0, 2),
-                "completed_at": o.completedAt.isoformat() if o.completedAt else "",
+                "created_at": created_at_str,
+                "completed_at": o.completedAt.isoformat() if getattr(o, "completedAt", None) else "",
             })
 
     # Verificar acertos já realizados (ManualEntry com descrição ou categoria de acerto)
     settlements = ManualEntry.objects.filter(
-        operator=actor.operator,
         createdAt__date=target_date,
         description__icontains="ACERTO_DINHEIRO"
     )
+    if operator:
+        settlements = settlements.filter(operator=operator)
     settled_drivers = set(str(s.driver_id) for s in settlements if s.driver_id)
 
     total_circulando = 0
@@ -2271,19 +2320,51 @@ def get_cash_reconciliation(request, date: Optional[str] = None):
         else:
             total_circulando += data["total_dinheiro_cents"]
 
-        data["saldo_devido_cents"] = saldo_devido
-        data["saldo_devido_reais"] = round(saldo_devido / 100.0, 2)
-        data["total_dinheiro_reais"] = round(data["total_dinheiro_cents"] / 100.0, 2)
-        data["total_taxas_reais"] = round(data["total_taxas_cents"] / 100.0, 2)
-        drivers_list.append(data)
+        driver_item = {
+            "driver_id": d_id,
+            "driver_name": data["driver_name"],
+            "driver_phone": data["driver_phone"],
+            "orders_count": data["total_corridas"],
+            "cash_collected_cents": data["total_dinheiro_cents"],
+            "cash_collected_reais": round(data["total_dinheiro_cents"] / 100.0, 2),
+            "driver_earnings_cents": data["total_taxas_cents"],
+            "driver_earnings_reais": round(data["total_taxas_cents"] / 100.0, 2),
+            "net_due_operator_cents": saldo_devido,
+            "net_due_operator_reais": round(saldo_devido / 100.0, 2),
+            "orders": data["pedidos"],
+            "status_acerto": data["status_acerto"],
+            # Campos legados mantidos para compatibilidade
+            "total_corridas": data["total_corridas"],
+            "total_dinheiro_cents": data["total_dinheiro_cents"],
+            "total_dinheiro_reais": round(data["total_dinheiro_cents"] / 100.0, 2),
+            "total_taxas_cents": data["total_taxas_cents"],
+            "total_taxas_reais": round(data["total_taxas_cents"] / 100.0, 2),
+            "saldo_devido_cents": saldo_devido,
+            "saldo_devido_reais": round(saldo_devido / 100.0, 2),
+            "pedidos": data["pedidos"],
+        }
+        drivers_list.append(driver_item)
+
+    total_collected_cents = sum(d["cash_collected_cents"] for d in drivers_list)
+    total_earnings_cents = sum(d["driver_earnings_cents"] for d in drivers_list)
+    total_due_cents = sum(d["net_due_operator_cents"] for d in drivers_list)
 
     return {
         "date": target_date.strftime("%Y-%m-%d"),
+        "summary": {
+            "total_collected_cents": total_collected_cents,
+            "total_collected_reais": round(total_collected_cents / 100.0, 2),
+            "total_earnings_cents": total_earnings_cents,
+            "total_earnings_reais": round(total_earnings_cents / 100.0, 2),
+            "total_due_operator_cents": total_due_cents,
+            "total_due_operator_reais": round(total_due_cents / 100.0, 2),
+            "drivers_count": len(drivers_list),
+        },
         "kpis": {
             "total_dinheiro_circulando_cents": total_circulando,
             "total_dinheiro_circulando_reais": round(total_circulando / 100.0, 2),
             "total_motoboys_com_pendencia": sum(1 for d in drivers_list if d["status_acerto"] == "PENDENTE"),
-            "total_corridas_dinheiro": sum(d["total_corridas"] for d in drivers_list),
+            "total_corridas_dinheiro": sum(d["orders_count"] for d in drivers_list),
         },
         "drivers": drivers_list,
     }

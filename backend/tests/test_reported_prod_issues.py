@@ -137,10 +137,51 @@ def setup_tables(db):
                 operator_id CHAR(32) NOT NULL,
                 store_id CHAR(32) NOT NULL,
                 driver_id CHAR(32),
+                manifest_id CHAR(32),
                 status VARCHAR(30) DEFAULT 'COMPLETED',
                 "fareValueCents" INT DEFAULT 0,
+                "storeAuthorizedBonusCents" INT DEFAULT 0,
                 "distanceMeters" INT DEFAULT 0,
+                "businessDate" DATE,
+                "allocationDifficulty" BOOLEAN DEFAULT 0,
                 "requestedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                "acceptedAt" TIMESTAMP,
+                "startedAt" TIMESTAMP,
+                "arrivedAt" TIMESTAMP,
+                "completedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                "canceledAt" TIMESTAMP,
+                external_order_id VARCHAR(255),
+                external_source VARCHAR(50),
+                metadata TEXT DEFAULT '{}',
+                "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS "WithdrawalRequest" (
+                id CHAR(32) PRIMARY KEY,
+                operator_id CHAR(32) NOT NULL,
+                driver_id CHAR(32) NOT NULL,
+                "amountCents" BIGINT NOT NULL,
+                status VARCHAR(20) DEFAULT 'PAID',
+                "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS "DailyCreditCalculation" (
+                id CHAR(32) PRIMARY KEY,
+                operator_id CHAR(32) NOT NULL,
+                driver_id CHAR(32) NOT NULL,
+                store_id CHAR(32) NOT NULL,
+                date DATE NOT NULL,
+                status VARCHAR(20) DEFAULT 'PENDING',
+                "productionValueCents" BIGINT DEFAULT 0,
+                "extrasCents" BIGINT DEFAULT 0,
+                "dailyRateOrGuaranteedCents" BIGINT DEFAULT 0,
+                "advancesCents" BIGINT DEFAULT 0,
+                "netAmountCents" BIGINT DEFAULT 0,
+                "failReason" TEXT,
                 "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -258,3 +299,54 @@ def test_adjust_store_balance_platform_admin(client: Client, sample_data):
     )
     # Should NOT be 500!
     assert resp.status_code == 200
+
+
+@pytest.mark.django_db
+def test_financial_dashboard_platform_admin_global(client: Client, sample_data):
+    token = sample_data["admin_token"]
+    resp = client.get("/api/v1/operator/financial-dashboard?month=2026-09", HTTP_AUTHORIZATION=f"Bearer {token}")
+    # MUST NOT be 422 Unprocessable Content for PlatformAdmin!
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "month_label" in data
+    assert "receita_bruta_reais" in data
+    assert "plataforma_billing" in data
+
+
+@pytest.mark.django_db
+def test_cash_reconciliation_platform_admin_global(client: Client, sample_data):
+    token = sample_data["admin_token"]
+    resp = client.get("/api/v1/operator/cash-reconciliation", HTTP_AUTHORIZATION=f"Bearer {token}")
+    # MUST NOT be 422 Unprocessable Content for PlatformAdmin!
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "summary" in data
+    assert "drivers" in data
+
+
+@pytest.mark.django_db
+def test_credit_queue_with_processing_status_and_global(client: Client, sample_data):
+    token = sample_data["admin_token"]
+    # Passing status with 'processing' which is not directly in daily_credit_status enum
+    resp = client.get(
+        "/api/v1/db/credit-queue?company_id=global&status=pending%2Cprocessing%2Cfailed",
+        HTTP_AUTHORIZATION=f"Bearer {token}"
+    )
+    # MUST NOT be 500 Internal Server Error!
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "items" in data
+
+
+@pytest.mark.django_db
+def test_credit_queue_with_nan_company_id(client: Client, sample_data):
+    token = sample_data["admin_token"]
+    resp = client.get(
+        "/api/v1/db/credit-queue?company_id=NaN&status=pending%2Cprocessing%2Cfailed",
+        HTTP_AUTHORIZATION=f"Bearer {token}"
+    )
+    # MUST NOT be 500 Internal Server Error!
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "items" in data
+
