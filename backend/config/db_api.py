@@ -1,3 +1,4 @@
+import logging
 from ninja import Router
 from typing import List, Dict, Any, Optional
 from django.shortcuts import get_object_or_404
@@ -5,6 +6,8 @@ from pydantic import BaseModel
 from finance.models import ManualEntry
 from logistics.models import Driver, Store
 from accounts.models import Operator
+
+logger = logging.getLogger(__name__)
 
 router = Router(tags=["Frontend DB Integration (Legacy)"])
 
@@ -42,7 +45,7 @@ def get_entries(request, company_id: Optional[str] = None, start: Optional[str] 
         res = []
         for entry in qs:
             try:
-                drv_name = entry.driver.name if entry.driver_id else ""
+                drv_name = entry.driver.name if getattr(entry, "driver", None) else ""
             except Exception:
                 drv_name = ""
             res.append({
@@ -321,7 +324,7 @@ def _operator_from_company_reference(company_id: Optional[str]):
     from logistics.models import Client, Store
     from django.core.exceptions import ValidationError
 
-    if not company_id or str(company_id) in ("global", "NaN", "undefined"):
+    if not company_id or company_id in ("global", "NaN", "undefined"):
         return None
     try:
         operator = Operator.objects.filter(id=company_id).first()
@@ -448,8 +451,9 @@ def update_user(request, payload: UserPayload):
     if not payload.id:
         raise HttpError(422, "ID do usuário é obrigatório.")
     is_platform_admin = bool(getattr(actor, "is_platform_admin", False))
-    is_self = str(actor.id) == str(payload.id)
-    can_manage = is_platform_admin or actor.role in {"ADMIN", "MANAGER"}
+    is_self = str(actor.id) == payload.id
+    actor_role = getattr(actor, "role", None)
+    can_manage = is_platform_admin or actor_role in {"ADMIN", "MANAGER"}
     if not is_self and not can_manage:
         raise HttpError(403, "Você só pode editar o próprio perfil.")
 
@@ -470,7 +474,8 @@ def update_user(request, payload: UserPayload):
     if not target:
         raise HttpError(404, "Usuário não encontrado.")
 
-    if actor.role == "MANAGER" and target_kind == "staff" and target.role in {"ADMIN", "MANAGER"} and not is_self:
+    target_role = getattr(target, "role", None)
+    if actor_role == "MANAGER" and target_kind == "staff" and target_role in {"ADMIN", "MANAGER"} and not is_self:
         raise HttpError(403, "Gestores não podem editar usuários com nível igual ou superior.")
     if not is_self and not can_manage:
         raise HttpError(403, "Permissão insuficiente.")
@@ -491,16 +496,16 @@ def update_user(request, payload: UserPayload):
         role = _normalized_user_role(payload.role)
         if target_kind != "staff" or role in {"LOJISTA", "PLATFORM_ADMIN"}:
             raise HttpError(422, "A alteração solicitada não é compatível com este usuário.")
-        if actor.role == "MANAGER" and role in {"ADMIN", "MANAGER"}:
+        if actor_role == "MANAGER" and role in {"ADMIN", "MANAGER"}:
             raise HttpError(403, "Gestores não podem conceder nível igual ou superior.")
-        target.role = role
+        setattr(target, "role", role)
         update_fields.append("role")
     if payload.active is not None:
         if is_self:
             raise HttpError(403, "Não é permitido desativar o próprio acesso.")
         if target_kind == "platform":
             raise HttpError(422, "Administradores globais não podem ser desativados por esta rota.")
-        target.active = payload.active
+        setattr(target, "active", payload.active)
         update_fields.append("active")
     if update_fields:
         target.save(update_fields=update_fields)
@@ -514,9 +519,10 @@ def delete_user(request, id: str):
     from ninja.errors import HttpError
 
     actor = require_role(["ADMIN", "MANAGER"])(request)
-    if str(actor.id) == str(id):
+    if str(actor.id) == id:
         raise HttpError(403, "Não é permitido revogar o próprio acesso.")
     is_platform_admin = bool(getattr(actor, "is_platform_admin", False))
+    actor_role = getattr(actor, "role", None)
 
     staff_qs = StaffMember.objects.filter(id=id)
     client_qs = ClientPortalUser.objects.filter(id=id)
@@ -526,7 +532,7 @@ def delete_user(request, id: str):
 
     user = staff_qs.first()
     if user:
-        if actor.role == "MANAGER" and user.role in {"ADMIN", "MANAGER"}:
+        if actor_role == "MANAGER" and getattr(user, "role", None) in {"ADMIN", "MANAGER"}:
             raise HttpError(403, "Gestores não podem revogar usuários com nível igual ou superior.")
         user.active = False
         user.save(update_fields=["active"])
@@ -955,7 +961,7 @@ def get_configs(request, company_id: Optional[str] = None, company_name: Optiona
 
     if is_admin:
         op = _operator_from_company_reference(company_id)
-        if not op and (not company_id or str(company_id) in ("global", "NaN", "undefined")):
+        if not op and (not company_id or company_id in ("global", "NaN", "undefined")):
             # PlatformAdmin sem operador específico selecionado ou consultando global:
             # Retorna configurações padrão globais da plataforma (200 OK)
             return {
@@ -1401,6 +1407,8 @@ def estimate_order(
     auth = getattr(request, "auth", None) or {}
     if auth.get("client_id") or auth.get("user_type") == "client_portal_user":
         client_user = get_client_portal_user(request)
+        if not client_user:
+            raise HttpError(401, "Usuário do portal do cliente não identificado.")
         stores = stores.filter(
             client=client_user.client, operator=client_user.operator
         )
@@ -1556,9 +1564,9 @@ def get_credit_queue(request, company_id: Optional[str] = None, status: Optional
             qs = qs.filter(operator=actor.operator)
         elif getattr(actor, "operator_id", None):
             qs = qs.filter(operator_id=actor.operator_id)
-    elif company_id and str(company_id) not in ("global", "NaN", "undefined"):
+    elif company_id and company_id not in ("global", "NaN", "undefined"):
         try:
-            op_uuid = uuid.UUID(str(company_id))
+            op_uuid = uuid.UUID(company_id)
             qs = qs.filter(operator_id=op_uuid)
         except (ValidationError, ValueError, TypeError):
             pass
@@ -1638,8 +1646,11 @@ def get_driver_balance(request, driver_id: Optional[str] = None, condutor_id: Op
             raise HttpError(404, "Motoboy não encontrado.")
     except (ValidationError, ValueError, TypeError):
         raise HttpError(404, "Motoboy não encontrado.")
+    driver = drivers.first()
+    if not driver:
+        raise HttpError(404, "Motoboy não encontrado.")
     try:
-        w = Wallet.objects.get(driver_id=d_id, operator_id=drivers.first().operator_id)
+        w = Wallet.objects.get(driver_id=d_id, operator_id=driver.operator_id)
         return {"saldo": w.balanceCents / 100.0}
     except Wallet.DoesNotExist:
         return {"saldo": 0.0}
@@ -3222,8 +3233,8 @@ def get_driver_wallet_transactions(request, driver_id: str, limit: int = 50):
         # Tenta correlacionar nota de ManualEntry
         matched_note = ""
         for me in manual_entries:
-            if me.category == tx.category and abs(abs(me.amountCents) - tx.amountCents) < 5:
-                matched_note = me.notes or ""
+            if getattr(me, "taxCategory", None) == tx.taxCategory and abs(abs(me.amountCents) - tx.amountCents) < 5:
+                matched_note = getattr(me, "description", "") or ""
                 break
 
         transactions_list.append({
