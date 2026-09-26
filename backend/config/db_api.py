@@ -2,7 +2,7 @@ import logging
 from ninja import Router
 from typing import List, Dict, Any, Optional
 from django.shortcuts import get_object_or_404
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from finance.models import ManualEntry
 from logistics.models import Driver, Store
 from accounts.models import Operator
@@ -1444,17 +1444,17 @@ def _save_configs_internal(request, payload: dict):
         defaults = {
             "operator": op,
             "compensationMode": mode,
-            "rideFeePerDeliveryCents": int(round(float(ride_fee) * 100)),
-            "minimumRidesFeeFloorCents": int(round(float(piso) * 100)),
-            "minimumFloorBps": int(round(float(piso_pct) * 100)),
+            "rideFeePerDeliveryCents": round(float(ride_fee) * 100),
+            "minimumRidesFeeFloorCents": round(float(piso) * 100),
+            "minimumFloorBps": round(float(piso_pct) * 100),
             "adminTaxThresholdCents": 0,
             "adminTaxFixedAmountCents": 0,
             "adminTaxBps": 0,
-            "supervisionFeePerWeekCents": int(round(float(taxa_sup) * 100)),
-            "dailyRateWeekdayCents": int(round(float(diaria_wd) * 100)),
-            "dailyRateSaturdayCents": int(round(float(diaria_sat) * 100)),
-            "dailyRateSundayCents": int(round(float(diaria_sun) * 100)),
-            "dailyRateHolidayCents": int(round(float(diaria_hol) * 100)),
+            "supervisionFeePerWeekCents": round(float(taxa_sup) * 100),
+            "dailyRateWeekdayCents": round(float(diaria_wd) * 100),
+            "dailyRateSaturdayCents": round(float(diaria_sat) * 100),
+            "dailyRateSundayCents": round(float(diaria_sun) * 100),
+            "dailyRateHolidayCents": round(float(diaria_hol) * 100),
             "returnFeeBps": 5000 if retencao else 0,
         }
 
@@ -1508,19 +1508,18 @@ class ConfigUpdatePayload(BaseModel):
     retencao_devolucao: Optional[bool] = None
     bloquear_fatura: Optional[bool] = None
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 @router.post("/configs")
 def create_config(request, payload: ConfigUpdatePayload):
-    payload_dict = payload.model_dump() if hasattr(payload, "model_dump") else (payload.dict() if hasattr(payload, "dict") else dict(payload))
+    payload_dict = payload.model_dump()
     return _save_configs_internal(request, payload_dict)
 
 
 @router.put("/configs")
 def update_config(request, payload: ConfigUpdatePayload):
-    payload_dict = payload.model_dump() if hasattr(payload, "model_dump") else (payload.dict() if hasattr(payload, "dict") else dict(payload))
+    payload_dict = payload.model_dump()
     return _save_configs_internal(request, payload_dict)
 
 
@@ -1544,23 +1543,23 @@ def get_snapshots(request, company_id: Optional[str] = None, limit: int = 50):
     target_store_ids = []
 
     if client_user:
-        op = client_user.operator
-        if client_user.client_id:
+        op = getattr(client_user, "operator", None)
+        if getattr(client_user, "client_id", None):
             from logistics.models import Store
             target_store_ids = list(Store.objects.filter(client_id=client_user.client_id).values_list("id", flat=True))
-    else:
-        is_platform_admin = bool(getattr(staff, "is_platform_admin", False))
-        if is_platform_admin and company_id and company_id not in ("global", "NaN", "undefined"):
-            op = _operator_from_company_reference(company_id) or staff.operator
+    elif staff:
+        is_platform_admin = getattr(staff, "is_platform_admin", False) is True
+        if is_platform_admin and company_id and str(company_id) not in ("global", "NaN", "undefined"):
+            op = _operator_from_company_reference(company_id) or getattr(staff, "operator", None)
         else:
-            op = staff.operator
+            op = getattr(staff, "operator", None)
 
     qs = WeeklyStoreInvoice.objects.select_related("store", "operator")
     if op:
         qs = qs.filter(operator=op)
     if target_store_ids:
         qs = qs.filter(store_id__in=target_store_ids)
-    elif company_id and company_id not in ("global", "NaN", "undefined"):
+    elif company_id and str(company_id) not in ("global", "NaN", "undefined"):
         try:
             qs = qs.filter(store_id=company_id)
         except Exception:
@@ -1578,7 +1577,7 @@ def get_snapshots(request, company_id: Optional[str] = None, limit: int = 50):
         end_str = inv.endDate.strftime("%d/%m") if inv.endDate else ""
         week_label = f"Semana {start_str} a {end_str}" if start_str and end_str else f"Fatura #{inv.id}"
 
-        status_lower = str(inv.status or "draft").lower()
+        status_lower = (inv.status or "draft").lower()
         if status_lower in ("finalized", "paid"):
             ui_status = "finalized"
         elif status_lower == "locked":
@@ -1639,7 +1638,7 @@ def get_positions(request, max_age_minutes: int = 720, limit: int = 1000):
     elif client_user and client_user.operator_id:
         operator_id = str(client_user.operator_id)
 
-    if not operator_id or str(operator_id) in ("global", "NaN", "undefined"):
+    if not operator_id or operator_id in ("global", "NaN", "undefined"):
         return {"positions": [], "source": "redis_live"}
 
     r = get_redis()
