@@ -8,7 +8,7 @@ export default defineConfig(() => {
     plugins: [react(), tailwindcss()],
     esbuild: {
       sourcemap: false,
-      legalComments: "none",
+      legalComments: "none" as const,
     },
     // Default base path for standalone deployment
     base: "/",
