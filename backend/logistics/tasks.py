@@ -444,18 +444,17 @@ def process_geofence_triggers() -> None:
             break
 
         # Performance & Segurança Anti-Hijacking: Carregamento bulk dos Stops e Orders (Anti N+1)
-        # Mapeia stop -> driver_id que disparou o evento de proximidade
-        event_driver_by_stop = {str(p["stop_id"]): str(p["driver_id"]) for p in parsed_events}
+        # Registra pares (stop_id, driver_id) disparados para suportar múltiplos eventos no lote sem colisão
+        trigger_events = {(str(p["stop_id"]), str(p["driver_id"])) for p in parsed_events}
 
         stops = Stop.objects.filter(id__in=stop_ids).values("id", "order_id", "order__driver_id")
         
         valid_order_ids = set()
         for s in stops:
             stop_id_str = str(s["id"])
-            triggering_driver = event_driver_by_stop.get(stop_id_str)
             assigned_driver = str(s["order__driver_id"]) if s.get("order__driver_id") else None
             # VALIDAÇÃO CRÍTICA: Somente o motoboy atribuído à corrida pode auto-chegar!
-            if triggering_driver and assigned_driver and triggering_driver == assigned_driver:
+            if assigned_driver and (stop_id_str, assigned_driver) in trigger_events:
                 valid_order_ids.add(s["order_id"])
 
         order_ids = list(valid_order_ids)
