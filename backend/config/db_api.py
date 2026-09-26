@@ -463,8 +463,8 @@ def create_user(request, payload: UserPayload):
     try:
         if not payload.email or not payload.fullName:
             raise HttpError(422, "Nome e e-mail são obrigatórios.")
-        if not payload.password or len(payload.password) < 6:
-            raise HttpError(422, "A senha deve ter pelo menos 6 caracteres.")
+        if not payload.password or len(payload.password) < 10:
+            raise HttpError(422, "A senha deve ter pelo menos 10 caracteres.")
 
         email = payload.email.strip().lower()
         if _email_already_in_use(email):
@@ -2847,7 +2847,7 @@ class DispatchStoreRidePayload(BaseModel):
     observacao: Optional[str] = ""
 
 @router.post("/operator/dispatch-store-ride")
-@idempotent(timeout=86400)
+@idempotent(timeout=86400, required=False, allow_memory_fallback=True)
 def dispatch_store_ride(request, payload: DispatchStoreRidePayload):
     """
     Permite à central de despacho lançar uma corrida em nome de uma loja parceira,

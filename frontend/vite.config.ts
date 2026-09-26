@@ -6,6 +6,10 @@ import { defineConfig } from "vite";
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
+    esbuild: {
+      sourcemap: false,
+      legalComments: "none",
+    },
     // Default base path for standalone deployment
     base: "/",
     // Default build output (dist)
@@ -13,7 +17,9 @@ export default defineConfig(() => {
       outDir: "dist",
       emptyOutDir: true,
       manifest: true,
+      sourcemap: false,
       rollupOptions: {
+        maxParallelFileOps: 2,
         output: {
           manualChunks: {
             "vendor-react": ["react", "react-dom", "react-router-dom"],

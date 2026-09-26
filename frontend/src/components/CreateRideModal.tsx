@@ -442,7 +442,13 @@ export function CreateRideModal({
 
       const res = await authFetch("/api/v1/operator/dispatch-store-ride", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key":
+            typeof crypto !== "undefined" && crypto.randomUUID
+              ? crypto.randomUUID()
+              : `ride-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        },
         body: JSON.stringify(dispatchPayload),
       });
 

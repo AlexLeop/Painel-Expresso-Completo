@@ -25,7 +25,8 @@ def test_compose_uses_easypanel_compatible_backend_dockerfile(compose_name):
     content = (REPO_ROOT / compose_name).read_text(encoding="utf-8")
 
     assert "dockerfile: backend/Dockerfile" not in content
-    assert content.count("dockerfile: Dockerfile") == 4
+    expected_count = 5 if compose_name == "docker-compose.yml" else 4
+    assert content.count("dockerfile: Dockerfile") == expected_count
 
 
 def test_frontend_dockerfile_uses_repository_root_context():

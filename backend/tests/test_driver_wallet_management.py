@@ -122,6 +122,7 @@ def setup_driver_wallet_tables(db):
                 "amountCents" BIGINT NOT NULL,
                 category VARCHAR(50) NOT NULL,
                 "taxCategory" VARCHAR(50) NOT NULL,
+                metadata TEXT DEFAULT '{}',
                 "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );

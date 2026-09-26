@@ -20,6 +20,8 @@ r = redis.Redis.from_url(REDIS_URL, decode_responses=True)
 ALLOW_MEMORY_FALLBACK = _env_flag(
     "IDEMPOTENCY_ALLOW_MEMORY_FALLBACK", "REDIS_ALLOW_MEMORY_FALLBACK"
 )
+
+
 _MEM_LOCKS: dict[str, threading.Lock] = {}
 _MEM_RESPONSES: dict[str, tuple[float, dict]] = {}
 
@@ -64,10 +66,10 @@ def _try_schema_dump(schema, response):
         return None
 
 
-def idempotent(timeout=86400, schema=None):
+def idempotent(timeout=86400, schema=None, required=True, allow_memory_fallback=None):
     """
     Decorador para endpoints mutáveis (POST, PUT, PATCH).
-    Exige cabeçalho 'Idempotency-Key' no Request.
+    Exige cabeçalho 'Idempotency-Key' no Request (ou gera fallback se required=False).
     Faz lock no Redis para evitar concorrência e faz cache da resposta para retry seguro.
     Se 'schema' for passado (ex: schema=OrderSchema), o objeto retornado (ex: model do Django ORM)
     será serializado pelo schema antes de ser salvo no Redis, evitando TypeError do json.dumps.
@@ -79,11 +81,21 @@ def idempotent(timeout=86400, schema=None):
             if request.method not in ["POST", "PUT", "PATCH"]:
                 return view_func(request, *args, **kwargs)
 
+            can_fallback = (
+                allow_memory_fallback
+                if allow_memory_fallback is not None
+                else ALLOW_MEMORY_FALLBACK
+            )
+
             idem_key = request.headers.get("Idempotency-Key")
             if not idem_key:
-                return JsonResponse(
-                    {"error": "Idempotency-Key header is required"}, status=400
-                )
+                if required:
+                    return JsonResponse(
+                        {"error": "Idempotency-Key header is required"}, status=400
+                    )
+                import hashlib
+                raw_body = getattr(request, "body", b"") or b""
+                idem_key = f"auto_{hashlib.sha256(raw_body).hexdigest()[:32]}"
 
             user_id = (
                 request.auth.get("sub", "anonymous")
@@ -103,7 +115,7 @@ def idempotent(timeout=86400, schema=None):
                     data = json.loads(cached_response)
                     return JsonResponse(data.get("data"), status=data.get("status"))
             except Exception:
-                if ALLOW_MEMORY_FALLBACK:
+                if can_fallback:
                     cached = _mem_get(redis_response_key)
                     if cached:
                         return JsonResponse(
@@ -121,7 +133,7 @@ def idempotent(timeout=86400, schema=None):
                         status=409,
                     )
             except Exception:
-                if not ALLOW_MEMORY_FALLBACK:
+                if not can_fallback:
                     return JsonResponse({"error": "Failed to acquire lock"}, status=503)
                 mem_lock_acquired = _mem_acquire(redis_lock_key)
                 if not mem_lock_acquired:
@@ -161,7 +173,7 @@ def idempotent(timeout=86400, schema=None):
                     try:
                         r.set(redis_response_key, json.dumps(response_data), ex=timeout)
                     except Exception:
-                        if ALLOW_MEMORY_FALLBACK:
+                        if can_fallback:
                             _mem_set(redis_response_key, response_data, timeout)
 
                 return response

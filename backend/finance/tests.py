@@ -33,7 +33,7 @@ class SettlementEngineTests(SimpleTestCase):
         )
         invoice = SimpleNamespace(id="invoice-1")
         order = SimpleNamespace(
-            id="order-1",
+            id=uuid.uuid4(),
             operator=operator,
             store=store,
             driver=driver,
@@ -55,8 +55,10 @@ class SettlementEngineTests(SimpleTestCase):
             patch.object(Wallet.objects, "select_for_update") as wallet_qs,
             patch.object(WalletTransaction.objects, "create") as wallet_tx_create,
             patch.object(WeeklyStoreInvoice.objects, "filter") as invoice_filter,
+            patch.object(WeeklyInvoiceLineItem.objects, "filter") as line_item_filter,
             patch.object(WeeklyInvoiceLineItem.objects, "create") as line_item_create,
         ):
+            line_item_filter.return_value.first.return_value = None
             op_get_or_create.return_value = (
                 SimpleNamespace(pk="operator-wallet", id="operator-wallet"),
                 True,

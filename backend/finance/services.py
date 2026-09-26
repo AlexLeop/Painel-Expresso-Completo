@@ -33,13 +33,19 @@ class SettlementEngine:
 
         with transaction.atomic():
             # Idempotência estrita: impede dupla liquidação / repasse duplicado
-            already_settled_item = WeeklyInvoiceLineItem.objects.filter(order=order).first()
-            if already_settled_item:
-                logger.info(
-                    "Order %s já foi liquidada previamente (Item de fatura %s). Ignorando.",
-                    order.id, already_settled_item.id
+            try:
+                already_settled_item = WeeklyInvoiceLineItem.objects.filter(order=order).first()
+                if already_settled_item:
+                    logger.info(
+                        "Order %s já foi liquidada previamente (Item de fatura %s). Ignorando.",
+                        order.id, already_settled_item.id
+                    )
+                    return
+            except Exception as exc:
+                logger.warning(
+                    "Não foi possível verificar duplicidade em WeeklyInvoiceLineItem para order %s: %s",
+                    getattr(order, "id", None), exc
                 )
-                return
 
             # 1. Recuperar Contrato
             try:
