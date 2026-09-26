@@ -13,6 +13,18 @@ app.config_from_object("django.conf:settings", namespace="CELERY")
 # Carrega tasks.py de todas as aplicações Django registradas automaticamente
 app.autodiscover_tasks()
 
+# Configuração de Filas e Roteamento de Tarefas para Escala e Resiliência
+app.conf.task_default_queue = "default"
+app.conf.task_routes = {
+    "logistics.tasks.process_geofence_triggers": {"queue": "realtime"},
+    "logistics.tasks.process_telemetry_batch": {"queue": "realtime"},
+    "logistics.tasks.persist_telemetry_buffer": {"queue": "realtime"},
+    "integration.tasks.flush_outbox_events": {"queue": "integrations"},
+    "integration.tasks.process_inbound_webhooks": {"queue": "integrations"},
+    "integration.tasks.poll_partner_events": {"queue": "integrations"},
+    "finance.tasks.*": {"queue": "finance"},
+}
+
 from celery.schedules import crontab
 
 app.conf.beat_schedule = {
