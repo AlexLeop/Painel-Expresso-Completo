@@ -1330,8 +1330,45 @@ def get_snapshots(request, company_id: Optional[str] = None, limit: int = 50):
 
 @router.get("/positions")
 def get_positions(request, max_age_minutes: int = 720, limit: int = 1000):
-    # Return empty positions array
-    return []
+    from accounts.auth import get_staff_member
+    from config.redis_client import get_redis
+    from django.utils import timezone as django_tz
+
+    staff = get_staff_member(request)
+    operator_id = None
+    if staff and staff.operator_id:
+        operator_id = str(staff.operator_id)
+    elif hasattr(request, "auth") and isinstance(request.auth, dict):
+        operator_id = str(request.auth.get("operator_id") or "")
+
+    if not operator_id:
+        operator_id = request.headers.get("X-Operator-Id") or request.GET.get("operator_id") or request.GET.get("company_id")
+
+    if not operator_id:
+        return {"positions": [], "source": "redis_live"}
+
+    r = get_redis()
+    geo_key = f"driver_positions:{operator_id}"
+    try:
+        drivers = r.zrange(geo_key, 0, limit - 1)
+        positions = []
+        for drv_id in drivers:
+            drv_str = drv_id.decode("utf-8") if isinstance(drv_id, bytes) else str(drv_id)
+            coords = r.geopos(geo_key, drv_str)
+            if coords and coords[0]:
+                lng, lat = coords[0]
+                positions.append({
+                    "machine_condutor_id": drv_str,
+                    "latitude": lat,
+                    "longitude": lng,
+                    "speed": 0,
+                    "heading": 0,
+                    "received_at": django_tz.now().isoformat()
+                })
+        return {"positions": positions, "source": "redis_live"}
+    except Exception as e:
+        logger.warning(f"Falha ao ler posições ao vivo do Redis: {e}")
+        return {"positions": [], "source": "redis_live", "error": str(e)}
 
 
 class StoreUpdateSchema(BaseModel):

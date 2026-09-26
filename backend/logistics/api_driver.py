@@ -398,8 +398,11 @@ def clear_order_runtime_state(order: Order, previous_driver_id: Optional[UUID]) 
         pipe.srem(f"active_orders:driver:{previous_driver_id}", str(order.id))
         pipe.delete(f"public_tracker:{order.id}:active")
         pipe.delete(_order_claim_key(order.id))
+        geo_key = f"geofence:stops:{order.operator_id}"
         for stop_id in Stop.objects.filter(order=order).values_list("id", flat=True):
             pipe.srem(f"active_stops:driver:{previous_driver_id}", str(stop_id))
+            pipe.zrem(geo_key, f"stop:{stop_id}:point")
+            pipe.delete(f"stop:{stop_id}:radius")
         pipe.execute()
     except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError):
         pass
@@ -1366,8 +1369,7 @@ def complete_stops_batch(request, items: List[StopBatchCompleteItem]):
 
                     # Cleanup Redis and trigger webhook
                     try:
-                        r.srem(f"active_orders:driver:{driver.id}", str(order.id))
-                        r.delete(f"public_tracker:{order.id}:active")
+                        clear_order_runtime_state(order, driver.id)
 
                         from integration.models import IntegrationOutbox
 

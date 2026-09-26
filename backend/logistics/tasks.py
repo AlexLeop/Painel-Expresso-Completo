@@ -304,62 +304,68 @@ def persist_telemetry_buffer():
     operators = Operator.objects.values_list("id", flat=True)
     total_persisted = 0
 
+    MAX_CYCLES_PER_RUN = 20
     for operator_id in operators:
         queue_key = f"queue:telemetry_raw_{operator_id}"
 
-        # PASSO 1: Ler SEM deletar (peek, não pop)
-        raw_items = r.lrange(queue_key, 0, BATCH_SIZE - 1)
-        if not raw_items:
-            continue
+        for _ in range(MAX_CYCLES_PER_RUN):
+            # PASSO 1: Ler SEM deletar (peek, não pop)
+            raw_items = r.lrange(queue_key, 0, BATCH_SIZE - 1)
+            if not raw_items:
+                break
 
-        positions_to_create = []
-        for raw_bytes in raw_items:
-            try:
-                if isinstance(raw_bytes, bytes):
-                    raw_str = raw_bytes.decode("utf-8")
-                else:
-                    raw_str = str(raw_bytes)
-                event = json.loads(raw_str)
+            positions_to_create = []
+            for raw_bytes in raw_items:
+                try:
+                    if isinstance(raw_bytes, bytes):
+                        raw_str = raw_bytes.decode("utf-8")
+                    else:
+                        raw_str = str(raw_bytes)
+                    event = json.loads(raw_str)
 
-                # ts_server é a ÚNICA fonte da verdade para capturedAt (Contrato 2.3)
-                ts_key = event.get("ts_server") or event.get("ts")
-                if not ts_key:
-                    continue
-                captured_at = datetime.fromtimestamp(ts_key, tz=timezone.utc)
+                    # ts_server é a ÚNICA fonte da verdade para capturedAt (Contrato 2.3)
+                    ts_key = event.get("ts_server") or event.get("ts")
+                    if not ts_key:
+                        continue
+                    captured_at = datetime.fromtimestamp(ts_key, tz=timezone.utc)
 
-                positions_to_create.append(
-                    Position(
-                        operator_id=event["operator_id"],
-                        driver_id=event["driver_id"],
-                        geom=Point(float(event["lng"]), float(event["lat"]), srid=4326),
-                        heading=event.get("heading", 0),
-                        speedKmh=event.get("speed", 0),
-                        capturedAt=captured_at,
+                    positions_to_create.append(
+                        Position(
+                            operator_id=event["operator_id"],
+                            driver_id=event["driver_id"],
+                            geom=Point(float(event["lng"]), float(event["lat"]), srid=4326),
+                            heading=event.get("heading", 0),
+                            speedKmh=event.get("speed", 0),
+                            capturedAt=captured_at,
+                        )
                     )
-                )
-            except (KeyError, ValueError, json.JSONDecodeError):
-                # Pings malformados são silenciosamente descartados
-                continue
+                except (KeyError, ValueError, json.JSONDecodeError):
+                    # Pings malformados são silenciosamente descartados
+                    continue
 
-        # PASSO 2: Persistir no PostgreSQL (dados ainda estão seguros no Redis)
-        if positions_to_create:
-            with tenant_context(operator_id):
-                Position.objects.bulk_create(positions_to_create, ignore_conflicts=True)
-            total_persisted += len(positions_to_create)
+            # PASSO 2: Persistir no PostgreSQL (dados ainda estão seguros no Redis)
+            if positions_to_create:
+                with tenant_context(operator_id):
+                    Position.objects.bulk_create(positions_to_create, ignore_conflicts=True)
+                total_persisted += len(positions_to_create)
 
-        # PASSO 3: SÓ AGORA deletar do Redis (ack-first: Postgres confirmou)
-        # Se crash antes daqui: dados duplicam no próximo ciclo (ignore_conflicts cuida)
-        # Se crash depois: dados já estão no Postgres, tudo seguro.
-        r.ltrim(queue_key, len(raw_items), -1)
+            # PASSO 3: SÓ AGORA deletar do Redis (ack-first: Postgres confirmou)
+            # Se crash antes daqui: dados duplicam no próximo ciclo (ignore_conflicts cuida)
+            # Se crash depois: dados já estão no Postgres, tudo seguro.
+            r.ltrim(queue_key, len(raw_items), -1)
 
-        # PASSO 4: Copiar para fila analítica
-        if positions_to_create:
-            analytics_key = f"analytics:telemetry_batch_{operator_id}"
-            analytics_pipe = r.pipeline()
-            for raw_item in raw_items:
-                analytics_pipe.rpush(analytics_key, raw_item)
-            analytics_pipe.expire(analytics_key, 3600)  # TTL de 1h
-            analytics_pipe.execute()
+            # PASSO 4: Copiar para fila analítica
+            if positions_to_create:
+                analytics_key = f"analytics:telemetry_batch_{operator_id}"
+                analytics_pipe = r.pipeline()
+                for raw_item in raw_items:
+                    analytics_pipe.rpush(analytics_key, raw_item)
+                analytics_pipe.expire(analytics_key, 3600)  # TTL de 1h
+                analytics_pipe.execute()
+
+            # Se drenou menos que o lote completo, a fila já esvaziou
+            if len(raw_items) < BATCH_SIZE:
+                break
 
     return f"Persisted {total_persisted} telemetry pings to PostgreSQL."
 
@@ -437,10 +443,22 @@ def process_geofence_triggers() -> None:
             r.ltrim("geofence_triggers", len(raw_events), -1)
             break
 
-        # Performance (C2): Carregamento bulk dos Stops e Orders (Anti N+1)
-        stops = Stop.objects.filter(id__in=stop_ids).values("id", "order_id")
-        order_to_stop = {s["order_id"]: s["id"] for s in stops}
-        order_ids = list(order_to_stop.keys())
+        # Performance & Segurança Anti-Hijacking: Carregamento bulk dos Stops e Orders (Anti N+1)
+        # Mapeia stop -> driver_id que disparou o evento de proximidade
+        event_driver_by_stop = {str(p["stop_id"]): str(p["driver_id"]) for p in parsed_events}
+
+        stops = Stop.objects.filter(id__in=stop_ids).values("id", "order_id", "order__driver_id")
+        
+        valid_order_ids = set()
+        for s in stops:
+            stop_id_str = str(s["id"])
+            triggering_driver = event_driver_by_stop.get(stop_id_str)
+            assigned_driver = str(s["order__driver_id"]) if s.get("order__driver_id") else None
+            # VALIDAÇÃO CRÍTICA: Somente o motoboy atribuído à corrida pode auto-chegar!
+            if triggering_driver and assigned_driver and triggering_driver == assigned_driver:
+                valid_order_ids.add(s["order_id"])
+
+        order_ids = list(valid_order_ids)
 
         if order_ids:
             with transaction.atomic():
