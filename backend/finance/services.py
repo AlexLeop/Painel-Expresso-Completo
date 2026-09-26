@@ -32,6 +32,15 @@ class SettlementEngine:
             raise ValueError("Apenas ordens concluídas podem ser liquidadas.")
 
         with transaction.atomic():
+            # Idempotência estrita: impede dupla liquidação / repasse duplicado
+            already_settled_item = WeeklyInvoiceLineItem.objects.filter(order=order).first()
+            if already_settled_item:
+                logger.info(
+                    "Order %s já foi liquidada previamente (Item de fatura %s). Ignorando.",
+                    order.id, already_settled_item.id
+                )
+                return
+
             # 1. Recuperar Contrato
             try:
                 contract = Contract.objects.get(
@@ -87,6 +96,7 @@ class SettlementEngine:
                     amountCents=driver_fee,
                     category=WalletTransaction.TransactionCategory.PAYOUT,
                     taxCategory=WalletTransaction.TaxCategory.NON_TAXABLE_REIMBURSEMENT,
+                    metadata={"order_id": str(order.id)},
                 )
                 logger.info(
                     f"Creditados {driver_fee} cents na wallet do motorista {order.driver.id}."

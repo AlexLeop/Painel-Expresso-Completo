@@ -261,6 +261,7 @@ class WalletTransaction(TimeStampedTenantModel):
     taxCategory = models.CharField(
         max_length=50, choices=TaxCategory.choices, db_column="taxCategory"
     )
+    metadata = models.JSONField(default=dict, blank=True)
 
     class Meta:
         db_table = "WalletTransaction"

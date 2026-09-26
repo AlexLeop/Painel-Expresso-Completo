@@ -96,7 +96,7 @@ class CNAB240RemessaBuilder:
             f"{self._pad('00000', 5)}"  # 021-025: Banco Favorecido
             f"{self._pad('', 20)}"  # 026-045: Conta Favorecido
             f"{name_fmt}"  # 046-075: Nome Favorecido
-            f"{self._pad(str(withdrawal.id), 20)}"  # 076-095: Seu Numero
+            f"{self._pad(str(withdrawal.id).replace('-', '')[:20], 20)}"  # 076-095: Seu Numero
             f"{datetime.now().strftime('%d%m%Y')}"  # 096-103: Data Pagamento
             f"BRL"  # 104-106: Moeda
             f"{self._pad('0', 15, '0', 'right')}"  # 107-121: Quantidade Moeda

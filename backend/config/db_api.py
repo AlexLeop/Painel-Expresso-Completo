@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from finance.models import ManualEntry
 from logistics.models import Driver, Store
 from accounts.models import Operator
+from config.idempotency import idempotent
 
 logger = logging.getLogger(__name__)
 
@@ -2837,6 +2838,7 @@ class DispatchStoreRidePayload(BaseModel):
     observacao: Optional[str] = ""
 
 @router.post("/operator/dispatch-store-ride")
+@idempotent(timeout=86400)
 def dispatch_store_ride(request, payload: DispatchStoreRidePayload):
     """
     Permite à central de despacho lançar uma corrida em nome de uma loja parceira,
@@ -2957,18 +2959,19 @@ def dispatch_store_ride(request, payload: DispatchStoreRidePayload):
     except ValueError as exc:
         raise HttpError(422, str(exc)) from exc
 
-    bal = compute_store_balance(store)
-    mode = bal.get("billing_mode", "").upper()
-    if mode in ("PRE_PAGO", "PRÉ-PAGO") and bal["balance_cents"] < fare_cents:
-        raise HttpError(409, "Saldo insuficiente para esta entrega.")
-
     from django.db import transaction
 
     with transaction.atomic():
+        store_locked = Store.objects.select_for_update().get(pk=store.pk)
+        bal = compute_store_balance(store_locked)
+        mode = bal.get("billing_mode", "").upper()
+        if mode in ("PRE_PAGO", "PRÉ-PAGO") and bal["balance_cents"] < fare_cents:
+            raise HttpError(409, "Saldo insuficiente para esta entrega.")
+
         order = Order.objects.create(
             id=uuid.uuid4(),
-            operator=store.operator,
-            store=store,
+            operator=store_locked.operator,
+            store=store_locked,
             driver=driver,
             status=initial_status,
             fareValueCents=fare_cents,

@@ -580,17 +580,51 @@ def process_return_file_ret(file_path: str):
                     with transaction.atomic():
                         # Bloqueio pessimista do Saque para evitar condições de corrida
                         try:
-                            withdrawal = WithdrawalRequest.objects.select_for_update().get(
-                                id=withdrawal_id_str,
-                                status=WithdrawalRequest.WithdrawalStatus.PROCESSING,
-                            )
-                            # Simulação: se tudo OK (código de retorno 00), COMPLETED.
-                            # Para simplificar, assumiremos sucesso para todos encontrados.
-                            withdrawal.status = (
-                                WithdrawalRequest.WithdrawalStatus.PAID
-                            )
-                            withdrawal.save(update_fields=["status"])
-                        except WithdrawalRequest.DoesNotExist:
+                            withdrawal = None
+                            # 1. Tenta UUID completo (com ou sem hífens)
+                            if len(withdrawal_id_str) in (32, 36):
+                                try:
+                                    withdrawal = WithdrawalRequest.objects.select_for_update().get(
+                                        id=withdrawal_id_str,
+                                        status=WithdrawalRequest.WithdrawalStatus.PROCESSING,
+                                    )
+                                except (WithdrawalRequest.DoesNotExist, ValueError):
+                                    pass
+
+                            # 2. Se for truncado (ex: 20 chars do padrão CNAB FEBRABAN)
+                            if not withdrawal:
+                                clean_search = withdrawal_id_str.replace("-", "").lower()
+                                candidates = WithdrawalRequest.objects.filter(
+                                    status=WithdrawalRequest.WithdrawalStatus.PROCESSING
+                                ).select_for_update()
+                                for cand in candidates:
+                                    cand_hex = cand.id.hex.lower()
+                                    cand_str = str(cand.id).lower()
+                                    if cand_hex.startswith(clean_id := clean_search) or cand_str.startswith(withdrawal_id_str.lower()):
+                                        withdrawal = cand
+                                        break
+
+                            if not withdrawal:
+                                continue
+
+                            # Código de ocorrência nas posições 231-232 (índices 230:232)
+                            occurrence_code = line[230:232].strip().upper() if len(line) >= 232 else "00"
+                            SUCCESS_CODES = {"00", "03", "BD"}
+                            if occurrence_code in SUCCESS_CODES or not occurrence_code:
+                                withdrawal.status = WithdrawalRequest.WithdrawalStatus.PAID
+                                withdrawal.save(update_fields=["status"])
+                            else:
+                                from finance.services import AtomicRefundEngine
+                                withdrawal.status = WithdrawalRequest.WithdrawalStatus.FAILED
+                                withdrawal.failureReason = f"Rejeição Bancária CNAB: {occurrence_code}"
+                                withdrawal.save(update_fields=["status", "failureReason"])
+                                AtomicRefundEngine.refund_failed_withdrawal(
+                                    withdrawal,
+                                    reason=f"Estorno automático: Rejeição CNAB {occurrence_code}",
+                                )
+                        except Exception as e:
+                            import logging
+                            logging.error(f"Erro ao processar item do retorno CNAB {withdrawal_id_str}: {e}")
                             continue
     except Exception as e:
         import logging

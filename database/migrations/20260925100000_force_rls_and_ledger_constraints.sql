@@ -20,6 +20,9 @@ BEGIN
 END $$;
 
 -- 2. Idempotência estrita no Ledger Financeiro:
+-- Garante a coluna metadata para rastreamento de idempotência
+ALTER TABLE "WalletTransaction" ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+
 -- Uma corrida só pode gerar uma transação de carteira de mesma categoria por operador
 CREATE UNIQUE INDEX IF NOT EXISTS idx_wallet_tx_order_category_unique
     ON "WalletTransaction" (operator_id, category, (metadata->>'order_id'))
