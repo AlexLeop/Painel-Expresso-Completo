@@ -1622,6 +1622,8 @@ def get_snapshots(request, company_id: Optional[str] = None, limit: int = 50):
             op = _operator_from_company_reference(company_id) or getattr(staff, "operator", None)
         else:
             op = getattr(staff, "operator", None)
+            if not is_platform_admin and not op:
+                raise HttpError(403, "Membro da equipe sem operador associado.")
 
     qs = WeeklyStoreInvoice.objects.select_related("store", "operator")
     if op:
@@ -1636,10 +1638,39 @@ def get_snapshots(request, company_id: Optional[str] = None, limit: int = 50):
 
     qs = qs.order_by("-startDate")[:limit]
 
+    invoices = list(qs)
+    if not invoices:
+        return []
+
+    inv_ids = [inv.id for inv in invoices]
+
+    from django.db.models import Count, Q
+    from collections import defaultdict
+    from finance.models import WeeklyInvoiceLineItem
+
+    # Agregação em lote de corridas para eliminar consultas N+1
+    line_item_stats = (
+        WeeklyInvoiceLineItem.objects.filter(invoice_id__in=inv_ids)
+        .values("invoice_id")
+        .annotate(
+            rides_count=Count("id", filter=Q(order_id__isnull=False)),
+        )
+    )
+    rides_count_map = {item["invoice_id"]: item["rides_count"] for item in line_item_stats}
+
+    driver_rows = (
+        WeeklyInvoiceLineItem.objects.filter(invoice_id__in=inv_ids, driver_id__isnull=False)
+        .values_list("invoice_id", "driver_id")
+        .distinct()
+    )
+    driver_map = defaultdict(list)
+    for inv_id, drv_id in driver_rows:
+        driver_map[inv_id].append(str(drv_id))
+
     results = []
-    for inv in qs:
-        driver_ids = list(inv.weeklyinvoicelineitem_set.values_list("driver_id", flat=True).distinct())
-        rides_count = inv.weeklyinvoicelineitem_set.exclude(order_id__isnull=True).count()
+    for inv in invoices:
+        driver_ids = driver_map.get(inv.id, [])
+        rides_count = rides_count_map.get(inv.id, 0)
         total_liquido = round(float(inv.totalCents or 0) / 100.0, 2)
 
         start_str = inv.startDate.strftime("%d/%m") if inv.startDate else ""

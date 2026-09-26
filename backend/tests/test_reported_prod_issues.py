@@ -1086,7 +1086,7 @@ def test_snapshots_returns_real_weekly_invoices(client: Client, sample_data):
         "email": staff.email,
     })
 
-    WeeklyStoreInvoice.objects.create(
+    inv = WeeklyStoreInvoice.objects.create(
         id=uuid.uuid4(),
         operator=op,
         store=store,
@@ -1095,6 +1095,18 @@ def test_snapshots_returns_real_weekly_invoices(client: Client, sample_data):
         totalCents=145020,  # R$ 1450.20
         status=WeeklyStoreInvoice.InvoiceStatus.FINALIZED,
         pdfUrl="https://s3.expresso.com/faturas/fat_01.pdf",
+    )
+
+    driver = sample_data["driver"]
+    WeeklyInvoiceLineItem.objects.create(
+        id=uuid.uuid4(),
+        operator=op,
+        invoice=inv,
+        driver=driver,
+        businessDate=datetime.date(2026, 9, 2),
+        order_id=uuid.uuid4(),
+        amountCents=2500,
+        status="ACTIVE",
     )
 
     resp = client.get(
@@ -1109,6 +1121,23 @@ def test_snapshots_returns_real_weekly_invoices(client: Client, sample_data):
     assert snap["status"] == "finalized"
     assert snap["pdfUrl"] == "https://s3.expresso.com/faturas/fat_01.pdf"
     assert "Semana 01/09 a 07/09" in snap["weekLabel"]
+    assert snap["total_corridas"] == 1
+    assert snap["total_motoboys"] == 1
+    assert str(driver.id) in snap["drivers"]
+
+    # Valida que staff sem operador associado recebe 403 Forbidden
+    from unittest.mock import patch, MagicMock
+    with patch("accounts.auth.get_staff_member") as mock_get_staff:
+        mock_staff_obj = MagicMock()
+        mock_staff_obj.operator = None
+        mock_staff_obj.is_platform_admin = False
+        mock_get_staff.return_value = mock_staff_obj
+
+        resp_orphan = client.get(
+            "/api/v1/db/snapshots",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        assert resp_orphan.status_code == 403
 
 
 @pytest.mark.django_db
