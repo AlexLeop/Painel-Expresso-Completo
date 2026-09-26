@@ -720,9 +720,24 @@ def execute_pix_payout_task(self, withdrawal_id: str):
                     )
                     raise self.retry(exc=Exception(result.error_message), countdown=countdown)
 
-                # Erro definitivo: aciona estorno atômico
+                if result.is_transient_error:
+                    logger.critical(
+                        "ALERTA OPERACIONAL: Saque %s esgotou retries com erro transitório (%s). "
+                        "Mantendo em PROCESSING para reconciliação manual ou webhook. NÃO ESTORNADO para evitar duplo repasse.",
+                        w.id,
+                        result.error_message,
+                    )
+                    w.failureReason = f"Timeout na comunicação BaaS (retries esgotados): {result.error_message}"
+                    w.save(update_fields=["failureReason", "updatedAt"])
+                    return {
+                        "status": "PROCESSING_TIMEOUT",
+                        "withdrawal_id": str(w.id),
+                        "error": result.error_message,
+                    }
+
+                # Erro definitivo confirmado pela Efí (ex: 400 chave inválida, conta cancelada): aciona estorno atômico
                 logger.error(
-                    "Falha definitiva no envio PIX para saque %s: %s. Estornando saldo.",
+                    "Falha definitiva confirmada pela Efí no envio PIX para saque %s: %s. Estornando saldo.",
                     w.id,
                     result.error_message,
                 )
@@ -742,17 +757,19 @@ def execute_pix_payout_task(self, withdrawal_id: str):
     except Exception as exc:
         if self.request.retries < self.max_retries and "retry" in str(type(exc)).lower():
             raise
-        logger.exception("Exceção inesperada na task de payout PIX %s: %s", withdrawal_id, exc)
+        logger.critical(
+            "Exceção inesperada na task de payout PIX %s: %s. Estado indeterminado mantido para auditoria (NÃO ESTORNADO AUTOMATICAMENTE).",
+            withdrawal_id,
+            exc,
+        )
         try:
             w = WithdrawalRequest.objects.get(id=withdrawal_id)
             if w.status not in (
                 WithdrawalRequest.WithdrawalStatus.PAID,
                 WithdrawalRequest.WithdrawalStatus.FAILED,
             ):
-                AtomicRefundEngine.refund_failed_withdrawal(
-                    withdrawal=w,
-                    reason=f"Erro interno no processamento: {str(exc)}",
-                )
+                w.failureReason = f"Erro indeterminado durante execução do payout: {str(exc)}"
+                w.save(update_fields=["failureReason", "updatedAt"])
         except Exception:
             pass
         raise

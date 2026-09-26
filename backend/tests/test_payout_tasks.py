@@ -72,6 +72,43 @@ def test_execute_pix_payout_task_permanent_failure_refunds():
         mock_refund.assert_called_once()
 
 
+def test_execute_pix_payout_task_transient_error_exhausted_retries_does_not_refund():
+    """Valida que falha transitória com retries esgotados NÃO estorna automaticamente para evitar duplo repasse."""
+    mock_self = MagicMock()
+    mock_self.request.retries = 3
+    mock_self.max_retries = 3
+
+    mock_withdrawal = MagicMock(spec=WithdrawalRequest)
+    mock_withdrawal.id = "w-789"
+    mock_withdrawal.status = WithdrawalRequest.WithdrawalStatus.PROCESSING
+    mock_withdrawal.netAmountCents = 8000
+    mock_withdrawal.amountCents = 8000
+    mock_withdrawal.pixKey = "11999998888"
+    mock_withdrawal.pixKeyType = "PHONE"
+
+    mock_baas_result = BaasPayoutResult(
+        success=False,
+        tx_id="tx-timeout-999",
+        error_message="Timeout na comunicação BaaS",
+        is_transient_error=True,
+    )
+
+    with patch("django.db.transaction.atomic"), \
+         patch("finance.models.WithdrawalRequest.objects.select_for_update") as mock_w_lock, \
+         patch("finance.baas_client.EfiBaasClient.send_pix_to_key", return_value=mock_baas_result), \
+         patch("finance.services.AtomicRefundEngine.refund_failed_withdrawal") as mock_refund, \
+         patch.object(execute_pix_payout_task, "max_retries", 3), \
+         patch.object(execute_pix_payout_task.request, "retries", 3):
+
+        mock_w_lock.return_value.get.return_value = mock_withdrawal
+
+        res = execute_pix_payout_task("w-789")
+
+        assert res["status"] == "PROCESSING_TIMEOUT"
+        mock_refund.assert_not_called()
+        assert "Timeout" in mock_withdrawal.failureReason
+
+
 def test_notify_payout_success_task_channels():
     """Valida despacho de push e whatsapp respeitando a política configurada."""
     mock_withdrawal = MagicMock(spec=WithdrawalRequest)
