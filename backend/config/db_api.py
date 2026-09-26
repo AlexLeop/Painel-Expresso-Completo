@@ -1746,19 +1746,24 @@ def get_positions(request, max_age_minutes: int = 720, limit: int = 1000):
     try:
         drivers = r.zrange(geo_key, 0, limit - 1)
         positions = []
-        for drv_id in drivers:
-            drv_str = drv_id.decode("utf-8") if isinstance(drv_id, bytes) else str(drv_id)
-            coords = r.geopos(geo_key, drv_str)
-            if coords and coords[0]:
-                lng, lat = coords[0]
-                positions.append({
-                    "machine_condutor_id": drv_str,
-                    "latitude": lat,
-                    "longitude": lng,
-                    "speed": 0,
-                    "heading": 0,
-                    "received_at": django_tz.now().isoformat()
-                })
+        if drivers:
+            drv_strs = [
+                drv.decode("utf-8") if isinstance(drv, bytes) else str(drv)
+                for drv in drivers
+            ]
+            all_coords = r.geopos(geo_key, *drv_strs)
+            now_iso = django_tz.now().isoformat()
+            for drv_str, coords in zip(drv_strs, all_coords):
+                if coords:
+                    lng, lat = coords
+                    positions.append({
+                        "machine_condutor_id": drv_str,
+                        "latitude": lat,
+                        "longitude": lng,
+                        "speed": 0,
+                        "heading": 0,
+                        "received_at": now_iso,
+                    })
         return {"positions": positions, "source": "redis_live"}
     except Exception as e:
         logger.warning(f"Falha ao ler posições ao vivo do Redis: {e}")
