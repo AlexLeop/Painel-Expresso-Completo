@@ -126,3 +126,32 @@ def test_real_http_send_pix_transient_error(mock_client_class):
     assert result.is_transient_error is True
     assert result.error_message is not None
     assert "503" in result.error_message
+
+
+def test_production_environment_strictly_forbids_mock_mode(monkeypatch):
+    """Garante que em produção (DJANGO_ENV=production) o modo mock é estritamente bloqueado."""
+    monkeypatch.setenv("DJANGO_ENV", "production")
+
+    # 1. Tentar instanciar com mock_mode=True deve lançar EfiBaasError
+    with pytest.raises(EfiBaasError, match="não é permitido em ambiente de produção"):
+        EfiBaasClient(mock_mode=True)
+
+    # 2. Tentar instanciar com EFI_MOCK_MODE=true deve lançar EfiBaasError
+    monkeypatch.setenv("EFI_MOCK_MODE", "true")
+    with pytest.raises(EfiBaasError, match="não é permitido em ambiente de produção"):
+        EfiBaasClient()
+
+    # 3. Em produção sem mock_mode, self.mock_mode é forçado a False
+    monkeypatch.delenv("EFI_MOCK_MODE", raising=False)
+    client = EfiBaasClient(client_id="prod_id", client_secret="prod_secret")
+    assert client.mock_mode is False
+
+    # 4. Mesmo se mock_mode for forçado em runtime, send_pix_to_key deve bloquear
+    client.mock_mode = True
+    with pytest.raises(EfiBaasError, match="bloqueado em ambiente de produção"):
+        client.send_pix_to_key(5000, "12345678900", "CPF")
+
+    # 5. get_account_balance também deve bloquear
+    with pytest.raises(EfiBaasError, match="bloqueada em ambiente de produção"):
+        client.get_account_balance()
+

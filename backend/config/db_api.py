@@ -1231,6 +1231,8 @@ def create_company_store(request, payload: StoreCreateSchema):
 @router.get("/configs")
 def get_configs(request, company_id: Optional[str] = None, company_name: Optional[str] = None):
     from accounts.auth import get_client_portal_user, require_role
+    from finance.models import Contract
+    from logistics.models import Store
     from ninja.errors import HttpError
 
     auth = getattr(request, "auth", None) or {}
@@ -1241,21 +1243,48 @@ def get_configs(request, company_id: Optional[str] = None, company_name: Optiona
         op = client_user.operator
         if not op:
             raise HttpError(404, "Operador da loja não encontrado.")
+
+        store = None
+        if company_id and company_id not in ("global", "NaN", "undefined"):
+            try:
+                store = Store.objects.filter(client=client_user.client, id=company_id).first()
+            except Exception:
+                store = None
+        if not store and client_user.client:
+            store = Store.objects.filter(client=client_user.client).first()
+        if not store:
+            store = Store.objects.filter(operator=op).first()
+
+        contract = Contract.objects.filter(store=store).first() if store else Contract.objects.filter(operator=op).first()
+
+        ride_fee = (contract.rideFeePerDeliveryCents / 100.0) if contract and contract.rideFeePerDeliveryCents is not None else 1.6
+        piso_floor = (contract.minimumRidesFeeFloorCents / 100.0) if contract and contract.minimumRidesFeeFloorCents is not None else 350.0
+        diaria_wd = (contract.dailyRateWeekdayCents / 100.0) if contract and contract.dailyRateWeekdayCents is not None else 60.0
+        diaria_sat = (contract.dailyRateSaturdayCents / 100.0) if contract and contract.dailyRateSaturdayCents is not None else 70.0
+        diaria_sun = (contract.dailyRateSundayCents / 100.0) if contract and contract.dailyRateSundayCents is not None else 80.0
+        diaria_hol = (contract.dailyRateHolidayCents / 100.0) if contract and contract.dailyRateHolidayCents is not None else 80.0
+        taxa_sup = (contract.supervisionFeePerWeekCents / 100.0) if contract and contract.supervisionFeePerWeekCents is not None else 10.0
+        guaranteed = contract.compensationMode in ("GARANTIDA", "GARANTIDA_HORAS") if contract else True
+        retencao = (contract.returnFeeBps > 0) if contract and contract.returnFeeBps is not None else True
+
+        c_id = str(store.id) if store else (str(client_user.client_id) if client_user.client_id else str(op.id))
+        c_name = store.name if store else (client_user.client.name if client_user.client else op.name)
+
         return {
-            "id": str(op.id),
-            "nome": op.name,
-            "company_id": str(client_user.client_id),
-            "company_name": client_user.client.name if client_user.client else op.name,
-            "ride_fee_per_delivery": 1.6,
-            "minimum_rides_fee_floor": 350.0,
-            "daily_rate_weekday": 60.0,
-            "daily_rate_saturday": 70.0,
-            "daily_rate_sunday": 80.0,
-            "daily_rate_holiday": 80.0,
-            "taxa_supervisao": 10.0,
+            "id": c_id,
+            "nome": c_name,
+            "company_id": c_id,
+            "company_name": c_name,
+            "ride_fee_per_delivery": ride_fee,
+            "minimum_rides_fee_floor": piso_floor,
+            "daily_rate_weekday": diaria_wd,
+            "daily_rate_saturday": diaria_sat,
+            "daily_rate_sunday": diaria_sun,
+            "daily_rate_holiday": diaria_hol,
+            "taxa_supervisao": taxa_sup,
             "debito_pendente": 0.0,
-            "guaranteed_mode_enabled": True,
-            "retencao_devolucao": True,
+            "guaranteed_mode_enabled": guaranteed,
+            "retencao_devolucao": retencao,
             "bloquear_fatura": True,
             "features": {},
         }
@@ -1295,57 +1324,322 @@ def get_configs(request, company_id: Optional[str] = None, company_name: Optiona
             raise HttpError(404, "Operador não encontrado.")
         raise HttpError(422, "Selecione um operador válido.")
 
+    store = None
+    if company_id and company_id not in ("global", "NaN", "undefined"):
+        try:
+            store = Store.objects.filter(operator=op, id=company_id).first()
+        except Exception:
+            store = None
+    if not store and company_name:
+        store = Store.objects.filter(operator=op, name__iexact=company_name).first()
+    if not store:
+        store = Store.objects.filter(operator=op).first()
+
+    contract = Contract.objects.filter(store=store).first() if store else Contract.objects.filter(operator=op).first()
+
+    ride_fee = (contract.rideFeePerDeliveryCents / 100.0) if contract and contract.rideFeePerDeliveryCents is not None else 1.6
+    piso_floor = (contract.minimumRidesFeeFloorCents / 100.0) if contract and contract.minimumRidesFeeFloorCents is not None else 350.0
+    diaria_wd = (contract.dailyRateWeekdayCents / 100.0) if contract and contract.dailyRateWeekdayCents is not None else 60.0
+    diaria_sat = (contract.dailyRateSaturdayCents / 100.0) if contract and contract.dailyRateSaturdayCents is not None else 70.0
+    diaria_sun = (contract.dailyRateSundayCents / 100.0) if contract and contract.dailyRateSundayCents is not None else 80.0
+    diaria_hol = (contract.dailyRateHolidayCents / 100.0) if contract and contract.dailyRateHolidayCents is not None else 80.0
+    taxa_sup = (contract.supervisionFeePerWeekCents / 100.0) if contract and contract.supervisionFeePerWeekCents is not None else 10.0
+    guaranteed = contract.compensationMode in ("GARANTIDA", "GARANTIDA_HORAS") if contract else True
+    retencao = (contract.returnFeeBps > 0) if contract and contract.returnFeeBps is not None else True
+
+    c_id = str(store.id) if store else str(op.id)
+    c_name = store.name if store else op.name
+
     return {
-        "id": str(op.id),
-        "nome": op.name,
-        "company_id": str(op.id),
-        "company_name": op.name,
-        "ride_fee_per_delivery": 1.6,
-        "minimum_rides_fee_floor": 350.0,
-        "daily_rate_weekday": 60.0,
-        "daily_rate_saturday": 70.0,
-        "daily_rate_sunday": 80.0,
-        "daily_rate_holiday": 80.0,
-        "taxa_supervisao": 10.0,
+        "id": c_id,
+        "nome": c_name,
+        "company_id": c_id,
+        "company_name": c_name,
+        "ride_fee_per_delivery": ride_fee,
+        "minimum_rides_fee_floor": piso_floor,
+        "daily_rate_weekday": diaria_wd,
+        "daily_rate_saturday": diaria_sat,
+        "daily_rate_sunday": diaria_sun,
+        "daily_rate_holiday": diaria_hol,
+        "taxa_supervisao": taxa_sup,
         "debito_pendente": 0.0,
-        "guaranteed_mode_enabled": True,
-        "retencao_devolucao": True,
+        "guaranteed_mode_enabled": guaranteed,
+        "retencao_devolucao": retencao,
         "bloquear_fatura": True,
         "features": {},
     }
 
-@router.post("/configs")
-def create_config(request, payload: dict):
+
+def _save_configs_internal(request, payload: dict):
+    from accounts.auth import get_client_portal_user, require_role
+    from finance.models import Contract
+    from logistics.models import Store
     from ninja.errors import HttpError
-    raise HttpError(410, "Esta rota legada foi desativada; use os endpoints específicos de configuração.")
+    from django.db import transaction
+
+    auth = getattr(request, "auth", None) or {}
+    company_id = payload.get("company_id") or payload.get("companyId") or payload.get("id")
+
+    op = None
+    store = None
+
+    if auth.get("user_type") == "client_portal_user" or auth.get("client_id"):
+        client_user = get_client_portal_user(request)
+        if not client_user:
+            raise HttpError(401, "Usuário lojista não autenticado.")
+        op = client_user.operator
+        if company_id and company_id not in ("global", "NaN", "undefined"):
+            try:
+                store = Store.objects.filter(client=client_user.client, id=company_id).first()
+            except Exception:
+                store = None
+        if not store and client_user.client:
+            store = Store.objects.filter(client=client_user.client).first()
+    else:
+        actor = require_role(["ADMIN", "MANAGER"])(request)
+        is_admin = bool(getattr(actor, "is_platform_admin", False))
+        if is_admin:
+            op = _operator_from_company_reference(company_id) or actor.operator
+        else:
+            op = actor.operator
+        if not op:
+            raise HttpError(422, "Operador logístico obrigatório não identificado.")
+
+        if company_id and company_id not in ("global", "NaN", "undefined"):
+            try:
+                store = Store.objects.filter(operator=op, id=company_id).first()
+            except Exception:
+                store = None
+        if not store:
+            store = Store.objects.filter(operator=op).first()
+
+    if not op:
+        raise HttpError(422, "Operador logístico não identificado.")
+
+    with transaction.atomic():
+        if not store:
+            store = Store.objects.create(
+                operator=op,
+                name=op.name,
+                geom="POINT(-43.9451 -19.9227)",
+                operational=True,
+            )
+
+        ride_fee = payload.get("taxaCorridaPerEntrega") or payload.get("ride_fee_per_delivery") or 1.6
+        piso = payload.get("pisoFixo") or payload.get("minimum_rides_fee_floor") or 350.0
+        diaria_data = payload.get("diaria") or {}
+        if not isinstance(diaria_data, dict):
+            diaria_data = {}
+        diaria_wd = payload.get("diaria_weekday") or diaria_data.get("weekday") or payload.get("daily_rate_weekday") or 60.0
+        diaria_sat = payload.get("diaria_saturday") or diaria_data.get("saturday") or payload.get("daily_rate_saturday") or 70.0
+        diaria_sun = payload.get("diaria_sunday") or diaria_data.get("sunday") or payload.get("daily_rate_sunday") or 80.0
+        diaria_hol = payload.get("diaria_holiday") or diaria_data.get("holiday") or payload.get("daily_rate_holiday") or 80.0
+        taxa_sup = payload.get("taxaSupervisao") or payload.get("taxa_supervisao") or 10.0
+        guaranteed = payload.get("garantia_empresa") if "garantia_empresa" in payload else payload.get("guaranteed_mode_enabled", True)
+        retencao = payload.get("retencao_devolucao") if "retencao_devolucao" in payload else True
+
+        mode = Contract.CompensationMode.GARANTIDA if guaranteed else Contract.CompensationMode.PRODUCAO
+        piso_pct = payload.get("pisoPercentual") or payload.get("minimum_floor_percent") or 0
+
+        defaults = {
+            "operator": op,
+            "compensationMode": mode,
+            "rideFeePerDeliveryCents": int(round(float(ride_fee) * 100)),
+            "minimumRidesFeeFloorCents": int(round(float(piso) * 100)),
+            "minimumFloorBps": int(round(float(piso_pct) * 100)),
+            "adminTaxThresholdCents": 0,
+            "adminTaxFixedAmountCents": 0,
+            "adminTaxBps": 0,
+            "supervisionFeePerWeekCents": int(round(float(taxa_sup) * 100)),
+            "dailyRateWeekdayCents": int(round(float(diaria_wd) * 100)),
+            "dailyRateSaturdayCents": int(round(float(diaria_sat) * 100)),
+            "dailyRateSundayCents": int(round(float(diaria_sun) * 100)),
+            "dailyRateHolidayCents": int(round(float(diaria_hol) * 100)),
+            "returnFeeBps": 5000 if retencao else 0,
+        }
+
+        contract, _ = Contract.objects.update_or_create(store=store, defaults=defaults)
+
+    return {
+        "success": True,
+        "message": "Configurações salvas com sucesso.",
+        "id": str(store.id),
+        "nome": store.name,
+        "company_id": str(store.id),
+        "company_name": store.name,
+        "ride_fee_per_delivery": float(contract.rideFeePerDeliveryCents) / 100.0,
+        "minimum_rides_fee_floor": float(contract.minimumRidesFeeFloorCents) / 100.0,
+        "daily_rate_weekday": float(contract.dailyRateWeekdayCents) / 100.0,
+        "daily_rate_saturday": float(contract.dailyRateSaturdayCents) / 100.0,
+        "daily_rate_sunday": float(contract.dailyRateSundayCents) / 100.0,
+        "daily_rate_holiday": float(contract.dailyRateHolidayCents) / 100.0,
+        "taxa_supervisao": float(contract.supervisionFeePerWeekCents) / 100.0,
+        "debito_pendente": 0.0,
+        "guaranteed_mode_enabled": contract.compensationMode in ("GARANTIDA", "GARANTIDA_HORAS"),
+        "retencao_devolucao": contract.returnFeeBps > 0,
+        "bloquear_fatura": True,
+        "features": {},
+    }
+
+
+class ConfigUpdatePayload(BaseModel):
+    company_id: Optional[str] = None
+    companyId: Optional[str] = None
+    id: Optional[str] = None
+    taxaCorridaPerEntrega: Optional[float] = None
+    ride_fee_per_delivery: Optional[float] = None
+    pisoFixo: Optional[float] = None
+    minimum_rides_fee_floor: Optional[float] = None
+    pisoPercentual: Optional[float] = None
+    minimum_floor_percent: Optional[float] = None
+    taxaSupervisao: Optional[float] = None
+    taxa_supervisao: Optional[float] = None
+    diaria_weekday: Optional[float] = None
+    diaria_saturday: Optional[float] = None
+    diaria_sunday: Optional[float] = None
+    diaria_holiday: Optional[float] = None
+    daily_rate_weekday: Optional[float] = None
+    daily_rate_saturday: Optional[float] = None
+    daily_rate_sunday: Optional[float] = None
+    daily_rate_holiday: Optional[float] = None
+    diaria: Optional[Dict[str, Any]] = None
+    garantia_empresa: Optional[bool] = None
+    guaranteed_mode_enabled: Optional[bool] = None
+    retencao_devolucao: Optional[bool] = None
+    bloquear_fatura: Optional[bool] = None
+
+    class Config:
+        extra = "allow"
+
+
+@router.post("/configs")
+def create_config(request, payload: ConfigUpdatePayload):
+    payload_dict = payload.model_dump() if hasattr(payload, "model_dump") else (payload.dict() if hasattr(payload, "dict") else dict(payload))
+    return _save_configs_internal(request, payload_dict)
+
 
 @router.put("/configs")
-def update_config(request, payload: dict):
-    from ninja.errors import HttpError
-    raise HttpError(410, "Esta rota legada foi desativada; use os endpoints específicos de configuração.")
+def update_config(request, payload: ConfigUpdatePayload):
+    payload_dict = payload.model_dump() if hasattr(payload, "model_dump") else (payload.dict() if hasattr(payload, "dict") else dict(payload))
+    return _save_configs_internal(request, payload_dict)
+
 
 @router.get("/snapshots")
 def get_snapshots(request, company_id: Optional[str] = None, limit: int = 50):
-    # Mock snapshot to prevent crash in dashboards
-    return []
+    from accounts.auth import get_client_portal_user, get_staff_member
+    from finance.models import WeeklyStoreInvoice
+    from ninja.errors import HttpError
+
+    staff = get_staff_member(request)
+    client_user = None
+    if not staff:
+        try:
+            client_user = get_client_portal_user(request)
+        except Exception:
+            client_user = None
+    if not client_user and not staff:
+        raise HttpError(401, "Autenticação obrigatória.")
+
+    op = None
+    target_store_ids = []
+
+    if client_user:
+        op = client_user.operator
+        if client_user.client_id:
+            from logistics.models import Store
+            target_store_ids = list(Store.objects.filter(client_id=client_user.client_id).values_list("id", flat=True))
+    else:
+        is_platform_admin = bool(getattr(staff, "is_platform_admin", False))
+        if is_platform_admin and company_id and company_id not in ("global", "NaN", "undefined"):
+            op = _operator_from_company_reference(company_id) or staff.operator
+        else:
+            op = staff.operator
+
+    qs = WeeklyStoreInvoice.objects.select_related("store", "operator")
+    if op:
+        qs = qs.filter(operator=op)
+    if target_store_ids:
+        qs = qs.filter(store_id__in=target_store_ids)
+    elif company_id and company_id not in ("global", "NaN", "undefined"):
+        try:
+            qs = qs.filter(store_id=company_id)
+        except Exception:
+            pass
+
+    qs = qs.order_by("-startDate")[:limit]
+
+    results = []
+    for inv in qs:
+        driver_ids = list(inv.weeklyinvoicelineitem_set.values_list("driver_id", flat=True).distinct())
+        rides_count = inv.weeklyinvoicelineitem_set.exclude(order_id__isnull=True).count()
+        total_liquido = round(float(inv.totalCents or 0) / 100.0, 2)
+
+        start_str = inv.startDate.strftime("%d/%m") if inv.startDate else ""
+        end_str = inv.endDate.strftime("%d/%m") if inv.endDate else ""
+        week_label = f"Semana {start_str} a {end_str}" if start_str and end_str else f"Fatura #{inv.id}"
+
+        status_lower = str(inv.status or "draft").lower()
+        if status_lower in ("finalized", "paid"):
+            ui_status = "finalized"
+        elif status_lower == "locked":
+            ui_status = "locked"
+        else:
+            ui_status = "draft"
+
+        results.append({
+            "id": str(inv.id),
+            "weekLabel": week_label,
+            "weekStart": inv.startDate.isoformat() if inv.startDate else None,
+            "weekEnd": inv.endDate.isoformat() if inv.endDate else None,
+            "week_start": inv.startDate.isoformat() if inv.startDate else None,
+            "week_end": inv.endDate.isoformat() if inv.endDate else None,
+            "status": ui_status,
+            "totalGeral": total_liquido,
+            "total_liquido": total_liquido,
+            "total_corridas": rides_count,
+            "total_motoboys": len(driver_ids),
+            "drivers": [str(d) for d in driver_ids if d],
+            "pdfUrl": inv.pdfUrl,
+            "pdf_url": inv.pdfUrl,
+            "store_name": inv.store.name if inv.store else "",
+            "company_id": str(inv.store_id) if inv.store_id else (str(inv.operator_id) if inv.operator_id else ""),
+            "created_at": inv.createdAt.isoformat() if hasattr(inv, "createdAt") and inv.createdAt else None,
+        })
+    return results
+
 
 @router.get("/positions")
 def get_positions(request, max_age_minutes: int = 720, limit: int = 1000):
-    from accounts.auth import get_staff_member
+    from accounts.auth import get_staff_member, get_client_portal_user
     from config.redis_client import get_redis
     from django.utils import timezone as django_tz
+    from ninja.errors import HttpError
 
     staff = get_staff_member(request)
+    client_user = None
+    if not staff:
+        try:
+            client_user = get_client_portal_user(request)
+        except Exception:
+            client_user = None
+    if not staff and not client_user:
+        raise HttpError(401, "Autenticação obrigatória.")
+
     operator_id = None
     if staff and staff.operator_id:
         operator_id = str(staff.operator_id)
-    elif hasattr(request, "auth") and isinstance(request.auth, dict):
-        operator_id = str(request.auth.get("operator_id") or "")
+        if getattr(staff, "is_platform_admin", False) is True:
+            override_op = None
+            if hasattr(request, "headers") and isinstance(request.headers, dict):
+                override_op = request.headers.get("X-Operator-Id")
+            if not override_op and hasattr(request, "GET") and isinstance(request.GET, dict):
+                override_op = request.GET.get("operator_id") or request.GET.get("company_id")
+            if override_op:
+                operator_id = str(override_op)
+    elif client_user and client_user.operator_id:
+        operator_id = str(client_user.operator_id)
 
-    if not operator_id:
-        operator_id = request.headers.get("X-Operator-Id") or request.GET.get("operator_id") or request.GET.get("company_id")
-
-    if not operator_id:
+    if not operator_id or str(operator_id) in ("global", "NaN", "undefined"):
         return {"positions": [], "source": "redis_live"}
 
     r = get_redis()
@@ -2499,11 +2793,12 @@ def get_operator_financial_dashboard(request, month: Optional[str] = None):
     is_platform_admin = bool(getattr(actor, "is_platform_admin", False))
     operator = getattr(actor, "operator", None)
 
-    target_op_id = request.GET.get("operator_id") or request.GET.get("company_id") or request.headers.get("X-Operator-Id")
-    if target_op_id and str(target_op_id) not in ("global", "NaN", "undefined"):
-        op = _operator_from_company_reference(target_op_id)
-        if op:
-            operator = op
+    if is_platform_admin:
+        target_op_id = request.GET.get("operator_id") or request.GET.get("company_id") or request.headers.get("X-Operator-Id")
+        if target_op_id and str(target_op_id) not in ("global", "NaN", "undefined"):
+            op = _operator_from_company_reference(target_op_id)
+            if op:
+                operator = op
 
     if not operator and not is_platform_admin:
         raise HttpError(422, "Selecione explicitamente um operador.")
@@ -2626,11 +2921,12 @@ def get_cash_reconciliation(request, date: Optional[str] = None):
     is_platform_admin = bool(getattr(actor, "is_platform_admin", False))
     operator = getattr(actor, "operator", None)
 
-    target_op_id = request.GET.get("operator_id") or request.GET.get("company_id") or request.headers.get("X-Operator-Id")
-    if target_op_id and str(target_op_id) not in ("global", "NaN", "undefined"):
-        op = _operator_from_company_reference(target_op_id)
-        if op:
-            operator = op
+    if is_platform_admin:
+        target_op_id = request.GET.get("operator_id") or request.GET.get("company_id") or request.headers.get("X-Operator-Id")
+        if target_op_id and str(target_op_id) not in ("global", "NaN", "undefined"):
+            op = _operator_from_company_reference(target_op_id)
+            if op:
+                operator = op
 
     if not operator and not is_platform_admin:
         raise HttpError(422, "Selecione explicitamente um operador.")

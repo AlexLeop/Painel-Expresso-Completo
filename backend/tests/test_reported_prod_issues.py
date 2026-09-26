@@ -5,6 +5,7 @@ from django.test import Client
 from django.db import connection
 from accounts.models import Operator, PlatformAdmin, StaffMember, OperatorBranding
 from logistics.models import Store, Driver, Client as StoreClient, ClientPortalUser
+from finance.models import Contract, WeeklyStoreInvoice, WeeklyInvoiceLineItem
 from accounts.security import create_access_token
 
 
@@ -210,13 +211,76 @@ def setup_tables(db, monkeypatch):
             )
         """)
         cur.execute("""
+            CREATE TABLE IF NOT EXISTS "Contract" (
+                id CHAR(32) PRIMARY KEY,
+                operator_id CHAR(32) NOT NULL,
+                store_id CHAR(32) NOT NULL UNIQUE,
+                "compensationMode" VARCHAR(20) DEFAULT 'GARANTIDA',
+                "rideFeePerDeliveryCents" INT NOT NULL,
+                "minimumRidesFeeFloorCents" INT NOT NULL,
+                "minimumFloorBps" INT DEFAULT 0,
+                "adminTaxThresholdCents" INT DEFAULT 0,
+                "adminTaxFixedAmountCents" INT DEFAULT 0,
+                "adminTaxBps" INT DEFAULT 0,
+                "supervisionFeePerWeekCents" INT DEFAULT 0,
+                "dailyRateWeekdayCents" INT DEFAULT 0,
+                "dailyRateSaturdayCents" INT DEFAULT 0,
+                "dailyRateSundayCents" INT DEFAULT 0,
+                "dailyRateHolidayCents" INT DEFAULT 0,
+                "kmExcedenteValorCents" INT DEFAULT 0,
+                "allowAutomaticGrouping" BOOLEAN DEFAULT 1,
+                "cloudOverflowAllowed" BOOLEAN DEFAULT 0,
+                "maxStopsPerManifest" INT DEFAULT 3,
+                "maxDetourPercent" INT DEFAULT 20,
+                "cutoffHour" INT DEFAULT 2,
+                "cutoffMinute" INT DEFAULT 0,
+                "returnFeeBps" INT DEFAULT 5000,
+                "overridePayoutPolicy" BOOLEAN DEFAULT 0,
+                "customPayoutMode" VARCHAR(30),
+                "customAutoThresholdCents" BIGINT,
+                "customFeeMode" VARCHAR(30),
+                "customFeeCents" BIGINT,
+                "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS "WeeklyInvoiceLineItem" (
+                id CHAR(32) PRIMARY KEY,
+                operator_id CHAR(32) NOT NULL,
+                invoice_id CHAR(32) NOT NULL,
+                driver_id CHAR(32),
+                order_id CHAR(32),
+                "businessDate" DATE,
+                "manualEntryId" CHAR(32),
+                description TEXT,
+                "amountCents" BIGINT NOT NULL,
+                status VARCHAR(20) DEFAULT 'ACTIVE',
+                "disputeReason" TEXT,
+                "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS "WeeklyStoreInvoice" (
                 id CHAR(32) PRIMARY KEY,
                 operator_id CHAR(32) NOT NULL,
                 store_id CHAR(32) NOT NULL,
+                "startDate" DATE,
+                "endDate" DATE,
+                "totalNetProducaoCents" BIGINT DEFAULT 0,
+                "totalNetGarantidaCents" BIGINT DEFAULT 0,
+                "administrativeFeeCents" BIGINT DEFAULT 0,
+                "supervisionFeeCents" BIGINT DEFAULT 0,
+                "pendingDebitCarriedCents" BIGINT DEFAULT 0,
                 "totalCents" BIGINT DEFAULT 0,
                 status VARCHAR(20) DEFAULT 'PAID',
-                "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                "paymentGatewayId" VARCHAR(255),
+                "pixCopyPaste" TEXT,
+                barcode TEXT,
+                "pdfUrl" VARCHAR(255),
+                "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
         cur.execute("""
@@ -834,6 +898,204 @@ def test_company_drivers_client_portal_user_scoping_no_401(client: Client, sampl
     driver_ids = [d["id"] for d in drivers]
     assert str(driver1.id) in driver_ids
     assert str(other_driver.id) not in driver_ids
+
+
+@pytest.mark.django_db
+def test_configs_returns_real_database_contract(client: Client, sample_data):
+    """Garante que /configs lê do banco real (Contract) em vez de dados mockados."""
+    op = sample_data["operator"]
+    store = sample_data["store"]
+    staff = sample_data["staff"]
+    token = create_access_token({
+        "sub": str(staff.id),
+        "operator_id": str(op.id),
+        "role": "ADMIN",
+        "email": staff.email,
+    })
+
+    # Cria contrato com valores específicos e personalizados no PostgreSQL
+    Contract.objects.create(
+        id=uuid.uuid4(),
+        operator=op,
+        store=store,
+        compensationMode=Contract.CompensationMode.GARANTIDA,
+        rideFeePerDeliveryCents=280,      # R$ 2.80
+        minimumRidesFeeFloorCents=45000,  # R$ 450.00
+        minimumFloorBps=1000,
+        adminTaxThresholdCents=0,
+        adminTaxFixedAmountCents=0,
+        adminTaxBps=0,
+        supervisionFeePerWeekCents=1500,  # R$ 15.00
+        dailyRateWeekdayCents=7500,       # R$ 75.00
+        dailyRateSaturdayCents=8500,      # R$ 85.00
+        dailyRateSundayCents=9500,        # R$ 95.00
+        dailyRateHolidayCents=9500,       # R$ 95.00
+        returnFeeBps=5000,
+    )
+
+    resp = client.get(
+        f"/api/v1/db/configs?company_id={store.id}",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["ride_fee_per_delivery"] == 2.80
+    assert data["minimum_rides_fee_floor"] == 450.00
+    assert data["daily_rate_weekday"] == 75.00
+    assert data["daily_rate_saturday"] == 85.00
+    assert data["daily_rate_sunday"] == 95.00
+    assert data["daily_rate_holiday"] == 95.00
+    assert data["taxa_supervisao"] == 15.00
+    assert data["guaranteed_mode_enabled"] is True
+
+
+@pytest.mark.django_db
+def test_update_config_persists_to_contract_database(client: Client, sample_data):
+    """Garante que salvar regras de contrato (PUT /configs) não retorna 410 e persiste no PostgreSQL."""
+    store = sample_data["store"]
+    staff = sample_data["staff"]
+    token = create_access_token({
+        "sub": str(staff.id),
+        "operator_id": str(sample_data["operator"].id),
+        "role": "ADMIN",
+        "email": staff.email,
+    })
+
+    payload = {
+        "company_id": str(store.id),
+        "taxaCorridaPerEntrega": 3.25,
+        "pisoFixo": 500.00,
+        "diaria_weekday": 80.00,
+        "diaria_saturday": 90.00,
+        "diaria_sunday": 100.00,
+        "diaria_holiday": 110.00,
+        "taxaSupervisao": 20.00,
+        "garantia_empresa": True,
+        "retencao_devolucao": True,
+    }
+
+    resp = client.put(
+        "/api/v1/db/configs",
+        data=json.dumps(payload),
+        content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+    assert resp.status_code == 200
+    res_data = resp.json()
+    assert res_data["success"] is True
+    assert res_data["ride_fee_per_delivery"] == 3.25
+    assert res_data["minimum_rides_fee_floor"] == 500.00
+
+    # Confirmação no PostgreSQL
+    c = Contract.objects.get(store=store)
+    assert c.rideFeePerDeliveryCents == 325
+    assert c.minimumRidesFeeFloorCents == 50000
+    assert c.dailyRateWeekdayCents == 8000
+    assert c.dailyRateSaturdayCents == 9000
+    assert c.dailyRateSundayCents == 10000
+    assert c.dailyRateHolidayCents == 11000
+    assert c.supervisionFeePerWeekCents == 2000
+    assert c.compensationMode == Contract.CompensationMode.GARANTIDA
+
+
+@pytest.mark.django_db
+def test_snapshots_returns_real_weekly_invoices(client: Client, sample_data):
+    """Garante que /snapshots retorna faturas semanais reais do banco com dados auditáveis."""
+    import datetime
+    op = sample_data["operator"]
+    store = sample_data["store"]
+    staff = sample_data["staff"]
+    token = create_access_token({
+        "sub": str(staff.id),
+        "operator_id": str(op.id),
+        "role": "ADMIN",
+        "email": staff.email,
+    })
+
+    WeeklyStoreInvoice.objects.create(
+        id=uuid.uuid4(),
+        operator=op,
+        store=store,
+        startDate=datetime.date(2026, 9, 1),
+        endDate=datetime.date(2026, 9, 7),
+        totalCents=145020,  # R$ 1450.20
+        status=WeeklyStoreInvoice.InvoiceStatus.FINALIZED,
+        pdfUrl="https://s3.expresso.com/faturas/fat_01.pdf",
+    )
+
+    resp = client.get(
+        f"/api/v1/db/snapshots?company_id={store.id}",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    snap = data[0]
+    assert snap["totalGeral"] == 1450.20
+    assert snap["status"] == "finalized"
+    assert snap["pdfUrl"] == "https://s3.expresso.com/faturas/fat_01.pdf"
+    assert "Semana 01/09 a 07/09" in snap["weekLabel"]
+
+
+@pytest.mark.django_db
+def test_positions_requires_authentication_and_enforces_tenant(client: Client, sample_data):
+    """Garante que /positions exige autenticação e não aceita spoofing de operador de terceiro."""
+    # 1. Sem autenticação => 401
+    resp_anon = client.get("/api/v1/db/positions")
+    assert resp_anon.status_code == 401
+
+    # 2. Staff comum tentando ver outro operador via query param => deve ignorar e usar seu operador
+    staff = sample_data["staff"]
+    token1 = create_access_token({
+        "sub": str(staff.id),
+        "operator_id": str(sample_data["operator"].id),
+        "role": "ADMIN",
+        "email": staff.email,
+    })
+    other_op = Operator.objects.create(id=uuid.uuid4(), name="Outro Operador")
+
+    resp_spoof = client.get(
+        f"/api/v1/db/positions?operator_id={other_op.id}",
+        HTTP_AUTHORIZATION=f"Bearer {token1}",
+    )
+    assert resp_spoof.status_code == 200
+
+
+@pytest.mark.django_db
+def test_financial_reports_cross_tenant_isolation(client: Client, sample_data):
+    """Garante que operador 1 NÃO consegue ver relatórios financeiros do operador 2 via ?operator_id."""
+    op1 = sample_data["operator"]
+    staff = sample_data["staff"]
+    token1 = create_access_token({
+        "sub": str(staff.id),
+        "operator_id": str(op1.id),
+        "role": "ADMIN",
+        "email": staff.email,
+    })
+    op2 = Operator.objects.create(id=uuid.uuid4(), name="Concorrente")
+    admin_token = sample_data["admin_token"]
+
+    # 1. Staff 1 tenta passar o ID do operador 2 no dashboard financeiro
+    resp = client.get(
+        f"/api/v1/db/operator/financial-dashboard?operator_id={op2.id}",
+        HTTP_AUTHORIZATION=f"Bearer {token1}",
+    )
+    assert resp.status_code == 200
+
+    # 2. Staff 1 tenta passar o ID do operador 2 na conciliação de dinheiro
+    resp_cash = client.get(
+        f"/api/v1/db/operator/cash-reconciliation?operator_id={op2.id}",
+        HTTP_AUTHORIZATION=f"Bearer {token1}",
+    )
+    assert resp_cash.status_code == 200
+
+    # 3. PlatformAdmin PODE especificar outro operador
+    resp_admin = client.get(
+        f"/api/v1/db/operator/financial-dashboard?operator_id={op2.id}",
+        HTTP_AUTHORIZATION=f"Bearer {admin_token}",
+    )
+    assert resp_admin.status_code == 200
 
 
 

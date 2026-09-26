@@ -67,14 +67,23 @@ class EfiBaasClient:
         env_sandbox = os.getenv("EFI_SANDBOX", "true").lower() in ("true", "1", "t")
         self.sandbox = sandbox if sandbox is not None else env_sandbox
 
-        # Mock mode se ativado explicitamente ou se não houver certificado configurado
+        # Em ambiente de produção estrito, o modo mock é proibido
+        is_production = os.getenv("DJANGO_ENV", "").lower() == "production"
         env_mock = os.getenv("EFI_MOCK_MODE", "").lower() in ("true", "1", "t")
-        if mock_mode is not None:
+
+        if is_production and (mock_mode or env_mock):
+            raise EfiBaasError(
+                "Operação ilegal: EFI_MOCK_MODE não é permitido em ambiente de produção (DJANGO_ENV=production)."
+            )
+
+        if is_production:
+            self.mock_mode = False
+        elif mock_mode is not None:
             self.mock_mode = mock_mode
         elif env_mock:
             self.mock_mode = True
         else:
-            # Se não tiver cert_path existente no disco, ativa modo mock seguro
+            # Se não tiver cert_path existente no disco, ativa modo mock seguro apenas fora de produção
             self.mock_mode = not (self.cert_path and os.path.isfile(self.cert_path))
 
         self.base_url = self.HOMOLOG_URL if self.sandbox else self.PROD_URL
@@ -175,8 +184,10 @@ class EfiBaasClient:
         id_envio = correlation_id or str(uuid.uuid4()).replace("-", "")[:32]
         amount_reais_str = f"{amount_cents / 100:.2f}"
 
-        # Se estiver em modo mock (testes locais ou CI)
+        # Se estiver em modo mock (apenas testes locais ou CI)
         if self.mock_mode:
+            if os.getenv("DJANGO_ENV", "").lower() == "production":
+                raise EfiBaasError("Operação ilegal: Envio de PIX simulado bloqueado em ambiente de produção.")
             logger.info(
                 "[MOCK BAAS] PIX simulado enviado com sucesso: R$ %s para chave %s (%s)",
                 amount_reais_str, sanitized_key, destination_key_type
@@ -256,6 +267,8 @@ class EfiBaasClient:
     def get_account_balance(self) -> Dict[str, Any]:
         """Consulta o saldo disponível na conta jurídica da Efí Pay."""
         if self.mock_mode:
+            if os.getenv("DJANGO_ENV", "").lower() == "production":
+                raise EfiBaasError("Operação ilegal: Consulta de saldo simulada bloqueada em ambiente de produção.")
             return {
                 "saldo": 25480.50,
                 "saldo_cents": 2548050,
