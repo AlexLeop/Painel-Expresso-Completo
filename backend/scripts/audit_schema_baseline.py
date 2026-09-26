@@ -15,14 +15,18 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
+from typing import Sequence, cast, Any
 
 import psycopg
+from psycopg import sql
 
-if __package__:
-    from .apply_schema import discover_migrations, resolve_migrations_dir
-else:
-    from apply_schema import discover_migrations, resolve_migrations_dir
+try:
+    from scripts.apply_schema import discover_migrations, resolve_migrations_dir
+except ImportError:
+    try:
+        from .apply_schema import discover_migrations, resolve_migrations_dir
+    except ImportError:
+        from apply_schema import discover_migrations, resolve_migrations_dir
 
 
 @dataclass(frozen=True)
@@ -428,18 +432,20 @@ def run_audit(connection: psycopg.Connection) -> dict[str, object]:
 
     with connection.cursor() as cursor:
         cursor.execute("SELECT to_regclass('public.schema_migration') IS NOT NULL")
-        ledger_exists = bool(cursor.fetchone()[0])
+        row_reg = cursor.fetchone()
+        ledger_exists = bool(row_reg and row_reg[0])
         ledger_count = 0
         if ledger_exists:
             cursor.execute("SELECT COUNT(*) FROM public.schema_migration")
-            ledger_count = int(cursor.fetchone()[0])
+            row_cnt = cursor.fetchone()
+            ledger_count = int(row_cnt[0]) if row_cnt and row_cnt[0] is not None else 0
 
         for fingerprint in FINGERPRINTS:
             passed: list[str] = []
             failed: list[str] = []
             probe_results: list[bool] = []
             for probe in fingerprint.probes:
-                cursor.execute(probe.sql, probe.params)
+                cursor.execute(cast(Any, probe.sql), probe.params)
                 row = cursor.fetchone()
                 probe_passed = bool(row and row[0])
                 probe_results.append(probe_passed)
@@ -475,7 +481,12 @@ def run_audit(connection: psycopg.Connection) -> dict[str, object]:
 
 
 def summarize_report(report: dict[str, object]) -> dict[str, object]:
-    migrations = list(report["migrations"])
+    raw_migrations = report.get("migrations")
+    migrations: list[dict[str, object]] = (
+        [m for m in raw_migrations if isinstance(m, dict)]
+        if isinstance(raw_migrations, (list, tuple))
+        else []
+    )
     last_contiguous_applied: str | None = None
     first_non_applied: dict[str, object] | None = None
     applied_after_gap: list[str] = []
@@ -483,22 +494,23 @@ def summarize_report(report: dict[str, object]) -> dict[str, object]:
 
     for item in migrations:
         status = item["status"]
+        item_name = str(item.get("name") or "")
         if first_non_applied is None and status == "APPLIED":
-            last_contiguous_applied = item["name"]
+            last_contiguous_applied = item_name
             continue
         if first_non_applied is None:
             first_non_applied = {
-                "name": item["name"],
+                "name": item_name,
                 "status": status,
                 "passed": item["passed"],
                 "failed": item["failed"],
             }
         elif status == "APPLIED":
-            applied_after_gap.append(item["name"])
+            applied_after_gap.append(item_name)
         if status == "PARTIAL":
             partial_migrations.append(
                 {
-                    "name": item["name"],
+                    "name": item_name,
                     "passed": item["passed"],
                     "failed": item["failed"],
                 }

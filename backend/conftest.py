@@ -79,13 +79,15 @@ def _install_sqlite_geometry_contract() -> None:
         return
 
     if not hasattr(connection.ops, "select"):
-        connection.ops.select = "%s"
+        setattr(connection.ops, "select", "%s")
     if not hasattr(connection.ops, "get_geom_placeholder"):
-        connection.ops.get_geom_placeholder = (
-            lambda _field, _value, _compiler: "%s"
+        setattr(
+            connection.ops,
+            "get_geom_placeholder",
+            lambda _field, _value, _compiler: "%s",
         )
     if not hasattr(connection.ops, "Adapter"):
-        connection.ops.Adapter = _sqlite_geometry_adapter
+        setattr(connection.ops, "Adapter", _sqlite_geometry_adapter)
 
 
 def _ensure_sqlite_managed_false_schema() -> bool:

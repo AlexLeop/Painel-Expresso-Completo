@@ -1,5 +1,6 @@
 import json
 import uuid
+from typing import Any
 import pytest
 from unittest.mock import Mock, patch
 from django.db import connection
@@ -207,7 +208,8 @@ def test_geofence_does_not_arrive_order_of_different_driver():
     fake_redis = FakeRedis()
 
     with patch("logistics.tasks.r", fake_redis):
-        process_geofence_triggers()
+        task_callable: Any = process_geofence_triggers
+        task_callable()
 
     order.refresh_from_db()
     # A Order DEVE permanecer STARTED, e não ARRIVED!
@@ -263,7 +265,8 @@ def test_geofence_arrives_order_of_correct_driver():
     fake_redis = FakeRedis()
 
     with patch("logistics.tasks.r", fake_redis):
-        process_geofence_triggers()
+        task_callable: Any = process_geofence_triggers
+        task_callable()
 
     order.refresh_from_db()
     assert order.status == Order.OrderStatus.ARRIVED, (
@@ -295,11 +298,16 @@ def test_positions_endpoint_reads_from_redis():
         with patch("config.redis_client.get_redis", return_value=FakeGeoRedis()):
             result = db_api.get_positions(request)
 
+    assert isinstance(result, dict)
     assert result["source"] == "redis_live"
-    assert len(result["positions"]) == 2
-    assert result["positions"][0]["machine_condutor_id"] == "driver-abc"
-    assert result["positions"][0]["latitude"] == -15.7801
-    assert result["positions"][0]["longitude"] == -47.9292
+    positions = result["positions"]
+    assert isinstance(positions, list)
+    assert len(positions) == 2
+    pos0 = positions[0]
+    assert isinstance(pos0, dict)
+    assert pos0["machine_condutor_id"] == "driver-abc"
+    assert pos0["latitude"] == -15.7801
+    assert pos0["longitude"] == -47.9292
 
 
 def test_clear_order_runtime_state_removes_geofence_keys():
@@ -347,7 +355,7 @@ def test_clear_order_runtime_state_removes_geofence_keys():
         clear_order_runtime_state(order, driver.id)
 
     # Verifica se zrem foi chamado para a chave geofence do operador
-    geo_key = f"geofence:stops:{order.operator_id}"
+    geo_key = f"geofence:stops:{operator.id}"
     stop_member = f"stop:{stop.id}:point"
     assert ("zrem", geo_key, stop_member) in piped_commands, (
         f"A parada não foi removida do índice geoespacial via zrem! Comandos: {piped_commands}"

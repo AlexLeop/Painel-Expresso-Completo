@@ -184,8 +184,50 @@ class MemoryRedis:
                 keys = [k for k in keys if fnmatch.fnmatch(k, match)]
             return 0, keys[: int(count) if count else len(keys)]
 
-    def geoadd(self, *_args, **_kwargs):
-        return 1
+    def zrem(self, key: str, *members: Any):
+        with self._lock:
+            z = self._zsets.get(key, {})
+            removed = 0
+            for m in members:
+                m_str = str(m)
+                if m_str in z:
+                    del z[m_str]
+                    removed += 1
+            if hasattr(self, "_geo") and key in getattr(self, "_geo", {}):
+                for m in members:
+                    self._geo[key].pop(str(m), None)
+            return removed
+
+    def geopos(self, key: str, *members: Any):
+        with self._lock:
+            coords_dict = getattr(self, "_geo", {}).get(key, {})
+            results = []
+            for m in members:
+                val = coords_dict.get(str(m))
+                results.append([val] if val is not None else None)
+            return results
+
+    def geoadd(self, key: str, *values: Any):
+        with self._lock:
+            if not hasattr(self, "_geo"):
+                self._geo: dict[str, dict[str, tuple[float, float]]] = {}
+            g = self._geo.setdefault(key, {})
+            count = 0
+            if values and isinstance(values[0], (list, tuple)):
+                for item in values:
+                    if len(item) == 3:
+                        lng, lat, member = float(item[0]), float(item[1]), str(item[2])
+                        g[member] = (lng, lat)
+                        self.zadd(key, {member: 0.0})
+                        count += 1
+            elif len(values) >= 3:
+                for i in range(0, len(values), 3):
+                    if i + 2 < len(values):
+                        lng, lat, member = float(values[i]), float(values[i + 1]), str(values[i + 2])
+                        g[member] = (lng, lat)
+                        self.zadd(key, {member: 0.0})
+                        count += 1
+            return count
 
     def pipeline(self):
         parent = self
@@ -201,6 +243,18 @@ class MemoryRedis:
 
             def sadd(self, key, value):
                 parent.sadd(key, value)
+                return self
+
+            def zrem(self, key: str, *members: Any):
+                parent.zrem(key, *members)
+                return self
+
+            def zadd(self, key: str, mapping: dict[str, float]):
+                parent.zadd(key, mapping)
+                return self
+
+            def geoadd(self, key: str, *values: Any):
+                parent.geoadd(key, *values)
                 return self
 
             def delete(self, key):
