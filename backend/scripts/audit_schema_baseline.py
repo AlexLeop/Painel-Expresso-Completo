@@ -369,6 +369,21 @@ FINGERPRINTS: tuple[MigrationFingerprint, ...] = (
             nullable_column("Driver", "supabase_uid"),
         ),
     ),
+    MigrationFingerprint(
+        "20260924080000_store_manager_and_operators.sql",
+        (
+            column("ClientPortalUser", "role"),
+            index("idx_client_portal_user_role"),
+        ),
+    ),
+    MigrationFingerprint(
+        "20260925100000_force_rls_and_ledger_constraints.sql",
+        (
+            column("WalletTransaction", "metadata"),
+            index("idx_wallet_tx_order_category_unique"),
+            index("idx_weekly_invoice_order_unique"),
+        ),
+    ),
 )
 
 

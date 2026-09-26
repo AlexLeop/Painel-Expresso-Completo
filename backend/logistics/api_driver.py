@@ -397,12 +397,16 @@ def clear_order_runtime_state(order: Order, previous_driver_id: Optional[UUID]) 
         pipe = r.pipeline()
         pipe.srem(f"active_orders:driver:{previous_driver_id}", str(order.id))
         pipe.delete(f"public_tracker:{order.id}:active")
-        pipe.delete(_order_claim_key(order.id))
-        geo_key = f"geofence:stops:{order.operator_id}"
+        pipe.delete(f"order_claim:{order.id}")
+        operator_id = getattr(order, "operator_id", None) or getattr(order, "operator", None)
+        if hasattr(operator_id, "id"):
+            operator_id = operator_id.id
+        geo_key = f"geofence:stops:{operator_id}" if operator_id else None
         for stop_id in Stop.objects.filter(order=order).values_list("id", flat=True):
             pipe.srem(f"active_stops:driver:{previous_driver_id}", str(stop_id))
-            pipe.zrem(geo_key, f"stop:{stop_id}:point")
-            pipe.delete(f"stop:{stop_id}:radius")
+            if geo_key:
+                pipe.zrem(geo_key, f"stop:{stop_id}:point")
+                pipe.delete(f"stop:{stop_id}:radius")
         pipe.execute()
     except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError):
         pass
