@@ -1000,6 +1000,79 @@ def test_update_config_persists_to_contract_database(client: Client, sample_data
 
 
 @pytest.mark.django_db
+def test_update_config_partial_and_zero_values_preserved(client: Client, sample_data):
+    """Garante que atualizações parciais preservam valores existentes e valores 0.0 não são engolidos."""
+    store = sample_data["store"]
+    staff = sample_data["staff"]
+    token = create_access_token({
+        "sub": str(staff.id),
+        "operator_id": str(sample_data["operator"].id),
+        "role": "ADMIN",
+        "email": staff.email,
+    })
+
+    # Contrato inicial com valores customizados
+    Contract.objects.update_or_create(
+        store=store,
+        defaults={
+            "operator": sample_data["operator"],
+            "compensationMode": Contract.CompensationMode.GARANTIDA,
+            "rideFeePerDeliveryCents": 300,
+            "minimumRidesFeeFloorCents": 45000,
+            "minimumFloorBps": 0,
+            "adminTaxThresholdCents": 0,
+            "adminTaxFixedAmountCents": 0,
+            "adminTaxBps": 0,
+            "supervisionFeePerWeekCents": 2500,
+            "dailyRateWeekdayCents": 8500,
+            "dailyRateSaturdayCents": 9500,
+            "dailyRateSundayCents": 10500,
+            "dailyRateHolidayCents": 10500,
+            "returnFeeBps": 5000,
+        },
+    )
+
+    # 1. Atualização parcial: altera apenas taxaCorridaPerEntrega
+    partial_payload = {
+        "company_id": str(store.id),
+        "taxaCorridaPerEntrega": 4.50,
+    }
+    resp1 = client.put(
+        "/api/v1/db/configs",
+        data=json.dumps(partial_payload),
+        content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+    assert resp1.status_code == 200
+    c1 = Contract.objects.get(store=store)
+    assert c1.rideFeePerDeliveryCents == 450
+    # Valores existentes devem ser PRESERVADOS, não resetados para defaults hardcoded
+    assert c1.minimumRidesFeeFloorCents == 45000
+    assert c1.dailyRateWeekdayCents == 8500
+    assert c1.supervisionFeePerWeekCents == 2500
+
+    # 2. Atualização com valores 0.0 (isenção explícita)
+    zero_payload = {
+        "company_id": str(store.id),
+        "taxaSupervisao": 0.0,
+        "pisoFixo": 0.0,
+    }
+    resp2 = client.put(
+        "/api/v1/db/configs",
+        data=json.dumps(zero_payload),
+        content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+    assert resp2.status_code == 200
+    c2 = Contract.objects.get(store=store)
+    # Zero NÃO pode ter sido engolido pelo operador 'or'
+    assert c2.supervisionFeePerWeekCents == 0
+    assert c2.minimumRidesFeeFloorCents == 0
+    # O valor anterior de rideFee continua preservado
+    assert c2.rideFeePerDeliveryCents == 450
+
+
+@pytest.mark.django_db
 def test_snapshots_returns_real_weekly_invoices(client: Client, sample_data):
     """Garante que /snapshots retorna faturas semanais reais do banco com dados auditáveis."""
     import datetime

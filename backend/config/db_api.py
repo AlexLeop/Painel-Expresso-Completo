@@ -1425,37 +1425,106 @@ def _save_configs_internal(request, payload: dict):
                 operational=True,
             )
 
-        ride_fee = payload.get("taxaCorridaPerEntrega") or payload.get("ride_fee_per_delivery") or 1.6
-        piso = payload.get("pisoFixo") or payload.get("minimum_rides_fee_floor") or 350.0
-        diaria_data = payload.get("diaria") or {}
-        if not isinstance(diaria_data, dict):
-            diaria_data = {}
-        diaria_wd = payload.get("diaria_weekday") or diaria_data.get("weekday") or payload.get("daily_rate_weekday") or 60.0
-        diaria_sat = payload.get("diaria_saturday") or diaria_data.get("saturday") or payload.get("daily_rate_saturday") or 70.0
-        diaria_sun = payload.get("diaria_sunday") or diaria_data.get("sunday") or payload.get("daily_rate_sunday") or 80.0
-        diaria_hol = payload.get("diaria_holiday") or diaria_data.get("holiday") or payload.get("daily_rate_holiday") or 80.0
-        taxa_sup = payload.get("taxaSupervisao") or payload.get("taxa_supervisao") or 10.0
-        guaranteed = payload.get("garantia_empresa") if "garantia_empresa" in payload else payload.get("guaranteed_mode_enabled", True)
-        retencao = payload.get("retencao_devolucao") if "retencao_devolucao" in payload else True
+        existing_contract = Contract.objects.filter(store=store).first()
 
-        mode = Contract.CompensationMode.GARANTIDA if guaranteed else Contract.CompensationMode.PRODUCAO
-        piso_pct = payload.get("pisoPercentual") or payload.get("minimum_floor_percent") or 0
+        def _resolve_val(explicit_val, alt_val, current_cents, hard_default):
+            target = explicit_val if explicit_val is not None else alt_val
+            if target is not None:
+                try:
+                    return round(float(target) * 100)
+                except (ValueError, TypeError):
+                    pass
+            if current_cents is not None:
+                return current_cents
+            return round(float(hard_default) * 100)
+
+        diaria_data = payload.get("diaria") if isinstance(payload.get("diaria"), dict) else {}
+
+        ride_fee_cents = _resolve_val(
+            payload.get("taxaCorridaPerEntrega"),
+            payload.get("ride_fee_per_delivery"),
+            getattr(existing_contract, "rideFeePerDeliveryCents", None),
+            1.6,
+        )
+        piso_cents = _resolve_val(
+            payload.get("pisoFixo"),
+            payload.get("minimum_rides_fee_floor"),
+            getattr(existing_contract, "minimumRidesFeeFloorCents", None),
+            350.0,
+        )
+        piso_pct_bps = _resolve_val(
+            payload.get("pisoPercentual"),
+            payload.get("minimum_floor_percent"),
+            getattr(existing_contract, "minimumFloorBps", None),
+            0.0,
+        )
+        taxa_sup_cents = _resolve_val(
+            payload.get("taxaSupervisao"),
+            payload.get("taxa_supervisao"),
+            getattr(existing_contract, "supervisionFeePerWeekCents", None),
+            10.0,
+        )
+        diaria_wd_cents = _resolve_val(
+            payload.get("diaria_weekday"),
+            diaria_data.get("weekday") or payload.get("daily_rate_weekday"),
+            getattr(existing_contract, "dailyRateWeekdayCents", None),
+            60.0,
+        )
+        diaria_sat_cents = _resolve_val(
+            payload.get("diaria_saturday"),
+            diaria_data.get("saturday") or payload.get("daily_rate_saturday"),
+            getattr(existing_contract, "dailyRateSaturdayCents", None),
+            70.0,
+        )
+        diaria_sun_cents = _resolve_val(
+            payload.get("diaria_sunday"),
+            diaria_data.get("sunday") or payload.get("daily_rate_sunday"),
+            getattr(existing_contract, "dailyRateSundayCents", None),
+            80.0,
+        )
+        diaria_hol_cents = _resolve_val(
+            payload.get("diaria_holiday"),
+            diaria_data.get("holiday") or payload.get("daily_rate_holiday"),
+            getattr(existing_contract, "dailyRateHolidayCents", None),
+            80.0,
+        )
+
+        if "garantia_empresa" in payload:
+            is_guaranteed = bool(payload["garantia_empresa"])
+        elif "guaranteed_mode_enabled" in payload:
+            is_guaranteed = bool(payload["guaranteed_mode_enabled"])
+        elif existing_contract:
+            is_guaranteed = existing_contract.compensationMode in (
+                Contract.CompensationMode.GARANTIDA,
+                Contract.CompensationMode.GARANTIDA_HORAS,
+            )
+        else:
+            is_guaranteed = True
+
+        mode = Contract.CompensationMode.GARANTIDA if is_guaranteed else Contract.CompensationMode.PRODUCAO
+
+        if "retencao_devolucao" in payload:
+            retencao_enabled = bool(payload["retencao_devolucao"])
+        elif existing_contract:
+            retencao_enabled = existing_contract.returnFeeBps > 0
+        else:
+            retencao_enabled = True
 
         defaults = {
             "operator": op,
             "compensationMode": mode,
-            "rideFeePerDeliveryCents": round(float(ride_fee) * 100),
-            "minimumRidesFeeFloorCents": round(float(piso) * 100),
-            "minimumFloorBps": round(float(piso_pct) * 100),
-            "adminTaxThresholdCents": 0,
-            "adminTaxFixedAmountCents": 0,
-            "adminTaxBps": 0,
-            "supervisionFeePerWeekCents": round(float(taxa_sup) * 100),
-            "dailyRateWeekdayCents": round(float(diaria_wd) * 100),
-            "dailyRateSaturdayCents": round(float(diaria_sat) * 100),
-            "dailyRateSundayCents": round(float(diaria_sun) * 100),
-            "dailyRateHolidayCents": round(float(diaria_hol) * 100),
-            "returnFeeBps": 5000 if retencao else 0,
+            "rideFeePerDeliveryCents": ride_fee_cents,
+            "minimumRidesFeeFloorCents": piso_cents,
+            "minimumFloorBps": piso_pct_bps,
+            "adminTaxThresholdCents": getattr(existing_contract, "adminTaxThresholdCents", 0) or 0,
+            "adminTaxFixedAmountCents": getattr(existing_contract, "adminTaxFixedAmountCents", 0) or 0,
+            "adminTaxBps": getattr(existing_contract, "adminTaxBps", 0) or 0,
+            "supervisionFeePerWeekCents": taxa_sup_cents,
+            "dailyRateWeekdayCents": diaria_wd_cents,
+            "dailyRateSaturdayCents": diaria_sat_cents,
+            "dailyRateSundayCents": diaria_sun_cents,
+            "dailyRateHolidayCents": diaria_hol_cents,
+            "returnFeeBps": 5000 if retencao_enabled else 0,
         }
 
         contract, _ = Contract.objects.update_or_create(store=store, defaults=defaults)
