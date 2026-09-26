@@ -71,7 +71,7 @@ class MemoryRedis:
         with self._lock:
             z = self._zsets.setdefault(key, {})
             for member, score in mapping.items():
-                z[str(member)] = float(score)
+                z[member] = float(score)
             return True
 
     def zrange(self, key: str, start: int, end: int):
@@ -80,7 +80,7 @@ class MemoryRedis:
             ordered = [
                 member
                 for member, _score in sorted(
-                    z.items(), key=lambda item: (float(item[1]), str(item[0]))
+                    z.items(), key=lambda item: (float(item[1]), item[0])
                 )
             ]
             if end == -1:
@@ -129,7 +129,7 @@ class MemoryRedis:
                 current_int = int(current)
             except Exception:
                 current_int = 0
-            next_value = current_int + int(amount)
+            next_value = current_int + amount
             self._values[key] = next_value
             return next_value
 
@@ -156,9 +156,8 @@ class MemoryRedis:
                 return None
             if count is None:
                 return lst.pop(0)
-            count_int = int(count)
-            popped = lst[:count_int]
-            del lst[:count_int]
+            popped = lst[:count]
+            del lst[:count]
             return popped
 
     def ltrim(self, key: str, start: int, end: int):
@@ -182,7 +181,8 @@ class MemoryRedis:
             keys = sorted(all_keys)
             if match:
                 keys = [k for k in keys if fnmatch.fnmatch(k, match)]
-            return 0, keys[: int(count) if count else len(keys)]
+            limit = count if count else len(keys)
+            return 0, keys[:limit]
 
     def zrem(self, key: str, *members: Any):
         with self._lock:

@@ -23,10 +23,11 @@ from psycopg import sql
 try:
     from scripts.apply_schema import discover_migrations, resolve_migrations_dir
 except ImportError:
-    try:
-        from .apply_schema import discover_migrations, resolve_migrations_dir
-    except ImportError:
-        from apply_schema import discover_migrations, resolve_migrations_dir
+    import importlib
+
+    _mod = importlib.import_module("apply_schema")
+    discover_migrations = _mod.discover_migrations
+    resolve_migrations_dir = _mod.resolve_migrations_dir
 
 
 @dataclass(frozen=True)
