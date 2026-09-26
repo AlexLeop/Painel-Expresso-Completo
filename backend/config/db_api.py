@@ -9,50 +9,12 @@ from accounts.models import Operator
 
 logger = logging.getLogger(__name__)
 
-_schema_ensured = False
+_schema_ensured = True
 
 def _ensure_database_schema():
-    global _schema_ensured
-    if _schema_ensured:
-        return
-    from django.db import connection
-    try:
-        if connection.vendor == "postgresql":
-            with connection.cursor() as cursor:
-                cursor.execute("""
-                    ALTER TABLE "PlatformAdmin"
-                        ADD COLUMN IF NOT EXISTS "passwordHash" VARCHAR(255);
-                    ALTER TABLE "PlatformAdmin"
-                        ALTER COLUMN supabase_uid DROP NOT NULL;
-
-                    ALTER TABLE "StaffMember"
-                        ADD COLUMN IF NOT EXISTS "passwordHash" VARCHAR(255);
-                    ALTER TABLE "StaffMember"
-                        ALTER COLUMN supabase_uid DROP NOT NULL;
-
-                    ALTER TABLE "Driver"
-                        ADD COLUMN IF NOT EXISTS "passwordHash" VARCHAR(255);
-                    ALTER TABLE "Driver"
-                        ALTER COLUMN supabase_uid DROP NOT NULL;
-
-                    ALTER TABLE "ClientPortalUser"
-                        ADD COLUMN IF NOT EXISTS role VARCHAR(50) NOT NULL DEFAULT 'lojista',
-                        ADD COLUMN IF NOT EXISTS "passwordHash" VARCHAR(255),
-                        ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
-                    ALTER TABLE "ClientPortalUser"
-                        ALTER COLUMN supabase_uid DROP NOT NULL;
-
-                    CREATE INDEX IF NOT EXISTS idx_client_portal_user_role
-                        ON "ClientPortalUser" (operator_id, client_id, role);
-                    CREATE INDEX IF NOT EXISTS idx_client_portal_user_active
-                        ON "ClientPortalUser" (operator_id, active);
-
-                    ALTER TABLE "Store"
-                        ADD COLUMN IF NOT EXISTS operational BOOLEAN NOT NULL DEFAULT TRUE;
-                """)
-        _schema_ensured = True
-    except Exception as e:
-        logger.warning(f"Aviso de auto-alinhamento de schema: {e}")
+    # DDL em runtime removido por segurança operacional e estabilidade sob escala.
+    # Todas as alterações de schema residem exclusivamente em database/migrations/.
+    pass
 
 router = Router(tags=["Frontend DB Integration (Legacy)"])
 

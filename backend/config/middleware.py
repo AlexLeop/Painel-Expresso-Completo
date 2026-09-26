@@ -11,6 +11,8 @@ class NativeAuthRLSMiddleware:
     Middleware que intercepta o Bearer JWT nativo da plataforma,
     extrai o payload e, em conexões PostgreSQL, injeta os claims na sessão.
     Garante que o ORM do Django e o RLS do banco reflitam a identidade do usuário.
+    Usa is_local=true para escopo local de transação, blindando contra vazamento
+    de sessão em conexões agrupadas (PgBouncer/Supabase pooler).
     """
     ALLOWED_ROLES = {"authenticated", "service_role", "anon"}
 
@@ -47,7 +49,7 @@ class NativeAuthRLSMiddleware:
                 try:
                     with connection.cursor() as cursor:
                         cursor.execute(
-                            "SELECT set_config('request.jwt.claims', %s, false);",
+                            "SELECT set_config('request.jwt.claims', %s, true);",
                             [json.dumps(rls_claims)],
                         )
                     return self.get_response(request)

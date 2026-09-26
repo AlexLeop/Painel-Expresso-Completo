@@ -75,6 +75,7 @@ def setup_test_tables(db):
                 supabase_uid CHAR(32) UNIQUE NOT NULL,
                 name VARCHAR(255) NOT NULL,
                 email VARCHAR(255) NOT NULL,
+                role VARCHAR(50) NOT NULL DEFAULT 'lojista',
                 "passwordHash" VARCHAR(255),
                 active BOOLEAN NOT NULL DEFAULT 1,
                 "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

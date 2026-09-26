@@ -116,6 +116,9 @@ def _ensure_sqlite_managed_false_schema() -> bool:
         _add_column_if_missing(
             connection, "ClientPortalUser", "active", "BOOLEAN NOT NULL DEFAULT 1"
         )
+        _add_column_if_missing(
+            connection, "ClientPortalUser", "role", "VARCHAR(50) NOT NULL DEFAULT 'lojista'"
+        )
     with connection.cursor() as cursor:
         cursor.execute(
             'CREATE UNIQUE INDEX IF NOT EXISTS "test_operator_slug_unique" '
