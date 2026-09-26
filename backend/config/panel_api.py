@@ -824,11 +824,3 @@ def reset_operator_manager_password(request, operator_id: str, payload: Operator
     manager.set_password(payload.newPassword)
     manager.save(update_fields=["passwordHash"])
     return {"success": True, "managerEmail": manager.email, "message": "Senha redefinida com sucesso!"}
-
-
-
-
-# Catch-all
-@panel_api.api_operation(['GET', 'POST', 'PUT', 'DELETE'], '/{path:path}', auth=None)
-def catch_all(request, path: str):
-    return {}

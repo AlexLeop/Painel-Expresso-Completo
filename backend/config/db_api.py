@@ -2531,8 +2531,17 @@ def get_operator_financial_dashboard(request, month: Optional[str] = None):
         orders_qs = orders_qs.filter(operator=operator)
         withdrawals_qs = withdrawals_qs.filter(operator=operator)
 
-    orders_qs = orders_qs.filter(completedAt__year=target_year, completedAt__month=target_month)
-    withdrawals_qs = withdrawals_qs.filter(createdAt__year=target_year, createdAt__month=target_month)
+    import calendar
+    _, last_day = calendar.monthrange(target_year, target_month)
+    start_month_dt = datetime.datetime(target_year, target_month, 1, 0, 0, 0)
+    end_month_dt = datetime.datetime(target_year, target_month, last_day, 23, 59, 59, 999999)
+    if timezone.is_aware(timezone.now()):
+        tz = timezone.get_current_timezone()
+        start_month_dt = timezone.make_aware(start_month_dt, tz)
+        end_month_dt = timezone.make_aware(end_month_dt, tz)
+
+    orders_qs = orders_qs.filter(completedAt__gte=start_month_dt, completedAt__lte=end_month_dt)
+    withdrawals_qs = withdrawals_qs.filter(createdAt__gte=start_month_dt, createdAt__lte=end_month_dt)
 
     orders_agg = orders_qs.aggregate(
         total_fare=Sum("fareValueCents"),
@@ -3260,35 +3269,48 @@ def get_dashboard_stats(
     active_drivers = drivers_qs.filter(active=True).count()
     total_drivers = drivers_qs.count()
     
-    # Daily timeline
+    # Daily timeline: agregação única em lote via TruncDay (1 query SQL em vez de 180 queries)
+    from django.db.models.functions import TruncDay
+    from django.db.models import Count
     import builtins
+
+    daily_aggregates = (
+        period_orders.filter(status=Order.OrderStatus.COMPLETED)
+        .annotate(day=TruncDay("requestedAt"))
+        .values("day")
+        .annotate(
+            faturamento_cents=Sum("fareValueCents"),
+            total_corridas=Count("id")
+        )
+        .order_by("day")
+    )
+    daily_map = {}
+    for row in daily_aggregates:
+        if row["day"]:
+            d_val = row["day"]
+            day_str = d_val.strftime("%Y-%m-%d") if hasattr(d_val, "strftime") else str(d_val)[:10]
+            daily_map[day_str] = {
+                "faturamento": (row["faturamento_cents"] or 0) / 100.0,
+                "corridas": row["total_corridas"] or 0,
+            }
+
     daily_data = []
     for day_idx in builtins.range(days_count):
         d_start = (start_date + timedelta(days=day_idx)).replace(hour=0, minute=0, second=0, microsecond=0)
-        d_end = d_start + timedelta(days=1)
         day_label = d_start.strftime("%d/%m")
         day_iso = d_start.strftime("%Y-%m-%d")
-        
-        day_completed = period_orders.filter(
-            requestedAt__gte=d_start,
-            requestedAt__lt=d_end,
-            status=Order.OrderStatus.COMPLETED
-        )
-        day_rev_cents = day_completed.aggregate(s=Sum("fareValueCents"))["s"] or 0
-        day_rev = day_rev_cents / 100.0
-        day_rides = day_completed.count()
-        
+        val = daily_map.get(day_iso, {"faturamento": 0.0, "corridas": 0})
         daily_data.append({
             "date": day_iso,
             "time": day_label,
-            "faturamento": day_rev,
-            "corridas": day_rides,
+            "faturamento": val["faturamento"],
+            "corridas": val["corridas"],
         })
         
     # Ranking of Top Partner Stores
     top_stores = []
     store_map = {}
-    for ord in period_orders:
+    for ord in period_orders.select_related("store"):
         s_id = str(ord.store_id) if ord.store_id else "unknown"
         s_name = ord.store.name if (ord.store and ord.store.name) else "Expresso Neves"
         if s_id not in store_map:
