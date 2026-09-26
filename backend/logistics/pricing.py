@@ -75,6 +75,19 @@ def configured_fare_cents(store, distance_km: float) -> int:
 
 
 def price_route(store, points: Iterable[Coordinate]) -> tuple[float, int]:
+    from logistics.routing import calculate_route_distance
+
     normalized_points = list(points)
-    distance_km = estimate_route_distance_km(normalized_points)
+    distance_km, _ = calculate_route_distance(normalized_points)
     return distance_km, configured_fare_cents(store, distance_km)
+
+
+def price_route_with_method(
+    store, points: Iterable[Coordinate]
+) -> tuple[float, int, str]:
+    from logistics.routing import calculate_route_distance
+
+    normalized_points = list(points)
+    distance_km, method = calculate_route_distance(normalized_points)
+    return distance_km, configured_fare_cents(store, distance_km), method
+

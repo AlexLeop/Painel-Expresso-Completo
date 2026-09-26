@@ -1655,7 +1655,7 @@ def create_order(request, payload: OrderCreateSchema):
     from django.utils import timezone
     from django.db import transaction
     from finance.business_date import resolve_store_business_date
-    from logistics.pricing import parse_coordinate, price_route
+    from logistics.pricing import parse_coordinate, price_route_with_method
     from ninja.errors import HttpError
     
     auth = getattr(request, "auth", None) or {}
@@ -1697,7 +1697,7 @@ def create_order(request, payload: OrderCreateSchema):
             coordinates(stop.lat_parada, stop.lng_parada, f"parada_{index}")
             for index, stop in enumerate(payload.pontos, start=1)
         ]
-        distance_km, fare_cents = price_route(
+        distance_km, fare_cents, distance_method = price_route_with_method(
             store, [pickup_coordinates, *stop_coordinates]
         )
         with transaction.atomic():
@@ -1708,7 +1708,7 @@ def create_order(request, payload: OrderCreateSchema):
                 status=Order.OrderStatus.OFFERED,
                 fareValueCents=fare_cents,
                 distanceMeters=int(distance_km * 1000),
-                metadata={"distance_method": "HAVERSINE_BUFFERED_30_PERCENT"},
+                metadata={"distance_method": distance_method},
             )
             
             # Origin Stop
@@ -1776,7 +1776,7 @@ def estimate_order(
 ):
     from accounts.auth import get_client_portal_user, require_role
     from logistics.models import Store
-    from logistics.pricing import parse_coordinate, price_route
+    from logistics.pricing import parse_coordinate, price_route_with_method
     from ninja.errors import HttpError
 
     stores = Store.objects.filter(id=empresa_id, operational=True)
@@ -1815,7 +1815,9 @@ def estimate_order(
                 lng_desejado, field_name="lng_desejado", minimum=-180, maximum=180
             ),
         )
-        distance_km, fare_cents = price_route(store, [pickup, destination])
+        distance_km, fare_cents, distance_method = price_route_with_method(
+            store, [pickup, destination]
+        )
     except ValueError as exc:
         raise HttpError(422, str(exc)) from exc
 
@@ -1823,7 +1825,7 @@ def estimate_order(
         "response": {
             "distancia": round(distance_km, 2),
             "valor": fare_cents / 100,
-            "metodo_distancia": "HAVERSINE_BUFFERED_30_PERCENT",
+            "metodo_distancia": distance_method,
         }
     }
 
@@ -2858,7 +2860,7 @@ def dispatch_store_ride(request, payload: DispatchStoreRidePayload):
     from django.utils import timezone
     from accounts.auth import require_role
     from finance.business_date import resolve_store_business_date
-    from logistics.pricing import parse_coordinate, price_route
+    from logistics.pricing import parse_coordinate, price_route_with_method
     from ninja.errors import HttpError
     import uuid
 
@@ -2962,7 +2964,7 @@ def dispatch_store_ride(request, payload: DispatchStoreRidePayload):
         for index, destination in enumerate(payload.destinos, start=1)
     ]
     try:
-        distance_km, fare_cents = price_route(
+        distance_km, fare_cents, distance_method = price_route_with_method(
             store, [pickup_coordinates, *destination_coordinates]
         )
     except ValueError as exc:
@@ -2990,7 +2992,7 @@ def dispatch_store_ride(request, payload: DispatchStoreRidePayload):
             acceptedAt=now if driver else None,
             metadata={
                 **metadata,
-                "distance_method": "HAVERSINE_BUFFERED_30_PERCENT",
+                "distance_method": distance_method,
             },
         )
 

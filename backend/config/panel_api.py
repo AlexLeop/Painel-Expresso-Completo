@@ -352,11 +352,10 @@ def _parse_coordinate(value: str, *, field_name: str, minimum: float, maximum: f
         raise HttpError(422, str(exc)) from exc
 
 
-def _estimated_route_distance_km(points) -> float:
-    """Estimativa conservadora; o método é exposto na resposta e não finge roteamento viário."""
-    from logistics.pricing import estimate_route_distance_km
+def _estimated_route_distance_km(points) -> tuple[float, str]:
+    from logistics.routing import calculate_route_distance
 
-    return estimate_route_distance_km(points)
+    return calculate_route_distance(points)
 
 
 def _configured_fare_cents(store, distance_km: float) -> int:
@@ -420,7 +419,7 @@ def post_machine_ride_create(request, payload: RideCreatePayload):
             )
         )
 
-    distancia_km = _estimated_route_distance_km([pickup, *parsed_stops])
+    distancia_km, distance_method = _estimated_route_distance_km([pickup, *parsed_stops])
     distance_meters = int(distancia_km * 1000)
     valor_cents = _configured_fare_cents(store, distancia_km)
 
@@ -449,7 +448,7 @@ def post_machine_ride_create(request, payload: RideCreatePayload):
             fareValueCents=valor_cents,
             distanceMeters=distance_meters,
             businessDate=resolve_store_business_date(store),
-            metadata={**metadata, "distance_method": "HAVERSINE_BUFFERED_30_PERCENT"},
+            metadata={**metadata, "distance_method": distance_method},
         )
 
         Stop.objects.create(
@@ -534,7 +533,7 @@ def get_machine_rides_estimate(
         _parse_coordinate(lat_desejado, field_name="lat_desejado", minimum=-90, maximum=90),
         _parse_coordinate(lng_desejado, field_name="lng_desejado", minimum=-180, maximum=180),
     )
-    distancia = _estimated_route_distance_km([pickup, destination])
+    distancia, distance_method = _estimated_route_distance_km([pickup, destination])
     operator_id = _operator_scope(request)
     stores = Store.objects.filter(id=empresa_id, operator_id=operator_id, operational=True)
     client_id = (getattr(request, "auth", None) or {}).get("client_id")
@@ -549,7 +548,7 @@ def get_machine_rides_estimate(
         "response": {
             "distancia": round(distancia, 2),
             "valor": valor_cents / 100.0,
-            "metodo_distancia": "HAVERSINE_BUFFERED_30_PERCENT",
+            "metodo_distancia": distance_method,
         }
     }
 
