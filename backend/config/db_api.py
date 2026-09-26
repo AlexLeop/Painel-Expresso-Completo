@@ -1618,7 +1618,7 @@ def get_snapshots(request, company_id: Optional[str] = None, limit: int = 50):
             target_store_ids = list(Store.objects.filter(client_id=client_user.client_id).values_list("id", flat=True))
     elif staff:
         is_platform_admin = getattr(staff, "is_platform_admin", False) is True
-        if is_platform_admin and company_id and str(company_id) not in ("global", "NaN", "undefined"):
+        if is_platform_admin and company_id and company_id not in ("global", "NaN", "undefined"):
             op = _operator_from_company_reference(company_id) or getattr(staff, "operator", None)
         else:
             op = getattr(staff, "operator", None)
@@ -1630,7 +1630,7 @@ def get_snapshots(request, company_id: Optional[str] = None, limit: int = 50):
         qs = qs.filter(operator=op)
     if target_store_ids:
         qs = qs.filter(store_id__in=target_store_ids)
-    elif company_id and str(company_id) not in ("global", "NaN", "undefined"):
+    elif company_id and company_id not in ("global", "NaN", "undefined"):
         try:
             qs = qs.filter(store_id=company_id)
         except Exception:
