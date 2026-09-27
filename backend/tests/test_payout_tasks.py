@@ -29,7 +29,7 @@ def test_execute_pix_payout_task_success():
     with patch("django.db.transaction.atomic"), \
          patch("finance.models.WithdrawalRequest.objects.select_for_update") as mock_w_lock, \
          patch("finance.baas_client.EfiBaasClient.send_pix_to_key", return_value=mock_baas_result), \
-         patch("finance.tasks.notify_payout_success_task.delay") as mock_notify:
+         patch("finance.tasks.notify_payout_success_task") as mock_notify:
 
         mock_w_lock.return_value.get.return_value = mock_withdrawal
 
@@ -39,7 +39,7 @@ def test_execute_pix_payout_task_success():
         assert res["tx_id"] == "tx-efi-999"
         assert mock_withdrawal.status == WithdrawalRequest.WithdrawalStatus.PAID
         assert mock_withdrawal.baasTransactionId == "tx-efi-999"
-        mock_notify.assert_called_once_with("w-123")
+        mock_notify.delay.assert_called_once_with("w-123")
 
 
 def test_execute_pix_payout_task_permanent_failure_refunds():

@@ -199,7 +199,7 @@ def test_efi_pix_webhook(rf):
     with patch("django.db.transaction.atomic"), \
          patch("django.db.transaction.on_commit", side_effect=lambda callback: callback()), \
          patch("finance.models.WithdrawalRequest.objects.select_for_update") as mock_lock, \
-         patch("finance.tasks.notify_payout_success_task.delay") as mock_notify:
+         patch("finance.webhooks.notify_payout_success_task") as mock_notify:
 
         mock_lock.return_value.filter.return_value.first.return_value = mock_w
 
@@ -208,4 +208,4 @@ def test_efi_pix_webhook(rf):
         body = json.loads(resp.content)
         assert body["processed"] == 1
         assert mock_w.status == WithdrawalRequest.WithdrawalStatus.PAID
-        mock_notify.assert_called_once_with(str(mock_w.id))
+        mock_notify.delay.assert_called_once_with(str(mock_w.id))
