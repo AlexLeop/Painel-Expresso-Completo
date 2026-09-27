@@ -1278,7 +1278,50 @@ def test_operator_process_credits(sample_data):
     assert "results" in data
 
 
+def test_client_financial_statement_and_billing_history(sample_data):
+    from logistics.models import ClientPortalUser, Client as ClientModel
+    client = Client()
+    op1 = sample_data["operator"]
+    store = sample_data["store"]
 
+    client_obj = ClientModel.objects.create(
+        id=uuid.uuid4(),
+        operator=op1,
+        name="Cliente Lojista",
+        document="12345678000199",
+        active=True,
+    )
+    store.client = client_obj
+    store.save(update_fields=["client"])
 
+    portal_user = ClientPortalUser.objects.create(
+        id=uuid.uuid4(),
+        operator=op1,
+        client=client_obj,
+        name="Lojista Teste",
+        email="lojista@teste.com",
+        active=True,
+    )
+    token = create_access_token({
+        "sub": str(portal_user.id),
+        "operator_id": str(op1.id),
+        "client_id": str(client_obj.id),
+        "user_type": "client_portal_user",
+        "email": portal_user.email,
+        "role": "lojista",
+    })
 
+    # Test financial-statement with period=30d
+    resp = client.get(
+        "/api/v1/client/financial-statement?period=30d",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+    assert resp.status_code == 200, f"Failed with {resp.status_code}: {resp.content}"
+
+    # Test billing-history
+    resp2 = client.get(
+        "/api/v1/client/billing-history",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+    assert resp2.status_code == 200, f"Failed with {resp2.status_code}: {resp2.content}"
 

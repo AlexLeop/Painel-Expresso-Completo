@@ -221,8 +221,6 @@ export function CreateRideModal({
     }
   }, [isOpen, initialData]);
 
-  if (!isOpen) return null;
-
   const handleAddDelivery = () => {
     setDeliveries([
       ...deliveries,

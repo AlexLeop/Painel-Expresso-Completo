@@ -35,15 +35,25 @@ class EntryPayload(BaseModel):
 def get_entries(request, company_id: Optional[str] = None, start: Optional[str] = None, end: Optional[str] = None):
     from accounts.auth import get_client_portal_user, require_role
     from ninja.errors import HttpError
+    from finance.models import ManualEntry
 
     try:
-        staff = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
-        is_admin = bool(getattr(staff, "is_platform_admin", False))
-        qs = ManualEntry.objects.all()
-        if not is_admin:
-            qs = qs.filter(operator_id=staff.operator_id)
-        elif company_id and company_id != "global":
-            qs = qs.filter(operator_id=company_id)
+        client_user = get_client_portal_user(request)
+        if client_user:
+            qs = ManualEntry.objects.filter(store__client_id=client_user.client_id, visibleToStore=True)
+            if company_id and company_id != "global":
+                try:
+                    qs = qs.filter(store_id=company_id)
+                except Exception:
+                    pass
+        else:
+            staff = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
+            is_admin = bool(getattr(staff, "is_platform_admin", False))
+            qs = ManualEntry.objects.all()
+            if not is_admin:
+                qs = qs.filter(operator_id=staff.operator_id)
+            elif company_id and company_id != "global":
+                qs = qs.filter(operator_id=company_id)
 
         if start:
             qs = qs.filter(createdAt__gte=start)
@@ -2595,9 +2605,17 @@ def _stores_visible_to_request(request):
     from logistics.models import Store
 
     auth = getattr(request, "auth", None) or {}
-    if auth.get("client_id") or auth.get("user_type") == "client_portal_user":
-        client_user = get_client_portal_user(request)
-        return Store.objects.filter(client=client_user.client) if client_user else Store.objects.none()
+    client_user = get_client_portal_user(request)
+    if client_user or auth.get("client_id") or auth.get("user_type") == "client_portal_user" or auth.get("role") == "lojista":
+        if not client_user:
+            client_user = get_client_portal_user(request)
+        if client_user:
+            qs = Store.objects.filter(client_id=client_user.client_id)
+            if not qs.exists() and client_user.operator_id:
+                qs = Store.objects.filter(operator_id=client_user.operator_id)
+            return qs
+        return Store.objects.none()
+
     actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
     stores = Store.objects.all()
     if not getattr(actor, "is_platform_admin", False):
@@ -2731,148 +2749,203 @@ def get_financial_statement(
     store_id: Optional[str] = None, 
     start_date: Optional[str] = None, 
     end_date: Optional[str] = None,
+    period: Optional[str] = None,
     type: Optional[str] = "ALL"
 ):
     from logistics.models import Store, Order
     from finance.models import ManualEntry, WeeklyStoreInvoice
-    from datetime import datetime
+    from datetime import datetime, date, timedelta
+    from django.utils import timezone
 
-    stores = _stores_visible_to_request(request)
-    if store_id:
-        stores = stores.filter(id=store_id)
-    store = stores.first()
+    try:
+        stores = _stores_visible_to_request(request)
+        if store_id:
+            stores = stores.filter(id=store_id)
+        store = stores.first()
 
-    if not store:
-        return {"current_balance_cents": 0, "total_entries": 0, "items": []}
+        if not store:
+            return {"current_balance_cents": 0, "current_balance_reais": 0.0, "total_entries": 0, "items": []}
 
-    entries = []
+        if period and not start_date:
+            today = timezone.localdate()
+            if period == "hoje":
+                start_date = today.isoformat()
+                end_date = today.isoformat()
+            elif period == "7d":
+                start_date = (today - timedelta(days=7)).isoformat()
+                end_date = today.isoformat()
+            elif period == "30d":
+                start_date = (today - timedelta(days=30)).isoformat()
+                end_date = today.isoformat()
+            elif period == "mes":
+                start_date = today.replace(day=1).isoformat()
+                end_date = today.isoformat()
 
-    # 1. Manual entries
-    me_qs = ManualEntry.objects.filter(store_id=store.id, status="APPROVED")
-    if start_date:
+        entries = []
+
+        # 1. Manual entries
+        me_qs = ManualEntry.objects.filter(store_id=store.id, status="APPROVED")
+        if start_date:
+            try:
+                me_qs = me_qs.filter(createdAt__date__gte=datetime.strptime(start_date, "%Y-%m-%d").date())
+            except Exception:
+                pass
+        if end_date:
+            try:
+                me_qs = me_qs.filter(createdAt__date__lte=datetime.strptime(end_date, "%Y-%m-%d").date())
+            except Exception:
+                pass
+
+        for me in me_qs:
+            item_type = "RECHARGE" if me.amountCents > 0 and "recarga" in (me.description or "").lower() else ("BONUS" if me.amountCents > 0 else "ADJUSTMENT")
+            entries.append({
+                "id": f"manual-{me.id}",
+                "date": me.createdAt.isoformat() if me.createdAt else "",
+                "datetime_sort": me.createdAt,
+                "type": item_type,
+                "description": me.description or "Ajuste de saldo",
+                "amount_cents": me.amountCents,
+                "amount_reais": round(me.amountCents / 100.0, 2),
+            })
+
+        # 2. Paid invoices / recharges
         try:
-            me_qs = me_qs.filter(createdAt__date__gte=datetime.strptime(start_date, "%Y-%m-%d").date())
-        except Exception:
-            pass
-    if end_date:
+            inv_qs = WeeklyStoreInvoice.objects.filter(store_id=store.id, status="PAID")
+            if start_date:
+                try:
+                    inv_qs = inv_qs.filter(startDate__gte=datetime.strptime(start_date, "%Y-%m-%d").date())
+                except Exception:
+                    pass
+            if end_date:
+                try:
+                    inv_qs = inv_qs.filter(endDate__lte=datetime.strptime(end_date, "%Y-%m-%d").date())
+                except Exception:
+                    pass
+
+            for inv in inv_qs:
+                inv_date = getattr(inv, "createdAt", None) or getattr(inv, "startDate", None)
+                entries.append({
+                    "id": f"inv-{inv.id}",
+                    "date": inv_date.isoformat() if inv_date else "",
+                    "datetime_sort": inv_date,
+                    "type": "RECHARGE",
+                    "description": f"Recarga de Créditos — Fatura #{str(inv.id)[:8]}",
+                    "amount_cents": inv.totalCents or 0,
+                    "amount_reais": round((inv.totalCents or 0) / 100.0, 2),
+                })
+        except Exception as e:
+            logger.warning(f"Erro ao buscar faturas pagas da loja no extrato: {e}")
+
+        # 3. Completed Orders
         try:
-            me_qs = me_qs.filter(createdAt__date__lte=datetime.strptime(end_date, "%Y-%m-%d").date())
-        except Exception:
-            pass
+            order_qs = Order.objects.filter(store_id=store.id, status=Order.OrderStatus.COMPLETED)
+            if start_date:
+                try:
+                    order_qs = order_qs.filter(completedAt__date__gte=datetime.strptime(start_date, "%Y-%m-%d").date())
+                except Exception:
+                    pass
+            if end_date:
+                try:
+                    order_qs = order_qs.filter(completedAt__date__lte=datetime.strptime(end_date, "%Y-%m-%d").date())
+                except Exception:
+                    pass
 
-    for me in me_qs:
-        item_type = "RECHARGE" if me.amountCents > 0 and "recarga" in (me.description or "").lower() else ("BONUS" if me.amountCents > 0 else "ADJUSTMENT")
-        entries.append({
-            "id": f"manual-{me.id}",
-            "date": me.createdAt.isoformat() if me.createdAt else "",
-            "datetime_sort": me.createdAt,
-            "type": item_type,
-            "description": me.description or "Ajuste de saldo",
-            "amount_cents": me.amountCents,
-            "amount_reais": round(me.amountCents / 100.0, 2),
-        })
+            for o in order_qs:
+                order_date = o.completedAt or o.requestedAt
+                debit = -abs(o.fareValueCents or 0)
+                entries.append({
+                    "id": f"order-{o.id}",
+                    "date": order_date.isoformat() if order_date else "",
+                    "datetime_sort": order_date,
+                    "type": "RIDE",
+                    "description": f"Entrega #{str(o.id)[:8]}",
+                    "amount_cents": debit,
+                    "amount_reais": round(debit / 100.0, 2),
+                })
+        except Exception as e:
+            logger.warning(f"Erro ao buscar ordens completadas da loja no extrato: {e}")
 
-    # 2. Paid invoices / recharges
-    inv_qs = WeeklyStoreInvoice.objects.filter(store_id=store.id, status="PAID")
-    if start_date:
-        try:
-            inv_qs = inv_qs.filter(createdAt__date__gte=datetime.strptime(start_date, "%Y-%m-%d").date())
-        except Exception:
-            pass
-    if end_date:
-        try:
-            inv_qs = inv_qs.filter(createdAt__date__lte=datetime.strptime(end_date, "%Y-%m-%d").date())
-        except Exception:
-            pass
+        if type and type != "ALL":
+            entries = [e for e in entries if e["type"] == type]
 
-    for inv in inv_qs:
-        entries.append({
-            "id": f"inv-{inv.id}",
-            "date": inv.createdAt.isoformat() if inv.createdAt else "",
-            "datetime_sort": inv.createdAt,
-            "type": "RECHARGE",
-            "description": f"Recarga de Créditos — Fatura #{str(inv.id)[:8]}",
-            "amount_cents": inv.totalCents,
-            "amount_reais": round(inv.totalCents / 100.0, 2),
-        })
+        def _to_timestamp(val):
+            if not val:
+                return 0.0
+            if isinstance(val, (datetime, date)):
+                if hasattr(val, "timestamp"):
+                    return val.timestamp()
+                import time
+                return time.mktime(val.timetuple())
+            try:
+                return datetime.fromisoformat(str(val).replace("Z", "+00:00")).timestamp()
+            except Exception:
+                return 0.0
 
-    # 3. Completed Orders
-    order_qs = Order.objects.filter(store_id=store.id, status="COMPLETED")
-    if start_date:
-        try:
-            order_qs = order_qs.filter(completedAt__date__gte=datetime.strptime(start_date, "%Y-%m-%d").date())
-        except Exception:
-            pass
-    if end_date:
-        try:
-            order_qs = order_qs.filter(completedAt__date__lte=datetime.strptime(end_date, "%Y-%m-%d").date())
-        except Exception:
-            pass
+        entries.sort(key=lambda x: _to_timestamp(x.get("datetime_sort")))
 
-    for o in order_qs:
-        order_date = o.completedAt or o.requestedAt
-        debit = -abs(o.fareValueCents or 0)
-        entries.append({
-            "id": f"order-{o.id}",
-            "date": order_date.isoformat() if order_date else "",
-            "datetime_sort": order_date,
-            "type": "RIDE",
-            "description": f"Entrega #{str(o.id)[:8]}",
-            "amount_cents": debit,
-            "amount_reais": round(debit / 100.0, 2),
-        })
+        running_balance = 0
+        for e in entries:
+            running_balance += e["amount_cents"]
+            e["running_balance_cents"] = running_balance
+            e["running_balance_reais"] = round(running_balance / 100.0, 2)
+            if "datetime_sort" in e:
+                del e["datetime_sort"]
 
-    if type and type != "ALL":
-        entries = [e for e in entries if e["type"] == type]
+        entries.reverse()
 
-    entries.sort(key=lambda x: x["datetime_sort"] if x.get("datetime_sort") else datetime.min)
+        curr_bal = compute_store_balance(store)
 
-    running_balance = 0
-    for e in entries:
-        running_balance += e["amount_cents"]
-        e["running_balance_cents"] = running_balance
-        e["running_balance_reais"] = round(running_balance / 100.0, 2)
-        if "datetime_sort" in e:
-            del e["datetime_sort"]
-
-    entries.reverse()
-
-    curr_bal = compute_store_balance(store)
-
-    return {
-        "current_balance_cents": curr_bal["balance_cents"],
-        "current_balance_reais": curr_bal["balance_reais"],
-        "total_entries": len(entries),
-        "items": entries,
-    }
+        return {
+            "current_balance_cents": curr_bal["balance_cents"],
+            "current_balance_reais": curr_bal["balance_reais"],
+            "total_entries": len(entries),
+            "items": entries,
+        }
+    except Exception as e:
+        logger.error(f"Erro ao calcular extrato financeiro da loja: {e}")
+        return {"current_balance_cents": 0, "current_balance_reais": 0.0, "total_entries": 0, "items": []}
 
 @router.get("/client/billing-history")
 def get_billing_history(request, store_id: Optional[str] = None):
     from logistics.models import Store
     from finance.models import WeeklyStoreInvoice
 
-    stores = _stores_visible_to_request(request)
-    if store_id:
-        stores = stores.filter(id=store_id)
-    store = stores.first()
+    try:
+        stores = _stores_visible_to_request(request)
+        if store_id:
+            stores = stores.filter(id=store_id)
+        store = stores.first()
 
-    if not store:
+        if not store:
+            return []
+
+        try:
+            invoices = list(WeeklyStoreInvoice.objects.filter(store_id=store.id).order_by("-createdAt"))
+        except Exception:
+            invoices = list(WeeklyStoreInvoice.objects.filter(store_id=store.id).order_by("-startDate"))
+
+        res = []
+        for inv in invoices:
+            status_label = "Pendente" if inv.status == "DRAFT" else ("Pago" if inv.status == "PAID" else inv.status)
+            created_str = ""
+            if getattr(inv, "createdAt", None):
+                created_str = inv.createdAt.isoformat()
+            elif getattr(inv, "startDate", None):
+                created_str = inv.startDate.isoformat()
+
+            res.append({
+                "id": str(inv.id),
+                "date": created_str,
+                "description": f"Recarga / Fatura #{str(inv.id)[:8]}",
+                "amount_cents": inv.totalCents or 0,
+                "amount_reais": round((inv.totalCents or 0) / 100.0, 2),
+                "status": status_label,
+                "pix_copy_paste": getattr(inv, "pixCopyPaste", "") or "",
+            })
+        return res
+    except Exception as e:
+        logger.error(f"Erro ao buscar histórico de faturamento: {e}")
         return []
-
-    invoices = WeeklyStoreInvoice.objects.filter(store_id=store.id).order_by("-createdAt")
-    res = []
-    for inv in invoices:
-        status_label = "Pendente" if inv.status == "DRAFT" else ("Pago" if inv.status == "PAID" else inv.status)
-        res.append({
-            "id": str(inv.id),
-            "date": inv.createdAt.isoformat() if inv.createdAt else "",
-            "description": f"Recarga / Fatura #{str(inv.id)[:8]}",
-            "amount_cents": inv.totalCents,
-            "amount_reais": round(inv.totalCents / 100.0, 2),
-            "status": status_label,
-            "pix_copy_paste": inv.pixCopyPaste or "",
-        })
-    return res
 
 @router.get("/operator/store-balances")
 def get_operator_store_balances(request):

@@ -204,20 +204,31 @@ def get_schedules(request, company_id: Optional[str] = None):
     from django.core.exceptions import ValidationError
     from logistics.models import ScheduleEntry
 
-    _, actor = _panel_actor(request, ["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])
-    is_admin = bool(getattr(actor, "is_platform_admin", False))
-    auth_op_id = actor.operator_id
+    actor_kind, actor = _panel_actor(
+        request, ["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"], allow_client=True
+    )
+    if actor_kind == "client":
+        client_id = actor.client_id
+        qs = ScheduleEntry.objects.filter(store__client_id=client_id)
+        if company_id and company_id != "global":
+            try:
+                qs = qs.filter(store_id=company_id)
+            except ValidationError:
+                return []
+    else:
+        is_admin = bool(getattr(actor, "is_platform_admin", False))
+        auth_op_id = actor.operator_id
 
-    qs = ScheduleEntry.objects.all()
-    if not is_admin and auth_op_id:
-        qs = qs.filter(operator_id=auth_op_id)
-    elif company_id and company_id != "global":
-        try:
-            qs = qs.filter(operator_id=company_id)
-        except ValidationError:
+        qs = ScheduleEntry.objects.all()
+        if not is_admin and auth_op_id:
+            qs = qs.filter(operator_id=auth_op_id)
+        elif company_id and company_id != "global":
+            try:
+                qs = qs.filter(operator_id=company_id)
+            except ValidationError:
+                return []
+        elif not is_admin:
             return []
-    elif not is_admin:
-        return []
 
     # Limita pra não explodir
     entries = qs.order_by("-date")[:100]
