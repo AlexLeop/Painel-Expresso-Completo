@@ -65,7 +65,7 @@ panel_api = NinjaAPI(urls_namespace="panel_api", auth=NativeJWTAuth())
 auth_bearer = NativeJWTAuth()
 
 
-def _panel_actor(request, roles, *, allow_client: bool = False):
+def _panel_actor(request, roles, *, allow_client: bool = False) -> tuple[str, Any]:
     auth = getattr(request, "auth", None) or {}
     if auth.get("client_id") or auth.get("user_type") == "client_portal_user":
         if not allow_client:
@@ -83,23 +83,24 @@ def _operator_scope(request, requested_operator_id: Optional[str] = None) -> str
         request, ["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"], allow_client=True
     )
     if actor_kind == "client":
-        if requested_operator_id and str(requested_operator_id) != str(actor.operator_id):
+        actor_op_id = getattr(actor, "operator_id", None)
+        if requested_operator_id and requested_operator_id != str(actor_op_id):
             raise HttpError(403, "Acesso negado ao operador solicitado.")
-        return str(actor.operator_id)
+        return str(actor_op_id or "")
     if getattr(actor, "is_platform_admin", False):
         target = (
             requested_operator_id
             or request.headers.get("X-Operator-Id")
-            or actor.operator_id
+            or getattr(actor, "operator_id", None)
         )
         if not target or target == "global" or not Operator.objects.filter(id=target).exists():
             raise HttpError(422, "Selecione um operador logístico válido.")
         return str(target)
 
-    operator_id = actor.operator_id
+    operator_id = getattr(actor, "operator_id", None)
     if not operator_id:
         raise HttpError(403, "Usuário sem operador logístico vinculado.")
-    if requested_operator_id and str(requested_operator_id) != str(operator_id):
+    if requested_operator_id and requested_operator_id != str(operator_id):
         raise HttpError(403, "Acesso negado ao operador solicitado.")
     return str(operator_id)
 
@@ -112,7 +113,7 @@ def panel_me(request):
     return handle_me(request)
 
 @panel_api.post("/auth/refresh", auth=None, tags=["Native Auth Panel"])
-def panel_refresh(request, payload: RefreshPayload = None):
+def panel_refresh(request, payload: Optional[RefreshPayload] = None):
     return refresh_endpoint(request, payload)
 
 @panel_api.post("/auth/logout", tags=["Native Auth Panel"])
@@ -146,8 +147,8 @@ def get_rides(
         request, ["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"], allow_client=True
     )
     is_admin = actor_kind == "staff" and bool(getattr(actor, "is_platform_admin", False))
-    auth_op_id = actor.operator_id
-    client_id = actor.client_id if actor_kind == "client" else None
+    auth_op_id = getattr(actor, "operator_id", None)
+    client_id = getattr(actor, "client_id", None) if actor_kind == "client" else None
     
     qs = Order.objects.select_related('driver', 'store').all().order_by("-requestedAt")
     if client_id:
@@ -208,7 +209,7 @@ def get_schedules(request, company_id: Optional[str] = None):
         request, ["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"], allow_client=True
     )
     if actor_kind == "client":
-        client_id = actor.client_id
+        client_id = getattr(actor, "client_id", None)
         qs = ScheduleEntry.objects.filter(store__client_id=client_id)
         if company_id and company_id != "global":
             try:
@@ -217,7 +218,7 @@ def get_schedules(request, company_id: Optional[str] = None):
                 return []
     else:
         is_admin = bool(getattr(actor, "is_platform_admin", False))
-        auth_op_id = actor.operator_id
+        auth_op_id = getattr(actor, "operator_id", None)
 
         qs = ScheduleEntry.objects.all()
         if not is_admin and auth_op_id:
@@ -259,9 +260,9 @@ def get_machine_companies(request):
     if actor_kind == "staff" and getattr(actor, "is_platform_admin", False):
         ops = Operator.objects.all()
         return {"companies": [{"id": str(o.id), "nome": o.name} for o in ops]}
-    stores = Store.objects.filter(operator_id=actor.operator_id)
+    stores = Store.objects.filter(operator_id=getattr(actor, "operator_id", None))
     if actor_kind == "client":
-        stores = stores.filter(client_id=actor.client_id)
+        stores = stores.filter(client_id=getattr(actor, "client_id", None))
     return {"companies": [{"id": str(s.id), "nome": s.name} for s in stores]}
 
 @panel_api.get("/machine/drivers")
@@ -310,7 +311,10 @@ def get_machine_ride_tracking(request, id_mch: str):
     auth = getattr(request, "auth", None) or {}
     if auth.get("client_id"):
         client_user = get_client_portal_user(request)
-        orders = orders.filter(store__client=client_user.client)
+        if client_user:
+            orders = orders.filter(store__client_id=client_user.client_id)
+        else:
+            orders = orders.filter(store__client_id=auth.get("client_id"))
     order = orders.first()
     if not order:
         raise HttpError(404, "Corrida não encontrada.")
@@ -394,8 +398,7 @@ def post_machine_ride_create(request, payload: RideCreatePayload):
     stores = Store.objects.filter(operator=operator, id=payload.empresa_id, operational=True)
     client_id = (getattr(request, "auth", None) or {}).get("client_id")
     if client_id:
-        client_user = get_client_portal_user(request)
-        stores = stores.filter(client=client_user.client)
+        stores = stores.filter(client_id=client_id)
     store = stores.first()
     if not store:
         raise HttpError(422, "Nenhuma loja autorizada está disponível para a corrida.")
@@ -770,7 +773,8 @@ def update_operator(request, operator_id: str, payload: OperatorUpdateSchema):
         if payload.billingPlanType is not None:
             o.billingPlanType = payload.billingPlanType
         if payload.billingRateValue is not None:
-            o.billingRateValue = payload.billingRateValue
+            from decimal import Decimal
+            o.billingRateValue = Decimal(str(payload.billingRateValue))
         if payload.billingCycle is not None:
             o.billingCycle = payload.billingCycle
         if payload.dueDay is not None:
