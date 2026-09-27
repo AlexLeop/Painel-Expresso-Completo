@@ -63,12 +63,16 @@ class EfiBaasClient:
         self.cert_path = cert_path or os.getenv("EFI_CERT_PATH", "")
         self.operator_pix_key = pix_key or os.getenv("EFI_OPERATOR_PIX_KEY", "")
 
-        # Sandbox flag
-        env_sandbox = os.getenv("EFI_SANDBOX", "true").lower() in ("true", "1", "t")
+        from django.conf import settings
+        env_name = getattr(settings, "ENVIRONMENT", os.getenv("DJANGO_ENV", "development")).strip().lower()
+        is_production = env_name in ("production", "prod")
+
+        # Em produção, o padrão é ambiente real (sandbox=False); em dev/testes locais, padrão é homologação
+        default_sandbox = "false" if is_production else "true"
+        env_sandbox = os.getenv("EFI_SANDBOX", default_sandbox).lower() in ("true", "1", "t")
         self.sandbox = sandbox if sandbox is not None else env_sandbox
 
-        # Em ambiente de produção estrito, o modo mock é proibido
-        is_production = os.getenv("DJANGO_ENV", "").lower() == "production"
+        # Em ambiente de produção estrito, o modo mock é categoricamente proibido
         env_mock = os.getenv("EFI_MOCK_MODE", "").lower() in ("true", "1", "t")
 
         if is_production and (mock_mode or env_mock):
@@ -111,6 +115,11 @@ class EfiBaasClient:
 
     def _get_http_client(self) -> httpx.Client:
         """Instancia o cliente HTTP com suporte a mTLS se certificado existir."""
+        if not self.mock_mode:
+            if not (self.cert_path and os.path.isfile(self.cert_path)):
+                raise EfiBaasError(
+                    f"Certificado mTLS obrigatório da Efí Pay (.pem) não encontrado: '{self.cert_path}'"
+                )
         cert_arg = self.cert_path if (self.cert_path and os.path.isfile(self.cert_path)) else None
         return httpx.Client(
             base_url=self.base_url,
@@ -180,7 +189,12 @@ class EfiBaasClient:
             )
 
         sanitized_key = self.sanitize_pix_key(destination_key, destination_key_type)
-        payer_key = source_key or self.operator_pix_key or "expressoneves@pix.com.br"
+        payer_key = source_key or self.operator_pix_key
+        if not payer_key:
+            if self.mock_mode:
+                payer_key = "expressoneves@pix.com.br"
+            else:
+                raise EfiBaasError("Chave PIX do pagador (EFI_OPERATOR_PIX_KEY) não configurada.")
         id_envio = correlation_id or str(uuid.uuid4()).replace("-", "")[:32]
         amount_reais_str = f"{amount_cents / 100:.2f}"
 

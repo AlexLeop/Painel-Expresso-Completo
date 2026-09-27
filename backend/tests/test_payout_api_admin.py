@@ -165,7 +165,8 @@ def test_baas_balance_endpoint(rf):
     req = rf.get("/api/v1/admin/finance/baas-balance")
     req.auth = {"operator_id": str(uuid.uuid4())}
 
-    with patch("finance.baas_client.EfiBaasClient.get_account_balance", return_value={"saldo": 1500.0, "saldo_cents": 150000, "mock": True}):
+    with patch("finance.api_admin._resolve_operator", return_value=(MagicMock(), MagicMock())), \
+         patch("finance.baas_client.EfiBaasClient.get_account_balance", return_value={"saldo": 1500.0, "saldo_cents": 150000, "mock": True}):
         res = get_baas_balance(req)
         assert res.saldo == 1500.0
         assert res.saldo_cents == 150000

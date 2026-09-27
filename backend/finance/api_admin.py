@@ -161,20 +161,19 @@ def _resolve_operator(request, allow_sovereign_fallback=False):
         except (StaffMember.DoesNotExist, ValueError, AttributeError):
             pass
 
-    # Tenta via header X-Operator-Id ou query param
-    target_op_id = (
-        getattr(request, 'headers', {}).get('X-Operator-Id')
-        or request.GET.get('operator_id')
-        or (request.auth.get('operator_id') if request.auth else None)
-    )
-    if target_op_id:
-        try:
-            op = Operator.objects.get(id=target_op_id)
-            return op, staff
-        except Operator.DoesNotExist:
-            raise HttpError(404, "Operador logístico não encontrado.")
-
+    # Apenas PlatformAdmin pode especificar operador via header X-Operator-Id ou query param
     if is_admin:
+        target_op_id = (
+            getattr(request, 'headers', {}).get('X-Operator-Id')
+            or request.GET.get('operator_id')
+            or (request.auth.get('operator_id') if request.auth else None)
+        )
+        if target_op_id:
+            try:
+                op = Operator.objects.get(id=target_op_id)
+                return op, staff
+            except Operator.DoesNotExist:
+                raise HttpError(404, "Operador logístico não encontrado.")
         return None, staff
 
     raise HttpError(401, "Operador não autenticado ou contexto multi-tenant não fornecido.")
@@ -432,6 +431,7 @@ def get_baas_balance(request):
     """
     Consulta em tempo real o saldo disponível na conta jurídica da Efí Pay para alertas e KPIs.
     """
+    _resolve_operator(request)
     client = EfiBaasClient()
     balance = client.get_account_balance()
     return BaasBalanceResponse(
