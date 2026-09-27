@@ -1,4 +1,5 @@
 from ninja import Router
+from ninja.errors import HttpError
 from typing import List, Dict
 from django.db import transaction
 from django.utils import timezone
@@ -175,21 +176,24 @@ def create_schedule(request, payload: SchedulePayload):
 @router.post("/orders/dispatch", response=OrderSchema)
 def dispatch_order(request, payload: DispatchPayload):
     staff = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE"])(request)
+    operator = staff.operator
+    if not operator:
+        raise HttpError(400, "Membro da equipe não está vinculado a um operador.")
 
     with transaction.atomic():
-        store = Store.objects.get(pk=payload.store_id, operator=staff.operator)
+        store = Store.objects.get(pk=payload.store_id, operator=operator)
         # Se um driver foi especificado, já nasce OFFERED para ele.
         # Caso contrário, nasce OFFERED para a praça.
         driver = None
         if payload.driver_id:
-            driver = Driver.objects.get(pk=payload.driver_id, operator=staff.operator)
+            driver = Driver.objects.get(pk=payload.driver_id, operator=operator)
 
         b_date = resolve_store_business_date(
             store, explicit_business_date=payload.businessDate
         )
 
         order = Order.objects.create(
-            operator=staff.operator,
+            operator=operator,
             store=store,
             driver=driver,
             status=Order.OrderStatus.OFFERED,
@@ -201,7 +205,7 @@ def dispatch_order(request, payload: DispatchPayload):
         # Broadcast (via Celery ou direto se async) para a praça ou motoboy
         from logistics.api_driver import broadcast_disappearing_card
 
-        broadcast_disappearing_card(staff.operator.id, order.id)
+        broadcast_disappearing_card(operator.id, order.id)
 
         return order
 
@@ -209,10 +213,13 @@ def dispatch_order(request, payload: DispatchPayload):
 @router.post("/orders/{order_id}/reassign", response={200: dict, 404: dict, 409: dict})
 def reassign_order(request, order_id: UUID, payload: OrderReassignmentPayload):
     staff = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE"])(request)
+    operator = staff.operator
+    if not operator:
+        raise HttpError(400, "Membro da equipe não está vinculado a um operador.")
     order = (
         Order.objects.filter(
             pk=order_id,
-            operator=staff.operator,
+            operator=operator,
         )
         .select_related("store", "driver")
         .first()
@@ -225,7 +232,7 @@ def reassign_order(request, order_id: UUID, payload: OrderReassignmentPayload):
     new_driver = None
     if payload.new_driver_id:
         new_driver = Driver.objects.filter(
-            pk=payload.new_driver_id, operator=staff.operator
+            pk=payload.new_driver_id, operator=operator
         ).first()
         if not new_driver:
             return 404, {"error": "Motorista de destino não encontrado."}
@@ -238,7 +245,7 @@ def reassign_order(request, order_id: UUID, payload: OrderReassignmentPayload):
         order.save(update_fields=["driver", "status", "acceptedAt"])
 
         OrderAssignmentAudit.objects.create(
-            operator=staff.operator,
+            operator=operator,
             order=order,
             previousDriver=previous_driver,
             newDriver=new_driver,
@@ -247,7 +254,7 @@ def reassign_order(request, order_id: UUID, payload: OrderReassignmentPayload):
         )
 
         IntegrationOutbox.objects.create(
-            operator=staff.operator,
+            operator=operator,
             aggregateType="ORDER",
             aggregateId=order.id,
             eventType="ORDER_REASSIGNED",
@@ -267,7 +274,7 @@ def reassign_order(request, order_id: UUID, payload: OrderReassignmentPayload):
     _clear_order_runtime_state(order, previous_driver.id if previous_driver else None)
     from logistics.api_driver import broadcast_disappearing_card
 
-    broadcast_disappearing_card(staff.operator.id, order.id)
+    broadcast_disappearing_card(operator.id, order.id)
 
     return 200, {
         "order_id": str(order.id),
@@ -278,7 +285,8 @@ def reassign_order(request, order_id: UUID, payload: OrderReassignmentPayload):
 
 from ninja.pagination import paginate
 
-from ninja import FilterSchema, Query
+from ninja import FilterSchema
+from ninja.params.functions import Query
 from typing import Optional
 
 

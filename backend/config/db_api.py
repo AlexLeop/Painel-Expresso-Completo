@@ -2427,9 +2427,9 @@ def get_operator_credit_stats(
             qs = qs.filter(operator=actor.operator)
         elif getattr(actor, "operator_id", None):
             qs = qs.filter(operator_id=actor.operator_id)
-    elif company_id and str(company_id) not in ("global", "NaN", "undefined"):
+    elif company_id and company_id not in ("global", "NaN", "undefined"):
         try:
-            op_uuid = uuid.UUID(str(company_id))
+            op_uuid = uuid.UUID(company_id)
             qs = qs.filter(operator_id=op_uuid)
         except Exception:
             pass
@@ -2459,16 +2459,17 @@ def process_operator_credits(request, payload: Optional[ProcessCreditsPayload] =
     from finance.models import DailyCreditCalculation
     from accounts.auth import require_role
     from finance.tasks import compute_daily_credit
+    from typing import Any, cast
 
     actor = require_role(["ADMIN", "MANAGER"])(request)
     target_op_id = None
     if not getattr(actor, "is_platform_admin", False):
         target_op_id = getattr(actor, "operator_id", None)
-    elif payload and payload.company_id and str(payload.company_id) not in ("global", "NaN", "undefined"):
+    elif payload and payload.company_id and payload.company_id not in ("global", "NaN", "undefined"):
         target_op_id = payload.company_id
 
     try:
-        compute_daily_credit(target_cutoff_hour=None)
+        cast(Any, compute_daily_credit)(target_cutoff_hour=None)
     except Exception as e:
         logger.error(f"Erro ao computar créditos diários: {e}")
 
