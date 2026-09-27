@@ -1,19 +1,7 @@
 import { logger } from "@/lib/logger";
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { Navigate } from "react-router-dom";
 import { formatCurrency, cn } from "../lib/utils";
-import {
-  getCreditStats,
-  getCreditLog,
-  getCreditLogForWeek,
-  getDailyEntriesForWeek,
-  getDriverDayAggregation,
-  getPendingCreditsForDate,
-  addCreditLogEntry,
-  markDailyEntryCredited,
-  markDailyEntryFailed,
-  pullEntriesFromSupabase,
-  type CreditLogEntry,
-} from "../services/entries-store";
 import { getCompanyConfig } from "../services/company-config";
 import { authFetch } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
@@ -49,15 +37,43 @@ interface DriverBalance {
   error?: string;
 }
 
+export interface CreditLogItem {
+  id: string;
+  date: string;
+  driverId: string;
+  driverName: string;
+  companyId: string;
+  companyName: string;
+  amount: number;
+  breakdown: { diaria: number; extras: number; adiantamentos: number };
+  status: "success" | "failed" | "pending";
+  createdAt: string;
+  processedBy: string;
+  lastError?: string;
+}
+
 export function Financeiro() {
   const { session } = useAuth();
   const user = session?.user;
+
+  // Lojistas devem ver seus extratos e créditos de loja, nunca o painel operacional de créditos da central
+  const rawRole = (user?.role || "").toLowerCase();
+  const isLojista =
+    rawRole === "lojista" ||
+    rawRole === "cliente" ||
+    Boolean(user?.client_id) ||
+    Boolean(user?.store_id);
+
+  if (isLojista) {
+    return <Navigate to="/extrato" replace />;
+  }
+
   const companyId = user?.machine_empresa_id || user?.company_id || "";
   const companies = Array.isArray(user?.companies) ? user?.companies : [];
   const currentCompany = companies?.find(
     (c: any) => String(c.id) === String(companyId),
   );
-  const companyName = currentCompany?.nome || "Empresa";
+  const companyName = currentCompany?.nome || "Operação";
   const isAdmin =
     user?.role === "superadmin" ||
     user?.role === "operador_admin" ||
@@ -67,22 +83,20 @@ export function Financeiro() {
     user?.role === "administrador" ||
     user?.is_platform_admin === true;
 
-
   const [activeTab, setActiveTab] = useState<
     "store_balances" | "dre" | "cash_reconciliation" | "overview" | "queue" | "log" | "balances" | "acerto"
   >("store_balances");
-  const [creditLog, setCreditLog] = useState<CreditLogEntry[]>([]);
+  const [creditLog, setCreditLog] = useState<CreditLogItem[]>([]);
   const [driverBalances, setDriverBalances] = useState<DriverBalance[]>([]);
   const [loadingBalances, setLoadingBalances] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [processingResults, setProcessingResults] = useState<string[]>([]);
-  const [syncVersion, setSyncVersion] = useState(0);
+  const [stats, setStats] = useState({ total: 0, pending: 0, credited: 0, failed: 0 });
 
   const loadDriverBalances = useCallback(async () => {
     if (!companyId) return;
     setLoadingBalances(true);
     try {
-      // 1. Fetch active drivers for the company
       const resDrivers = await authFetch(
         `/api/v1/db/company-drivers?company_id=${companyId}&active_only=0`,
       );
@@ -97,7 +111,6 @@ export function Financeiro() {
       }));
       setDriverBalances(initialBalances);
 
-      // 2. Fetch balances for each driver
       for (const driver of drivers) {
         try {
           const res = await authFetch(
@@ -147,8 +160,8 @@ export function Financeiro() {
   // Período da semana atual (segunda a domingo)
   const weekPeriod = useMemo(() => {
     const now = new Date();
-    const day = now.getDay(); // 0 (Dom) a 6 (Sab)
-    const diff = now.getDate() - day + (day === 0 ? -6 : 1); // Ajuste para segunda
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
     const start = new Date(now.setDate(diff));
     start.setHours(0, 0, 0, 0);
     const end = new Date(start);
@@ -163,74 +176,64 @@ export function Financeiro() {
   }, []);
 
   const loadData = useCallback(async () => {
-    if (!companyId) return;
-
-    await pullEntriesFromSupabase(companyId, weekPeriod.start, weekPeriod.end);
-
-    const allDailies = getDailyEntriesForWeek(
-      companyId,
-      weekPeriod.start,
-      weekPeriod.end,
-    );
-    const creditedEntries = allDailies.filter(
-      (e) => e.creditStatus === "credited",
-    );
-
-    const logMap = new Map<string, CreditLogEntry>();
-    for (const entry of creditedEntries) {
-      const key = `${entry.driverId}_${entry.date}`;
-      if (!logMap.has(key)) {
-        logMap.set(key, {
-          id: `auto_${key}`,
-          date: entry.date,
-          driverId: entry.driverId,
-          driverName: entry.driverName,
-          companyId: entry.companyId,
-          companyName: companyName,
-          amount: 0,
-          breakdown: { diaria: 0, extras: 0, adiantamentos: 0 },
-          status: "success",
-          createdAt: entry.creditedAt || new Date().toISOString(),
-          processedBy: "cron",
+    try {
+      // 1. Carregar estatísticas reais do banco de dados (zero mock / zero localStorage)
+      const resStats = await authFetch(
+        `/api/v1/operator/credit-stats?start_date=${weekPeriod.start}&end_date=${weekPeriod.end}${
+          companyId ? `&company_id=${companyId}` : ""
+        }`,
+      );
+      if (resStats.ok) {
+        const statsData = await resStats.json();
+        setStats({
+          total: statsData.total ?? 0,
+          pending: statsData.pending ?? 0,
+          credited: statsData.credited ?? 0,
+          failed: statsData.failed ?? 0,
         });
       }
-      const logEntry = logMap.get(key)!;
-      logEntry.breakdown.diaria += entry.amount;
-      logEntry.amount += entry.amount;
-    }
 
-    const oldLog = getCreditLogForWeek(
-      companyId,
-      weekPeriod.start,
-      weekPeriod.end,
-    );
-    for (const entry of oldLog) {
-      const key = `manual_${entry.driverId}_${entry.date}`;
-      if (!logMap.has(key)) logMap.set(key, entry);
+      // 2. Carregar log real da fila de cálculos do banco de dados
+      const resQueue = await authFetch(
+        `/api/v1/db/credit-queue?company_id=${companyId || "global"}`,
+      );
+      if (resQueue.ok) {
+        const queueData = await resQueue.json();
+        const items = (queueData.items || []).map((item: any) => ({
+          id: item.id,
+          date: item.created_at ? item.created_at.split("T")[0] : "",
+          driverId: item.driver_id,
+          driverName: item.driver_name || "Motoboy",
+          companyId: item.company_id,
+          companyName: item.company_name || companyName,
+          amount: item.net_amount || 0,
+          breakdown: { diaria: item.net_amount || 0, extras: 0, adiantamentos: 0 },
+          status:
+            item.status === "credited"
+              ? "success"
+              : item.status === "failed" || item.status === "dead"
+                ? "failed"
+                : "pending",
+          createdAt: item.created_at || new Date().toISOString(),
+          processedBy: "operador",
+          lastError: item.last_error,
+        }));
+        setCreditLog(items);
+      }
+    } catch (err) {
+      logger.error("Erro ao carregar dados financeiros reais:", err);
     }
-
-    const log = Array.from(logMap.values()).sort((a, b) =>
-      b.date.localeCompare(a.date),
-    );
-    setCreditLog(log);
-    setSyncVersion((v) => v + 1);
   }, [companyId, weekPeriod, companyName]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  const stats = useMemo(() => {
-    if (!companyId) return { total: 0, pending: 0, credited: 0, failed: 0 };
-    return getCreditStats(companyId, weekPeriod.start, weekPeriod.end);
-  }, [companyId, weekPeriod, syncVersion]);
-
   const config = useMemo(() => {
     if (!companyId) return null;
     return getCompanyConfig(Number(companyId), companyName);
   }, [companyId, companyName]);
 
-  // Data de ontem para o botão rápido
   const yesterday = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() - 1);
@@ -238,15 +241,16 @@ export function Financeiro() {
   }, []);
 
   const processCredits = async (targetDate?: string) => {
-    if (!companyId || !config) return;
     setProcessing(true);
     setProcessingResults([]);
 
     try {
-      const body: any = { company_id: companyId };
+      const body: any = {};
+      if (companyId) body.company_id = companyId;
       if (targetDate) body.date = targetDate;
 
-      const res = await authFetch("/api/cron/auto-credit", {
+      // Executa no back-end real do Django Ninja (Celery / PostgreSQL)
+      const res = await authFetch("/api/v1/operator/process-credits", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -261,15 +265,20 @@ export function Financeiro() {
             return `○ ${r.driver}: ${r.reason || "sem pendência"}`;
           return `✕ ${r.driver}: ${r.reason || "erro"}`;
         });
-        setProcessingResults(lines);
+        setProcessingResults(
+          lines.length > 0 ? lines : ["Nenhum crédito pendente processado para a data."],
+        );
+      } else {
+        setProcessingResults([data.error || "Erro ao processar créditos."]);
       }
     } catch (err) {
-      setProcessingResults(["Erro de conexão com o servidor"]);
+      setProcessingResults(["Erro de conexão com o servidor ao processar créditos."]);
     } finally {
       setProcessing(false);
       loadData();
     }
   };
+
 
   const tabs = [
     { key: "store_balances", label: "Saldo das Lojas", icon: Store },
@@ -522,10 +531,16 @@ export function Financeiro() {
                               "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border",
                               entry.status === "success"
                                 ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-                                : "bg-rose-50 text-rose-700 border-rose-100",
+                                : entry.status === "pending"
+                                  ? "bg-amber-50 text-amber-700 border-amber-100"
+                                  : "bg-rose-50 text-rose-700 border-rose-100",
                             )}
                           >
-                            {entry.status === "success" ? "Sucesso" : "Falha"}
+                            {entry.status === "success"
+                              ? "Sucesso"
+                              : entry.status === "pending"
+                                ? "Pendente"
+                                : "Falha"}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right text-zinc-400 text-[10px] font-bold uppercase tracking-widest">

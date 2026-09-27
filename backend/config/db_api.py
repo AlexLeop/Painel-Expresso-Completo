@@ -2402,6 +2402,112 @@ def retry_credit_queue(request, payload: CreditQueueRetryPayload):
     )
     return {"success": True, "retried": retried}
 
+
+class ProcessCreditsPayload(BaseModel):
+    company_id: Optional[str] = None
+    date: Optional[str] = None
+
+
+@router.get("/operator/credit-stats")
+def get_operator_credit_stats(
+    request,
+    company_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
+):
+    from finance.models import DailyCreditCalculation
+    from accounts.auth import require_role
+    from django.db.models import Sum
+    import uuid
+
+    actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
+    qs = DailyCreditCalculation.objects.all()
+    if not getattr(actor, "is_platform_admin", False):
+        if getattr(actor, "operator", None):
+            qs = qs.filter(operator=actor.operator)
+        elif getattr(actor, "operator_id", None):
+            qs = qs.filter(operator_id=actor.operator_id)
+    elif company_id and str(company_id) not in ("global", "NaN", "undefined"):
+        try:
+            op_uuid = uuid.UUID(str(company_id))
+            qs = qs.filter(operator_id=op_uuid)
+        except Exception:
+            pass
+
+    if start_date:
+        qs = qs.filter(date__gte=start_date)
+    if end_date:
+        qs = qs.filter(date__lte=end_date)
+
+    total = qs.count()
+    pending = qs.filter(status__in=[DailyCreditCalculation.CreditStatus.PENDING, "PROCESSING"]).count()
+    credited = qs.filter(status=DailyCreditCalculation.CreditStatus.CREDITED).count()
+    failed = qs.filter(status=DailyCreditCalculation.CreditStatus.FAILED).count()
+    credited_cents = qs.filter(status=DailyCreditCalculation.CreditStatus.CREDITED).aggregate(s=Sum("netAmountCents"))["s"] or 0
+
+    return {
+        "total": total,
+        "pending": pending,
+        "credited": credited,
+        "failed": failed,
+        "credited_reais": round(credited_cents / 100.0, 2),
+    }
+
+
+@router.post("/operator/process-credits")
+def process_operator_credits(request, payload: Optional[ProcessCreditsPayload] = None):
+    from finance.models import DailyCreditCalculation
+    from accounts.auth import require_role
+    from finance.tasks import compute_daily_credit
+
+    actor = require_role(["ADMIN", "MANAGER"])(request)
+    target_op_id = None
+    if not getattr(actor, "is_platform_admin", False):
+        target_op_id = getattr(actor, "operator_id", None)
+    elif payload and payload.company_id and str(payload.company_id) not in ("global", "NaN", "undefined"):
+        target_op_id = payload.company_id
+
+    try:
+        compute_daily_credit(target_cutoff_hour=None)
+    except Exception as e:
+        logger.error(f"Erro ao computar créditos diários: {e}")
+
+    qs = DailyCreditCalculation.objects.select_related("driver", "store").all()
+    if target_op_id:
+        qs = qs.filter(operator_id=target_op_id)
+    if payload and payload.date:
+        qs = qs.filter(date=payload.date)
+
+    results = []
+    credited_count = 0
+    skipped_count = 0
+    failed_count = 0
+
+    for item in qs.order_by("-updatedAt")[:50]:
+        drv_name = item.driver.name if (item.driver and item.driver.name) else "Entregador"
+        amt = float(item.netAmountCents or 0) / 100.0
+        if item.status == DailyCreditCalculation.CreditStatus.CREDITED:
+            credited_count += 1
+            results.append({"driver": drv_name, "amount": amt, "status": "credited", "reason": None})
+        elif item.status == DailyCreditCalculation.CreditStatus.SKIPPED:
+            skipped_count += 1
+            results.append({"driver": drv_name, "amount": amt, "status": "skipped", "reason": item.failReason or "sem pendência"})
+        elif item.status == DailyCreditCalculation.CreditStatus.FAILED:
+            failed_count += 1
+            results.append({"driver": drv_name, "amount": amt, "status": "failed", "reason": item.failReason or "falha"})
+        else:
+            results.append({"driver": drv_name, "amount": amt, "status": "pending", "reason": "em processamento"})
+
+    return {
+        "success": True,
+        "total_processed": len(results),
+        "credited": credited_count,
+        "skipped": skipped_count,
+        "failed": failed_count,
+        "results": results,
+    }
+
+
 @router.get("/driver-balance")
 def get_driver_balance(request, driver_id: Optional[str] = None, condutor_id: Optional[str] = None):
     from finance.models import Wallet

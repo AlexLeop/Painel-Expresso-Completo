@@ -22,6 +22,7 @@ import {
   ChevronRight,
   BarChart3,
   Clock,
+  Plus,
 } from "lucide-react";
 import {
   AreaChart,
@@ -40,6 +41,8 @@ import { useAuth } from "../contexts/AuthContext";
 import { useApiQuery } from "../lib/useApiQuery";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Skeleton } from "../components/ui/Skeleton";
+import { CreateRideModal } from "../components/CreateRideModal";
+
 
 type RangeKey = "today" | "last7" | "month" | "all";
 type ChartView = "revenue" | "rides";
@@ -179,9 +182,674 @@ function StatCard({
   );
 }
 
-export function Dashboard() {
-  const { session } = useAuth();
-  const user = session?.user;
+function LojistaDashboard({ user }: { user: any }) {
+  const [range, setRange] = useState<RangeKey>("today");
+  const [chartView, setChartView] = useState<ChartView>("rides");
+  const [isCreateRideOpen, setIsCreateRideOpen] = useState(false);
+
+  const companyId = user?.machine_empresa_id || user?.company_id || "";
+
+  // 1. Saldo da Loja em tempo real
+  const {
+    data: balanceData,
+    isLoading: loadingBalance,
+    refresh: refreshBalance,
+  } = useApiQuery<any>("/api/v1/client/balance", { refreshInterval: 15_000 });
+
+  // 2. Estatísticas consolidadas da loja
+  const statsKey = `/api/v1/db/dashboard-stats?range=${range}${
+    companyId ? `&company_id=${companyId}` : ""
+  }`;
+  const {
+    data: statsData,
+    isLoading: loadingStats,
+    isValidating: validatingStats,
+    refresh: refreshStats,
+  } = useApiQuery<any>(statsKey, { refreshInterval: 20_000 });
+
+  const isLoading = (loadingStats && !statsData) || (loadingBalance && !balanceData);
+  const isRefreshing = validatingStats && !isLoading;
+
+  const handleRefresh = () => {
+    refreshStats();
+    refreshBalance();
+  };
+
+  const lastUpdated = useMemo(() => {
+    return new Date().toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  }, [statsData, balanceData]);
+
+  const metrics = useMemo(() => {
+    if (!statsData) {
+      return {
+        faturamentoTotal: 0,
+        totalOrders: 0,
+        completedOrders: 0,
+        activeOrders: 0,
+        canceledOrders: 0,
+        completionRate: 0,
+        averageTicket: 0,
+      };
+    }
+    return {
+      faturamentoTotal: Number(statsData.faturamento_total) || 0,
+      totalOrders: Number(statsData.total_orders) || 0,
+      completedOrders: Number(statsData.completed_orders) || 0,
+      activeOrders: Number(statsData.active_orders) || 0,
+      canceledOrders: Number(statsData.canceled_orders) || 0,
+      completionRate: Number(statsData.completion_rate) || 0,
+      averageTicket: Number(statsData.average_ticket) || 0,
+    };
+  }, [statsData]);
+
+  const chartData = useMemo(() => {
+    if (!statsData?.chart_data || !Array.isArray(statsData.chart_data)) return [];
+    return statsData.chart_data;
+  }, [statsData]);
+
+  const recentOrders = useMemo(() => {
+    if (!statsData?.recent_orders || !Array.isArray(statsData.recent_orders)) return [];
+    return statsData.recent_orders;
+  }, [statsData]);
+
+  const activeStoreOrders = useMemo(() => {
+    return recentOrders.filter((ord: any) =>
+      ["STARTED", "ARRIVED", "ACCEPTED", "OFFERED", "PREPARING", "READY_FOR_DISPATCH", 1].includes(
+        ord.status,
+      ),
+    );
+  }, [recentOrders]);
+
+  const storeName = balanceData?.store_name || user?.name || "Minha Loja";
+  const balanceReais = Number(
+    balanceData?.balance_reais ?? (balanceData?.balance_cents ? balanceData.balance_cents / 100 : 0)
+  );
+  const balanceStatus: "DISPONIVEL" | "ZERADO" | "DEVEDOR" =
+    balanceData?.status || (balanceReais > 0 ? "DISPONIVEL" : balanceReais === 0 ? "ZERADO" : "DEVEDOR");
+  const billingMode =
+    balanceData?.billing_mode === "POS_PAGO" ? "Faturamento Semanal" : "Pré-pago (Créditos)";
+
+  return (
+    <div className="space-y-6 pb-12">
+      {/* ─── Header do Lojista ──────────────────────────────────────────────── */}
+      <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-orange-100 text-[#E55C00] border border-orange-200">
+              <Store className="w-3.5 h-3.5" />
+              Painel do Estabelecimento
+            </span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-black text-zinc-900 tracking-tight mt-1 font-sans">
+            Olá, {storeName}
+          </h1>
+          <p className="text-[13px] font-medium text-zinc-500 mt-0.5">
+            Acompanhe suas entregas, saldo e despache motoboys em tempo real
+          </p>
+        </div>
+
+        {/* Controles de Período, Sincronização e Chamar Motoboy */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <SegmentedControl value={range} onChange={setRange} />
+
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="flex items-center gap-1.5 text-xs font-bold text-zinc-700 bg-white hover:bg-zinc-50 px-3 py-2 rounded-xl border border-zinc-200/80 shadow-xs transition-colors disabled:opacity-50"
+            title="Atualizar dados agora"
+          >
+            <RefreshCw
+              className={cn(
+                "w-3.5 h-3.5 text-zinc-500",
+                isRefreshing && "animate-spin text-[#E55C00]",
+              )}
+            />
+            <span className="hidden sm:inline">
+              {lastUpdated ? `Atualizado ${lastUpdated}` : "Sincronizar"}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsCreateRideOpen(true)}
+            className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-white bg-[#E55C00] hover:bg-[#CC5200] px-4 py-2 rounded-xl shadow-md hover:shadow-lg transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Chamar Motoboy</span>
+          </button>
+        </div>
+      </header>
+
+      {/* ─── Hero Card: Saldo da Loja & Ações Rápidas de Crédito ──────────────── */}
+      <div className="relative overflow-hidden bg-gradient-to-r from-zinc-900 via-zinc-900 to-zinc-950 text-white rounded-3xl p-6 sm:p-7 border border-zinc-800 shadow-xl">
+        <div className="absolute top-0 right-0 p-32 bg-[#E55C00]/15 blur-[80px] rounded-full pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+                Saldo Disponível para Entregas
+              </span>
+              <span
+                className={cn(
+                  "text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border",
+                  balanceStatus === "DISPONIVEL"
+                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                    : balanceStatus === "ZERADO"
+                      ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                      : "bg-rose-500/20 text-rose-300 border-rose-500/30",
+                )}
+              >
+                {balanceStatus === "DISPONIVEL"
+                  ? "Saldo Ativo"
+                  : balanceStatus === "ZERADO"
+                    ? "Saldo Zerado"
+                    : "Saldo Devedor"}
+              </span>
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                • {billingMode}
+              </span>
+            </div>
+
+            <div className="flex items-baseline gap-3">
+              <span className="text-3xl sm:text-4xl lg:text-5xl font-black font-sans tracking-tight text-white">
+                {formatCurrency(balanceReais)}
+              </span>
+            </div>
+
+            {balanceStatus !== "DISPONIVEL" && (
+              <p className="text-xs text-amber-300/90 font-medium">
+                ⚠️ Faça uma recarga via PIX para garantir o despacho imediato de motoboys sem interrupções.
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              to="/creditos"
+              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md hover:shadow-lg transition-all"
+            >
+              <Wallet className="w-4 h-4" />
+              Recarregar via PIX
+            </Link>
+
+            <Link
+              to="/extrato"
+              className="flex items-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white rounded-xl text-xs font-bold uppercase tracking-wider border border-zinc-700 transition-all"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              Ver Extrato da Loja
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Grid de KPIs Principais da Loja ─────────────────────────────────── */}
+      {isLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {Array.from({ length: 6 }).map((_, idx) => (
+            <Skeleton key={idx} className="h-32 rounded-2xl" />
+          ))}
+        </div>
+      ) : (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2 }}
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4"
+        >
+          <StatCard
+            title="Pedidos Solicitados"
+            value={metrics.totalOrders}
+            sub={range === "today" ? "Criados hoje" : "No período"}
+            badge="Pedidos"
+            badgeType="info"
+            icon={<MapPin className="w-4 h-4 text-blue-600" />}
+            iconBg="bg-blue-50 text-blue-600 border border-blue-100"
+            help="Total de pedidos de entrega solicitados por sua loja"
+          />
+
+          <StatCard
+            title="Em Andamento"
+            value={metrics.activeOrders}
+            sub="Corridas na rua agora"
+            badge="Ao Vivo"
+            badgeType="warning"
+            live={metrics.activeOrders > 0}
+            icon={<Activity className="w-4 h-4 text-[#E55C00]" />}
+            iconBg="bg-orange-50 text-[#E55C00] border border-orange-100"
+            help="Entregas da sua loja aceitas, em coleta ou em trânsito"
+          />
+
+          <StatCard
+            title="Entregas Concluídas"
+            value={metrics.completedOrders}
+            sub={`De ${metrics.totalOrders} solicitadas`}
+            badge="Entregues"
+            badgeType="success"
+            icon={<CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+            iconBg="bg-emerald-50 text-emerald-600 border border-emerald-100"
+            help="Pedidos entregues com sucesso ao destinatário"
+          />
+
+          <StatCard
+            title="Total em Fretes"
+            value={formatCurrency(metrics.faturamentoTotal)}
+            sub={range === "today" ? "Gasto hoje" : "Gasto no período"}
+            badge="Investimento"
+            badgeType="neutral"
+            icon={<DollarSign className="w-4 h-4 text-zinc-700" />}
+            iconBg="bg-zinc-100 text-zinc-700 border border-zinc-200"
+            help="Valor total investido pela loja em fretes e taxas de entrega"
+          />
+
+          <StatCard
+            title="Custo Médio / Frete"
+            value={formatCurrency(metrics.averageTicket)}
+            sub="Média por entrega"
+            badge="Ticket Médio"
+            badgeType="neutral"
+            icon={<Receipt className="w-4 h-4 text-violet-600" />}
+            iconBg="bg-violet-50 text-violet-600 border border-violet-100"
+            help="Média de custo de frete por pedido entregue"
+          />
+
+          <StatCard
+            title="Taxa de Conclusão"
+            value={`${metrics.completionRate}%`}
+            sub="Eficiência da sua loja"
+            badge="Sucesso"
+            badgeType={metrics.completionRate >= 90 ? "success" : "warning"}
+            icon={<TrendingUp className="w-4 h-4 text-teal-600" />}
+            iconBg="bg-teal-50 text-teal-600 border border-teal-100"
+            help="Percentual de pedidos entregues vs cancelados"
+          />
+        </motion.div>
+      )}
+
+      {/* ─── Atalhos de Ação Rápida da Loja ─────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <button
+          type="button"
+          onClick={() => setIsCreateRideOpen(true)}
+          className="group bg-white hover:bg-zinc-50/80 border border-zinc-200/80 hover:border-orange-300 rounded-2xl p-4 shadow-xs hover:shadow-sm transition-all flex items-center justify-between text-left"
+        >
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="h-10 w-10 rounded-xl bg-orange-50 border border-orange-100 text-[#E55C00] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <Bike className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold text-zinc-900 group-hover:text-[#E55C00] transition-colors truncate">
+                Chamar Motoboy
+              </h2>
+              <p className="text-[12px] text-zinc-500 font-medium truncate">
+                Despache uma nova entrega agora
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="h-4 w-4 text-zinc-400 group-hover:text-[#E55C00] group-hover:translate-x-0.5 transition-all shrink-0" />
+        </button>
+
+        <Link
+          to="/corridas"
+          className="group bg-white hover:bg-zinc-50/80 border border-zinc-200/80 hover:border-blue-300 rounded-2xl p-4 shadow-xs hover:shadow-sm transition-all flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="h-10 w-10 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <MapPin className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold text-zinc-900 group-hover:text-blue-600 transition-colors truncate">
+                Minhas Entregas
+              </h2>
+              <p className="text-[12px] text-zinc-500 font-medium truncate">
+                Acompanhe o mapa e status ao vivo
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="h-4 w-4 text-zinc-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all shrink-0" />
+        </Link>
+
+        <Link
+          to="/creditos"
+          className="group bg-white hover:bg-zinc-50/80 border border-zinc-200/80 hover:border-emerald-300 rounded-2xl p-4 shadow-xs hover:shadow-sm transition-all flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="h-10 w-10 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <Wallet className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold text-zinc-900 group-hover:text-emerald-600 transition-colors truncate">
+                Créditos & Recargas
+              </h2>
+              <p className="text-[12px] text-zinc-500 font-medium truncate">
+                Compre pacotes via PIX instantâneo
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="h-4 w-4 text-zinc-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all shrink-0" />
+        </Link>
+
+        <Link
+          to="/extrato"
+          className="group bg-white hover:bg-zinc-50/80 border border-zinc-200/80 hover:border-violet-300 rounded-2xl p-4 shadow-xs hover:shadow-sm transition-all flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="h-10 w-10 rounded-xl bg-violet-50 border border-violet-100 text-violet-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <FileSpreadsheet className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold text-zinc-900 group-hover:text-violet-600 transition-colors truncate">
+                Extrato Financeiro
+              </h2>
+              <p className="text-[12px] text-zinc-500 font-medium truncate">
+                Histórico detalhado de faturas
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="h-4 w-4 text-zinc-400 group-hover:text-violet-600 group-hover:translate-x-0.5 transition-all shrink-0" />
+        </Link>
+      </div>
+
+      {/* ─── Grid Principal: Histórico Recente e Radar da Loja ───────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Coluna Esquerda: Gráfico da Loja + Tabela de Entregas Recentes (2 colunas) */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Gráfico de Entregas da Loja */}
+          <div className="bg-white border border-zinc-200/80 rounded-2xl shadow-sm p-5 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-zinc-100">
+              <div>
+                <h2 className="text-sm font-black text-zinc-900 uppercase tracking-wide flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-[#E55C00]" />
+                  Evolução de Entregas da Loja
+                </h2>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Volume de entregas realizadas dia a dia
+                </p>
+              </div>
+
+              <div className="inline-flex items-center bg-zinc-100 p-0.5 rounded-lg border border-zinc-200 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setChartView("rides")}
+                  className={cn(
+                    "px-3 py-1 rounded-md font-bold transition-all",
+                    chartView === "rides"
+                      ? "bg-white text-zinc-900 shadow-xs"
+                      : "text-zinc-500 hover:text-zinc-800",
+                  )}
+                >
+                  Entregas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChartView("revenue")}
+                  className={cn(
+                    "px-3 py-1 rounded-md font-bold transition-all",
+                    chartView === "revenue"
+                      ? "bg-white text-zinc-900 shadow-xs"
+                      : "text-zinc-500 hover:text-zinc-800",
+                  )}
+                >
+                  Gastos (R$)
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <ErrorBoundary>
+                {chartData.length === 0 ? (
+                  <div className="h-[240px] flex flex-col items-center justify-center text-zinc-400 text-xs">
+                    <BarChart3 className="w-8 h-8 text-zinc-300 mb-2" />
+                    Nenhuma entrega registrada no período selecionado.
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={240}>
+                    <AreaChart
+                      data={chartData}
+                      margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f4f4f5" />
+                      <XAxis
+                        dataKey="time"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: "#a1a1aa", fontSize: 11, fontWeight: 600 }}
+                      />
+                      <YAxis
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: "#a1a1aa", fontSize: 11, fontWeight: 600 }}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          borderRadius: "12px",
+                          border: "1px solid #e4e4e7",
+                          boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
+                          fontSize: "12px",
+                        }}
+                        formatter={(val: any) => [
+                          chartView === "revenue"
+                            ? formatCurrency(Number(val) || 0)
+                            : `${val} entregas`,
+                          chartView === "revenue" ? "Investimento" : "Entregas",
+                        ]}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey={chartView === "revenue" ? "faturamento" : "corridas"}
+                        stroke={chartView === "revenue" ? "#E55C00" : "#3B82F6"}
+                        strokeWidth={2.5}
+                        fill={chartView === "revenue" ? "#E55C00" : "#3B82F6"}
+                        fillOpacity={0.15}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                )}
+              </ErrorBoundary>
+            </div>
+          </div>
+
+          {/* Tabela de Entregas Recentes da Loja */}
+          <div className="bg-white border border-zinc-200/80 rounded-2xl shadow-sm p-5 sm:p-6">
+            <div className="flex items-center justify-between pb-4 border-b border-zinc-100">
+              <div>
+                <h2 className="text-sm font-black text-zinc-900 uppercase tracking-wide flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-blue-600" />
+                  Minhas Entregas Recentes
+                </h2>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Últimos pedidos despachados pelo seu estabelecimento
+                </p>
+              </div>
+              <Link
+                to="/corridas"
+                className="text-xs font-bold text-[#E55C00] hover:underline flex items-center gap-1"
+              >
+                Ver todas ({metrics.totalOrders})
+                <ChevronRight className="w-3 h-3" />
+              </Link>
+            </div>
+
+            <div className="mt-4 overflow-x-auto">
+              {recentOrders.length === 0 ? (
+                <div className="py-12 text-center text-xs text-zinc-400">
+                  Nenhum pedido de entrega realizado ainda.
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsCreateRideOpen(true)}
+                      className="text-xs font-bold text-[#E55C00] hover:underline"
+                    >
+                      Clique aqui para chamar o seu primeiro motoboy
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <table className="w-full text-left whitespace-nowrap text-xs">
+                  <thead className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider border-b border-zinc-100">
+                    <tr>
+                      <th className="pb-3">Código</th>
+                      <th className="pb-3">Horário</th>
+                      <th className="pb-3">Motoboy</th>
+                      <th className="pb-3 text-center">Status</th>
+                      <th className="pb-3 text-right">Frete</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {recentOrders.slice(0, 8).map((ord: any) => {
+                      const isDone = ord.status === "COMPLETED" || ord.status === 2;
+                      const isTransit =
+                        ord.status === "STARTED" ||
+                        ord.status === "ARRIVED" ||
+                        ord.status === "ACCEPTED" ||
+                        ord.status === 1;
+                      const isCanceled =
+                        ord.status === "CANCELED" || ord.status === "CANCELED_IN_TRANSIT";
+
+                      return (
+                        <tr key={ord.id} className="hover:bg-zinc-50/60 transition-colors">
+                          <td className="py-3 font-mono font-bold text-zinc-800">{ord.id}</td>
+                          <td className="py-3 text-zinc-500 font-medium">
+                            {ord.time} {ord.date ? `• ${ord.date}` : ""}
+                          </td>
+                          <td className="py-3 font-bold text-zinc-900">
+                            {ord.motoboy || "Aguardando motoboy"}
+                          </td>
+                          <td className="py-3 text-center">
+                            <span
+                              className={cn(
+                                "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border font-mono",
+                                isTransit
+                                  ? "bg-blue-50 text-blue-700 border-blue-200"
+                                  : isDone
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    : isCanceled
+                                      ? "bg-rose-50 text-rose-700 border-rose-200"
+                                      : "bg-amber-50 text-amber-700 border-amber-200",
+                              )}
+                            >
+                              {ord.status_label || ord.status}
+                            </span>
+                          </td>
+                          <td className="py-3 text-right font-mono font-bold text-zinc-900">
+                            {formatCurrency(ord.valor || 0)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Coluna Direita: Radar em Tempo Real da Loja (1 coluna) */}
+        <div className="space-y-6">
+          <div className="bg-[#0e0e10] border border-[#1e1e24] text-white rounded-2xl shadow-xl flex flex-col overflow-hidden relative">
+            <div className="absolute top-0 right-0 p-24 bg-[#E55C00]/15 blur-[60px] rounded-full pointer-events-none" />
+
+            <div className="p-5 border-b border-zinc-800/80 flex items-center justify-between relative z-10 bg-[#0e0e10]/80 backdrop-blur-md">
+              <div>
+                <h2 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-emerald-400 animate-pulse" />
+                  Radar da Loja
+                </h2>
+                <p className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold mt-0.5">
+                  Entregas em Andamento
+                </p>
+              </div>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                {metrics.activeOrders} ativas
+              </span>
+            </div>
+
+            <div className="p-4 overflow-y-auto max-h-[480px] space-y-2.5 relative z-10">
+              {activeStoreOrders.length === 0 ? (
+                <div className="py-12 text-center text-xs text-zinc-500">
+                  <Truck className="w-8 h-8 text-zinc-700 mx-auto mb-2 opacity-50" />
+                  Nenhuma entrega ativa no momento.
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      onClick={() => setIsCreateRideOpen(true)}
+                      className="px-3.5 py-1.5 rounded-lg bg-[#E55C00] text-white text-[11px] font-black uppercase tracking-wider hover:bg-[#CC5200] transition-colors"
+                    >
+                      Chamar Motoboy Agora
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                activeStoreOrders.map((ride: any) => {
+                  return (
+                    <div
+                      key={ride.id}
+                      className="p-3 bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 hover:border-white/10 rounded-xl transition-colors flex items-start justify-between gap-3 group"
+                    >
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <span className="mt-1.5 h-2 w-2 rounded-full shrink-0 bg-blue-400 ring-4 ring-blue-400/20 animate-pulse" />
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-zinc-100 truncate group-hover:text-white transition-colors">
+                            {ride.motoboy || "Buscando motoboy..."}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1 font-mono text-[10px] text-zinc-500">
+                            <span>{ride.id}</span>
+                            <span>•</span>
+                            <span>{ride.time}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border font-mono text-blue-400 border-blue-400/30 bg-blue-400/10">
+                          {ride.status_label || "Em trânsito"}
+                        </span>
+                        {ride.valor > 0 && (
+                          <p className="text-xs font-bold text-zinc-200 mt-2 font-mono">
+                            {formatCurrency(ride.valor)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="p-3.5 border-t border-zinc-800/80 bg-zinc-950 text-center relative z-10">
+              <Link
+                to="/corridas"
+                className="text-xs font-bold text-[#E55C00] hover:text-orange-400 flex items-center justify-center gap-1.5 transition-colors"
+              >
+                Ver Todas as Corridas no Mapa
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Modal de Criação / Despacho de Corrida */}
+      <CreateRideModal
+        isOpen={isCreateRideOpen}
+        onClose={() => setIsCreateRideOpen(false)}
+        onSave={() => {
+          setIsCreateRideOpen(false);
+          handleRefresh();
+        }}
+        currentCompany={companyId}
+      />
+    </div>
+  );
+}
+
+function OperatorDashboard({ user }: { user: any }) {
   const [range, setRange] = useState<RangeKey>("last7");
   const [chartView, setChartView] = useState<ChartView>("revenue");
 
@@ -192,6 +860,7 @@ export function Dashboard() {
   const isSuperAdmin = role === "superadmin";
   const isOperador = role === "operador_admin" || role === "operador_staff";
   const isLojista = role === "lojista";
+
 
   // ─── Query Principal do Dashboard (Back-end Consolidado) ──────────────────
   const statsKey = `/api/v1/db/dashboard-stats?range=${range}${
@@ -1008,4 +1677,23 @@ export function Dashboard() {
   );
 }
 
+export function Dashboard() {
+  const { session } = useAuth();
+  const user = session?.user;
+  const rawRole = (user?.role || "").toLowerCase();
+
+  const isLojista =
+    rawRole === "lojista" ||
+    rawRole === "cliente" ||
+    Boolean(user?.client_id) ||
+    Boolean(user?.store_id);
+
+  if (isLojista) {
+    return <LojistaDashboard user={user} />;
+  }
+
+  return <OperatorDashboard user={user} />;
+}
+
 export default Dashboard;
+

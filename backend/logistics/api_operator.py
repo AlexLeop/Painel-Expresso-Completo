@@ -716,4 +716,9 @@ router.get("/driver-wallets")(get_operator_driver_wallets)
 router.post("/driver-wallet/adjust")(adjust_driver_wallet)
 router.get("/driver-wallet/transactions")(get_driver_wallet_transactions)
 
+from config.db_api import get_operator_credit_stats, process_operator_credits
+router.get("/credit-stats")(get_operator_credit_stats)
+router.post("/process-credits")(process_operator_credits)
+
+
 

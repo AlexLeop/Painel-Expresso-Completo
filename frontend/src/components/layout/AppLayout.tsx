@@ -54,7 +54,9 @@ const OPERATOR_ONLY_ROUTES = [
   "/financeiro",
   "/saques",
   "/escala",
+  "/lancamentos",
 ];
+
 
 const LOJISTA_ONLY_ROUTES = [
   "/clientes",
@@ -251,6 +253,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   ) {
     role = "superadmin";
   } else if (
+    rawRole === "lojista" ||
+    rawRole === "cliente" ||
+    Boolean(user?.client_id) ||
+    Boolean(user?.store_id)
+  ) {
+    role = "lojista";
+  } else if (
     rawRole === "operador_admin" ||
     rawRole === "admin" ||
     rawRole === "manager" ||
@@ -267,11 +276,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     role = "operador_staff";
   } else if (rawRole === "operador_loja" || rawRole === "funcionario_loja") {
     role = "operador_loja";
-  } else if (rawRole === "lojista" || rawRole === "cliente") {
-    role = "lojista";
   } else if (SUPERVISOR_ROLES.includes(rawRole)) {
     role = rawRole;
   }
+
 
   const isSupervisor = SUPERVISOR_ROLES.includes(role);
   const isMobileOpen = sidebarOpen;
@@ -374,7 +382,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         (OPERATOR_ONLY_ROUTES.includes(location.pathname) ||
           SUPERADMIN_ONLY_ROUTES.includes(location.pathname))
       ) {
-        navigate("/", { replace: true });
+        if (location.pathname === "/financeiro") {
+          navigate("/extrato", { replace: true });
+        } else {
+          navigate("/", { replace: true });
+        }
         return;
       }
       // Operators and staff cannot access lojista-only routes

@@ -1198,5 +1198,87 @@ def test_financial_reports_cross_tenant_isolation(client: Client, sample_data):
     assert resp_admin.status_code == 200
 
 
+def test_operator_credit_stats(sample_data):
+    from finance.models import DailyCreditCalculation
+    import datetime
+    client = Client()
+    op1 = sample_data["operator"]
+    store = sample_data["store"]
+    driver = sample_data["driver"]
+    staff = sample_data["staff"]
+    token1 = create_access_token({
+        "sub": str(staff.id),
+        "operator_id": str(op1.id),
+        "role": "ADMIN",
+        "email": staff.email,
+    })
+
+    today = datetime.date.today()
+    DailyCreditCalculation.objects.create(
+        id=uuid.uuid4(),
+        operator=op1,
+        store=store,
+        driver=driver,
+        date=today,
+        status="CREDITED",
+        netAmountCents=15000,
+    )
+    DailyCreditCalculation.objects.create(
+        id=uuid.uuid4(),
+        operator=op1,
+        store=store,
+        driver=driver,
+        date=today,
+        status="PENDING",
+        netAmountCents=12000,
+    )
+    DailyCreditCalculation.objects.create(
+        id=uuid.uuid4(),
+        operator=op1,
+        store=store,
+        driver=driver,
+        date=today,
+        status="FAILED",
+        failReason="Saldo insuficiente",
+        netAmountCents=10000,
+    )
+
+    resp = client.get(
+        "/api/v1/operator/credit-stats",
+        HTTP_AUTHORIZATION=f"Bearer {token1}",
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 3
+    assert data["credited"] == 1
+    assert data["pending"] == 1
+    assert data["failed"] == 1
+    assert data["credited_reais"] == 150.0
+
+
+def test_operator_process_credits(sample_data):
+    client = Client()
+    op1 = sample_data["operator"]
+    staff = sample_data["staff"]
+    token1 = create_access_token({
+        "sub": str(staff.id),
+        "operator_id": str(op1.id),
+        "role": "ADMIN",
+        "email": staff.email,
+    })
+    resp = client.post(
+        "/api/v1/operator/process-credits",
+        data=json.dumps({}),
+        content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {token1}",
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert "results" in data
+
+
+
+
 
 
