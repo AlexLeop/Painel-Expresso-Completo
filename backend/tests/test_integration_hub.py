@@ -604,7 +604,7 @@ def test_webhook_logs_endpoint(api_client, operator_and_store, connector_generic
     data = res.json()
     assert data["total"] == 2
     assert len(data["logs"]) == 2
-    statuses = [l["status"] for l in data["logs"]]
+    statuses = [entry["status"] for entry in data["logs"]]
     assert "processed" in statuses
     assert "failed" in statuses
 

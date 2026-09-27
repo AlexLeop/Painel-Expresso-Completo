@@ -317,7 +317,9 @@ def handle_login(request, payload: LoginPayload):
                 "user_type": "operator_staff",
                 "is_platform_admin": False,
                 "operator_id": str(staff.operator_id),
+                "operator_name": op_name,
                 "company_id": str(staff.operator_id),
+                "company_name": op_name,
                 "machine_empresa_id": str(staff.operator_id),
                 "companies": companies_list,
             },
@@ -451,7 +453,7 @@ def handle_me(request):
     except Exception:
         companies_list = []
 
-        op_name = staff.operator.name if staff.operator else "Operação Principal"
+    op_name = staff.operator.name if staff.operator else "Operação Principal"
 
     return {
         "authenticated": True,
@@ -464,7 +466,9 @@ def handle_me(request):
             "user_type": "operator_staff",
             "is_platform_admin": False,
             "operator_id": str(staff.operator_id),
+            "operator_name": op_name,
             "company_id": str(staff.operator_id),
+            "company_name": op_name,
             "machine_empresa_id": str(staff.operator_id),
             "companies": companies_list,
         },

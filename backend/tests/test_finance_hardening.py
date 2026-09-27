@@ -275,7 +275,7 @@ def test_settle_order_prevents_duplicate_transactions():
     store = Store.objects.create(id=uuid.uuid4(), operator=operator, client=client, name="Loja Ledger")
     driver = Driver.objects.create(id=uuid.uuid4(), operator=operator, name="Driver Ledger", phone="555")
 
-    contract = Contract.objects.create(
+    Contract.objects.create(
         id=uuid.uuid4(),
         operator=operator,
         store=store,
@@ -322,8 +322,8 @@ def test_cnab_return_file_rejects_and_refunds_on_error():
     """
     operator = Operator.objects.create(id=uuid.uuid4(), name="Operador CNAB")
     driver = Driver.objects.create(id=uuid.uuid4(), operator=operator, name="Driver CNAB", phone="777")
-    wallet = Wallet.objects.create(id=uuid.uuid4(), operator=operator, driver=driver, balanceCents=0)
-    op_wallet = OperatorInternalWallet.objects.create(id=uuid.uuid4(), operator=operator, balanceCents=10000)
+    Wallet.objects.create(id=uuid.uuid4(), operator=operator, driver=driver, balanceCents=0)
+    OperatorInternalWallet.objects.create(id=uuid.uuid4(), operator=operator, balanceCents=10000)
 
     withdrawal = WithdrawalRequest.objects.create(
         id=uuid.uuid4(),

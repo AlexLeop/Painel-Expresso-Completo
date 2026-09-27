@@ -1896,13 +1896,13 @@ def delete_company_store(request, company_id: str):
                 client_id_clean = client_id_str.replace("-", "")
                 try:
                     ClientPortalUser.objects.filter(client=client).delete()
-                except Exception as del_err:
+                except Exception:
                     from django.db import connection
                     with connection.cursor() as cursor:
                         cursor.execute('DELETE FROM "ClientPortalUser" WHERE client_id = %s OR client_id = %s', [client_id_str, client_id_clean])
                 try:
                     client.delete()
-                except Exception as del_err:
+                except Exception:
                     from django.db import connection
                     with connection.cursor() as cursor:
                         cursor.execute('DELETE FROM "Client" WHERE id = %s OR id = %s', [client_id_str, client_id_clean])
@@ -2918,7 +2918,6 @@ def get_operator_financial_dashboard(request, month: Optional[str] = None):
         except ValueError:
             raise HttpError(422, "Mês inválido; use AAAA-MM.")
 
-    target_date = datetime.date(target_year, target_month, 1)
     month_names_pt = [
         "", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
         "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"

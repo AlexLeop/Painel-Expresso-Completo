@@ -600,7 +600,7 @@ def process_return_file_ret(file_path: str):
                                 for cand in candidates:
                                     cand_hex = cand.id.hex.lower()
                                     cand_str = str(cand.id).lower()
-                                    if cand_hex.startswith(clean_id := clean_search) or cand_str.startswith(withdrawal_id_str.lower()):
+                                    if cand_hex.startswith(clean_search) or cand_str.startswith(withdrawal_id_str.lower()):
                                         withdrawal = cand
                                         break
 

@@ -4,12 +4,11 @@ import pytest
 from django.test import Client
 from django.db import connection
 from accounts.models import Operator, PlatformAdmin, StaffMember, OperatorBranding
-from logistics.models import Store, Driver, Client as StoreClient, ClientPortalUser
+from logistics.models import Store, Driver, ClientPortalUser, Client as StoreClient
 from finance.models import Contract, WeeklyStoreInvoice, WeeklyInvoiceLineItem
 from accounts.security import create_access_token
 
 
-import importlib
 from django.contrib.gis.db.models.proxy import SpatialProxy
 setattr(SpatialProxy, "__set__", lambda self, instance, value: instance.__dict__.__setitem__(self.field.attname, value))
 setattr(SpatialProxy, "__get__", lambda self, instance, cls=None: instance.__dict__.get(self.field.attname) if instance else self)
@@ -536,7 +535,6 @@ def test_store_creation_with_manager_and_store_operator_flow(client: Client, sam
 
     Garante também que o branding do Operador é herdado pelo Lojista e Operador da Loja (White-label).
     """
-    import sys
     import importlib
     geos = importlib.import_module("django.contrib.gis.geos")
     monkeypatch.setattr(geos, "Point", lambda lng, lat, srid=4326: f"POINT ({lng} {lat})")

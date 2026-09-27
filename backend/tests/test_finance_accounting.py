@@ -440,7 +440,7 @@ def test_operator_cash_reconciliation_and_settle(client, accounting_setup):
 
     # Criar uma entrega paga em dinheiro
     now = timezone.now()
-    order = Order.objects.create(
+    Order.objects.create(
         id=uuid.uuid4(),
         operator=operator,
         store=store,

@@ -267,7 +267,7 @@ def test_operator_staff_only_sees_own_users(client: Client):
     op2 = Operator.objects.create(id=uuid.uuid4(), name="Op 2", status="ACTIVE")
 
     s1 = StaffMember.objects.create(id=uuid.uuid4(), operator=op1, name="Staff 1", email="s1@op1.com", role="ADMIN")
-    s2 = StaffMember.objects.create(id=uuid.uuid4(), operator=op2, name="Staff 2", email="s2@op2.com", role="ADMIN")
+    StaffMember.objects.create(id=uuid.uuid4(), operator=op2, name="Staff 2", email="s2@op2.com", role="ADMIN")
 
     token = create_access_token({
         "sub": str(s1.id),
