@@ -14,7 +14,7 @@ from config.core_models import TimeStampedTenantModel
 from accounts.models import Operator
 from logistics.models import Store, Order
 from django.conf import settings
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, MultiFernet
 import base64
 
 
@@ -33,14 +33,16 @@ def get_cipher():
     from cryptography.hazmat.primitives.kdf.hkdf import HKDF
     from cryptography.hazmat.primitives import hashes
 
-    hkdf = HKDF(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=b"expresso-neves-fernet-v1",  # Salt fixo por aplicação (não precisa ser secreto)
-        info=b"store-integration-encryption",
-    )
-    derived_key = hkdf.derive(settings.SECRET_KEY.encode("utf-8"))
-    return Fernet(base64.urlsafe_b64encode(derived_key))
+    materials = getattr(settings, "INTEGRATION_ENCRYPTION_KEYS", []) or [settings.SECRET_KEY]
+    ciphers = []
+    for material in materials:
+        hkdf = HKDF(
+            algorithm=hashes.SHA256(), length=32,
+            salt=b"expresso-neves-fernet-v1",
+            info=b"store-integration-encryption",
+        )
+        ciphers.append(Fernet(base64.urlsafe_b64encode(hkdf.derive(material.encode("utf-8")))))
+    return MultiFernet(ciphers)
 
 
 class IntegrationConnector(models.Model):

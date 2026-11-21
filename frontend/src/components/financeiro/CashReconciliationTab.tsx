@@ -32,6 +32,8 @@ interface CashOrder {
 }
 
 interface DriverCashItem {
+  status_acerto: "PENDENTE" | "ACERTADO";
+  settlement_id?: string | null;
   driver_id: string;
   driver_name: string;
   driver_phone: string;
@@ -59,6 +61,7 @@ interface CashReconciliationData {
 }
 
 export function CashReconciliationTab() {
+  const [loadError, setLoadError] = useState("");
   const [data, setData] = useState<CashReconciliationData | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -85,13 +88,15 @@ export function CashReconciliationTab() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setLoadError("");
     try {
       const res = await authFetch("/api/v1/operator/cash-reconciliation");
       if (res.ok) {
         const json = await res.json();
         setData(json);
-      }
+      } else throw new Error("Não foi possível consultar os acertos.");
     } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Falha ao consultar os acertos.");
       console.error("Erro ao carregar reconciliação de dinheiro:", e);
     } finally {
       setLoading(false);
@@ -114,7 +119,7 @@ export function CashReconciliationTab() {
   };
 
   const handleConfirmSettle = async () => {
-    if (!settlingDriver) return;
+    if (!settlingDriver || isSubmittingSettle) return;
     const amountVal = parseFloat(settleAmount);
     if (isNaN(amountVal) || amountVal <= 0) {
       alert("Informe um valor válido para quitação.");
@@ -136,7 +141,7 @@ export function CashReconciliationTab() {
       const resJson = await res.json();
       if (res.ok && resJson.success !== false) {
         showToast(
-          `Baixa efetuada com sucesso para ${settlingDriver.driver_name} (R$ ${amountVal.toFixed(2)})`,
+          `Baixa registrada para ${settlingDriver.driver_name}. Recibo ${resJson.entry_id}`,
         );
         setSettlingDriver(null);
         await fetchData();
@@ -326,6 +331,11 @@ export function CashReconciliationTab() {
             Carregando conferência de dinheiro em espécie...
           </p>
         </div>
+      ) : loadError ? (
+        <div role="alert" className="p-6 bg-rose-50 text-rose-800">
+          <p>{loadError}</p>
+          <button onClick={fetchData}>Tentar novamente</button>
+        </div>
       ) : filteredDrivers.length === 0 ? (
         <div className="bg-white border border-zinc-200 rounded-2xl p-12 text-center shadow-sm">
           <ShieldCheck className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
@@ -426,7 +436,7 @@ export function CashReconciliationTab() {
 
                     <button
                       onClick={() => handleOpenSettleModal(driver)}
-                      disabled={isZero}
+                      disabled={!isDueOperator || driver.status_acerto === "ACERTADO" || driver.driver_id === "sem_motoboy"}
                       className={cn(
                         "px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5",
                         isZero
@@ -436,6 +446,11 @@ export function CashReconciliationTab() {
                     >
                       <Check className="w-3.5 h-3.5" /> Dar Baixa / Quitar
                     </button>
+                    {driver.settlement_id && (
+                      <span title={driver.settlement_id} className="text-xs text-zinc-600">
+                        Recibo {driver.settlement_id.slice(0, 8)}
+                      </span>
+                    )}
                   </div>
                 </div>
 

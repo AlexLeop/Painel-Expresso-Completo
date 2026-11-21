@@ -39,35 +39,23 @@ import json
 
 @contextmanager
 def tenant_context(operator_id: uuid.UUID):
-    """
-    Gerenciador de Contexto para Background Workers (Celery).
-    Dropa os privilégios da conexão para 'authenticated'
-    e injeta as claims do operator em app_metadata, assegurando que o
-    Postgres RLS (via current_operator_id()) rejeite qualquer transação
-    que tente cruzar a fronteira do inquilino.
-
-    ATENÇÃO: O yield DEVE acontecer DENTRO do transaction.atomic() para que
-    o SET LOCAL ROLE e set_config (transaction-local) permaneçam vivos.
-    """
-    # Claims formatadas para alinhar com current_operator_id() do schema.sql:
-    # current_setting('request.jwt.claims')::json->'app_metadata'->>'operator_id'
+    """Scope database work to the operator and restore any surrounding context."""
     claims = json.dumps(
         {"app_metadata": {"operator_id": str(operator_id)}, "role": "authenticated"}
     )
 
     with transaction.atomic():
+        if connection.vendor != "postgresql":
+            yield
+            return
         with connection.cursor() as cursor:
-            # 1. Injeta a Identidade (transaction-local: morre ao commit/rollback)
+            cursor.execute("SELECT current_setting('request.jwt.claims', true)")
+            previous = cursor.fetchone()[0] or "{}"
             cursor.execute(
                 "SELECT set_config('request.jwt.claims', %s, true);", [claims]
             )
-            # 2. Dropa Privilégios de forma segura caso a role exista (SAVEPOINT isola erro)
-            try:
-                cursor.execute("SAVEPOINT check_authenticated_role;")
-                cursor.execute("SET LOCAL ROLE authenticated;")
-                cursor.execute("RELEASE SAVEPOINT check_authenticated_role;")
-            except Exception:
-                cursor.execute("ROLLBACK TO SAVEPOINT check_authenticated_role;")
-
-        # O yield acontece DENTRO do atomic, garantindo que RLS sobrevive
         yield
+        # On an exception the enclosing savepoint restores the previous settings.
+        if not connection.needs_rollback:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT set_config('request.jwt.claims', %s, true)", [previous])

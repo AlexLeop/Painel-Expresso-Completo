@@ -6,7 +6,6 @@ import { getCompanyConfig } from "../services/company-config";
 import { authFetch } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import CreditQueuePanel from "../components/CreditQueuePanel";
-import AcertoInLoco from "../components/AcertoInLoco";
 import { StoreBalancesTab } from "../components/financeiro/StoreBalancesTab";
 import { DriverWalletsTab } from "../components/financeiro/DriverWalletsTab";
 import { DreTab } from "../components/financeiro/DreTab";
@@ -231,7 +230,7 @@ export function Financeiro() {
 
   const config = useMemo(() => {
     if (!companyId) return null;
-    return getCompanyConfig(Number(companyId), companyName);
+    return getCompanyConfig(companyId, companyName);
   }, [companyId, companyName]);
 
   const yesterday = useMemo(() => {
@@ -566,7 +565,7 @@ export function Financeiro() {
         {activeTab === "store_balances" && <StoreBalancesTab />}
         {activeTab === "dre" && <DreTab />}
         {activeTab === "cash_reconciliation" && <CashReconciliationTab />}
-        {activeTab === "acerto" && <AcertoInLoco />}
+        {activeTab === "acerto" && <CashReconciliationTab />}
       </div>
     </div>
   );

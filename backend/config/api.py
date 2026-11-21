@@ -19,6 +19,8 @@ from accounts.api_branding import router as branding_router
 from integration.api import router as integration_router
 from todos.api import router as todos_router
 from config.db_api import router as db_router
+from config.communications import router as communication_router
+from config.invoice_snapshots import router as invoice_snapshot_router
 
 api = NinjaAPI(
     title="Expresso Neves API",
@@ -30,6 +32,8 @@ api = NinjaAPI(
 api.add_router("/auth/", api_auth_router)
 
 api.add_router("/db/", db_router)
+api.add_router("/communications/", communication_router)
+api.add_router("/invoice-snapshots/", invoice_snapshot_router)
 api.add_router("/driver/", driver_router)
 api.add_router("/operator/", operator_router)
 api.add_router("/client/", client_router)

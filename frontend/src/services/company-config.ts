@@ -9,6 +9,7 @@ import { logger } from "@/lib/logger";
  */
 
 import { authFetch } from "../lib/api";
+import { sessionCache } from "../lib/session-cache";
 
 export interface DiariaConfig {
   weekday: number; // Seg-Sex (padrão)
@@ -57,7 +58,7 @@ export interface ReportConfig {
 }
 
 export interface CompanyConfig {
-  companyId: number;
+  companyId: string | number;
   companyName: string;
   taxaCorridaPerEntrega: number; // R$ por entrega (padrão: 1.60)
   pisoFixo: number; // Piso mínimo fixo (padrão: 350)
@@ -125,7 +126,7 @@ const DEFAULTS: Omit<CompanyConfig, "companyId" | "companyName"> = {
 function getAllConfigs(): CompanyConfig[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = sessionCache.getItem(STORAGE_KEY);
     if (!raw) return [];
     const configs: CompanyConfig[] = JSON.parse(raw);
     return configs.map(migrateConfig);
@@ -157,7 +158,7 @@ function migrateConfig(config: CompanyConfig): CompanyConfig {
 
 function saveAllConfigs(configs: CompanyConfig[]) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(configs));
+  sessionCache.setItem(STORAGE_KEY, JSON.stringify(configs));
 }
 
 // ============================================================
@@ -165,7 +166,7 @@ function saveAllConfigs(configs: CompanyConfig[]) {
 // ============================================================
 
 export function getCompanyConfig(
-  companyId: number,
+  companyId: string | number,
   companyName?: string,
 ): CompanyConfig {
   const all = getAllConfigs();
@@ -216,7 +217,7 @@ export function parseVal(val: any, fallback: number): number {
 }
 
 export async function pullConfigFromBackend(
-  companyId: number,
+  companyId: string | number,
   companyName?: string,
 ): Promise<CompanyConfig | null> {
   try {

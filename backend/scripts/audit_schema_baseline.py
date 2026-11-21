@@ -106,6 +106,14 @@ def constraint(name: str) -> Probe:
     )
 
 
+def forced_rls(table_name: str) -> Probe:
+    return Probe(
+        f"force-rls:{table_name}",
+        "SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid = to_regclass(%s)",
+        (f'public."{table_name}"',),
+    )
+
+
 def function(signature: str) -> Probe:
     return Probe(
         f"function:{signature}",
@@ -387,6 +395,32 @@ FINGERPRINTS: tuple[MigrationFingerprint, ...] = (
             column("WalletTransaction", "metadata"),
             index("idx_wallet_tx_order_category_unique"),
             index("idx_weekly_invoice_order_unique"),
+            *(forced_rls(name) for name in (
+                "Order", "Stop", "Driver", "Store", "Position", "Wallet",
+                "WalletTransaction", "WeeklyStoreInvoice", "WeeklyInvoiceLineItem", "ManualEntry",
+            )),
+        ),
+    ),
+    MigrationFingerprint(
+        "20261121010000_identity_and_rls_context.sql",
+        (
+            function("public.native_auth_operator(text)"),
+            Probe(
+                "normalized-driver-index",
+                "SELECT position('[^0-9]' in pg_get_indexdef(to_regclass('public.uq_driver_active_phone_identity'))) > 0",
+            ),
+            Probe(
+                "safe-empty-claims",
+                "SELECT position('NULLIF(current_setting' in pg_get_functiondef(to_regprocedure('public.current_operator_id()'))) > 0",
+            ),
+        ),
+    ),
+    MigrationFingerprint(
+        "20261121020000_invoice_snapshot.sql",
+        (
+            table("InvoiceSnapshot"),
+            policy("InvoiceSnapshot", "invoice_snapshot_read"),
+            policy("InvoiceSnapshot", "invoice_snapshot_create"),
         ),
     ),
 )

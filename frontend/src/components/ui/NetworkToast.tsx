@@ -27,6 +27,7 @@ export function NetworkToast() {
       <AnimatePresence>
         {messages.map((msg) => (
           <motion.div
+            role="alert"
             key={msg.id}
             initial={{ opacity: 0, y: 50, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -36,6 +37,7 @@ export function NetworkToast() {
             <WifiOff className="w-5 h-5 text-red-200" />
             <span className="text-sm font-medium flex-1">{msg.text}</span>
             <button
+              aria-label="Fechar aviso"
               onClick={() => setMessages((prev) => prev.filter((m) => m.id !== msg.id))}
               className="text-red-200 hover:text-white transition-colors"
             >

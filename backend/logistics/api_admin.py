@@ -9,7 +9,6 @@ from logistics.models import Driver, Vehicle, Client, Store, Turno, ScheduleEntr
 from accounts.models import Operator
 from accounts.auth import require_role
 from config.core_models import tenant_context
-from config.redis_client import get_redis
 
 router = Router(tags=["Admin - Logistics"])
 
@@ -186,49 +185,10 @@ def create_schedule(request, data: CreateScheduleSchema):
     operator = _operator_for_admin(request)
     operator_id = operator.id
     with tenant_context(operator_id):
-        driver = Driver.objects.get(id=data.driver_id, operator_id=operator_id)
-
-        # 1. Validação de Status Ativo
-        if not driver.active:
-            raise HttpError(422, "Motorista inativo.")
-
-        # 2. Validação de Onboarding
-        if driver.onboarding_status != "APPROVED":
-            raise HttpError(
-                422,
-                f"Motorista não está aprovado (Status atual: {driver.onboarding_status}).",
-            )
-
-        # 3. Validação de CNH Vencida (simulação, pois SecurityDenylist e ExpiredDocs fariam o status ir para BLOCKED, mas checamos ativamente aqui por precaução)
-        from logistics.models import DriverDocument
-        from datetime import date
-
-        today = date.today()
-        vencidos = DriverDocument.objects.filter(
-            driver=driver, expiresAt__lt=today
-        ).exists()
-        if vencidos:
-            raise HttpError(422, "Motorista possui documentos vencidos.")
-
-        r = get_redis()
-        if r.get(f"deny_list:driver:{driver.id}"):
-            raise HttpError(
-                422, "Motorista bloqueado na Security Denylist. Impossível escalar."
-            )
-
-        # Passou no Gate -> Criação da Escala
-        store = Store.objects.get(id=data.store_id, operator_id=operator_id)
-        turno = Turno.objects.get(
-            id=data.turno_id, operator_id=operator_id, store_id=store.id
-        )
-
-        schedule = ScheduleEntry.objects.create(
-            operator=operator,
-            driver=driver,
-            store=store,
-            turno=turno,
-            date=data.date,
-            minGuaranteedOverrideCents=data.minGuaranteedOverrideCents,
+        from config.scheduling import schedule_driver
+        schedule, _ = schedule_driver(
+            operator, data.driver_id, data.store_id, data.turno_id,
+            data.date, data.minGuaranteedOverrideCents,
         )
         return {"id": str(schedule.id), "date": str(schedule.date)}
 

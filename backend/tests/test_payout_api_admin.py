@@ -15,6 +15,25 @@ from finance.api_admin import (
     get_baas_balance,
 )
 from finance.webhooks import efi_pix_webhook
+
+
+def test_production_webhook_requires_edge_attestation(rf, settings):
+    settings.ENVIRONMENT = "production"
+    settings.EFI_WEBHOOK_HMAC = "test-webhook-token"
+    settings.EFI_EDGE_ATTESTATION_SECRET = "test-attestation-material-0123456789"
+    request = rf.post(
+        "/api/v1/webhooks/efi/pix?hmac=test-webhook-token",
+        data={"pix": []}, content_type="application/json",
+        HTTP_X_CLIENT_CERT_VERIFIED="SUCCESS",
+    )
+    assert efi_pix_webhook(request).status_code == 401
+    verified_request = rf.post(
+        "/api/v1/webhooks/efi/pix?hmac=test-webhook-token",
+        data={"pix": []}, content_type="application/json",
+        HTTP_X_CLIENT_CERT_VERIFIED="SUCCESS",
+        HTTP_X_EFI_EDGE_ATTESTATION=settings.EFI_EDGE_ATTESTATION_SECRET,
+    )
+    assert efi_pix_webhook(verified_request).status_code == 200
 from shared_schemas.finance import (
     WithdrawalRejectionPayload,
     PayoutPolicyConfigSchema,

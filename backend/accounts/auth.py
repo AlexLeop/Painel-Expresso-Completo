@@ -122,6 +122,18 @@ def platform_admin_required(request: HttpRequest):
     return admin
 
 
+def platform_owner_required(request: HttpRequest):
+    from django.conf import settings
+
+    admin = platform_admin_required(request)
+    if (
+        str(admin.id) != str(getattr(settings, "PLATFORM_OWNER_ID", ""))
+        or str(request.auth.get("sub", "")) != str(admin.id)
+    ):
+        raise HttpError(403, "Esta operação é exclusiva do proprietário da plataforma.")
+    return admin
+
+
 def get_client_portal_user(request: HttpRequest) -> Optional[ClientPortalUser]:
     """Retorna o ClientPortalUser autenticado pelo JWT do Supabase."""
     if not hasattr(request, "auth") or not request.auth:

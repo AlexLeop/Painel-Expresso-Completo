@@ -18,6 +18,10 @@ ENVIRONMENT = os.environ.get("DJANGO_ENV", "development").strip().lower()
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "django-insecure-development-key-only")
 JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", SECRET_KEY)
+INTEGRATION_ENCRYPTION_KEYS = [
+    value.strip() for value in os.environ.get("INTEGRATION_ENCRYPTION_KEYS", "").split(",")
+    if value.strip()
+]
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
@@ -88,7 +92,21 @@ if ENVIRONMENT == "production" and not CORS_ALLOWED_ORIGINS:
 from corsheaders.defaults import default_headers
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "x-operator-id",
+    "idempotency-key",
 ]
+
+# The identity is an existing PlatformAdmin UUID. An absent value denies
+# owner-only operations until the deployment explicitly designates its owner.
+PLATFORM_OWNER_ID = os.environ.get("PLATFORM_OWNER_ID", "")
+PASSWORD_RESET_URL = os.environ.get("PASSWORD_RESET_URL", "")
+EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True") == "True"
+EMAIL_TIMEOUT = 15
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "")
 
 _csrf_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
 CSRF_TRUSTED_ORIGINS = [
@@ -240,6 +258,7 @@ CELERY_TASK_SERIALIZER = "json"
 
 EFI_WEBHOOK_HMAC = os.environ.get("EFI_WEBHOOK_HMAC", "")
 EFI_REQUIRE_MTLS_HEADER = os.environ.get("EFI_REQUIRE_MTLS_HEADER", "True") == "True"
+EFI_EDGE_ATTESTATION_SECRET = os.environ.get("EFI_EDGE_ATTESTATION_SECRET", "")
 ALLOW_PAYMENT_SIMULATION = DEBUG and os.environ.get("ALLOW_PAYMENT_SIMULATION", "False") == "True"
 
 # ==========================================
@@ -250,6 +269,7 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "True") == "True"
+    SECURE_REDIRECT_EXEMPT = [r"^api/v1/health$"]
     SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "31536000"))
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True

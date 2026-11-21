@@ -349,3 +349,61 @@ def test_create_platform_admin_command_reads_password_from_environment(monkeypat
 
     admin = PlatformAdmin.objects.get(email="env-root@expressoneves.com.br")
     assert admin.check_password("EnvironmentPassword123!@#") is True
+
+
+@pytest.mark.django_db
+def test_password_recovery_delivers_link_and_reset_is_single_use(client, settings):
+    from django.core import mail
+    from urllib.parse import parse_qs, urlparse
+    settings.PASSWORD_RESET_URL = "https://panel.example.invalid/login"
+    settings.DEFAULT_FROM_EMAIL = "access@example.invalid"
+    settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+    admin = PlatformAdmin.objects.create(
+        id=uuid.uuid4(), name="Owner Recovery", email="recover-owner@example.invalid",
+        passwordHash=hash_password("OriginalPassword123!"),
+    )
+    response = client.post("/api/auth/recover", data={"email": admin.email}, content_type="application/json")
+    assert response.status_code == 200
+    assert len(mail.outbox) == 1
+    link = next(line for line in mail.outbox[0].body.splitlines() if line.startswith("https://"))
+    token = parse_qs(urlparse(link).fragment)["token"][0]
+    reset = client.post(
+        "/api/auth/reset-password",
+        data={"token": token, "password": "ReplacementPassword987!"},
+        content_type="application/json",
+    )
+    assert reset.status_code == 200, reset.content
+    admin.refresh_from_db()
+    assert admin.check_password("ReplacementPassword987!")
+    assert not admin.check_password("OriginalPassword123!")
+    replay = client.post(
+        "/api/auth/reset-password", data={"token": token, "password": "AnotherPassword321!"},
+        content_type="application/json",
+    )
+    assert replay.status_code == 422
+
+
+@pytest.mark.django_db
+def test_password_reset_rejects_forged_link_without_changing_account(client):
+    response = client.post(
+        "/api/auth/reset-password", data={"token": "forged-token", "password": "ReplacementPassword987!"},
+        content_type="application/json",
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.django_db
+def test_public_operator_application_requires_review_and_deduplicates(client):
+    from accounts.models import OperatorApplication
+    payload = {
+        "nome_fantasia": "Operadora em análise", "documento": "12.345.678/0001-90",
+        "email": "new-operator@example.invalid", "telefone": "(11) 98765-4321",
+    }
+    for _ in range(2):
+        response = client.post("/api/auth/register", data=payload, content_type="application/json")
+        assert response.status_code == 200
+        assert response.json()["status"] == "pending_review"
+    application = OperatorApplication.objects.get(email=payload["email"])
+    assert application.reviewed_at is None
+    assert not StaffMember.objects.filter(email=payload["email"]).exists()
+    assert client.get("/api/admin/operator-applications").status_code == 401

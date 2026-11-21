@@ -13,7 +13,6 @@ import {
   Users,
   Settings,
   Menu,
-  Bell,
   Search,
   MapPin,
   ChevronDown,
@@ -33,6 +32,7 @@ import { cn, formatCurrency } from "../../lib/utils";
 import { useAuth } from "../../contexts/AuthContext";
 import { useBranding } from "../../contexts/BrandingContext";
 import { authFetch } from "../../lib/api";
+import { OrderNotices } from "../OrderNotices";
 
 // ─── 3-Tier Access Control Hierarchy ─────────────────────────
 // superadmin      → SuperAdmin Master (Plataforma). Acesso total, incluindo /operadores, /snapshots, /sync, /usuarios
@@ -50,7 +50,6 @@ const SUPERADMIN_ONLY_ROUTES = [
 const OPERATOR_ONLY_ROUTES = [
   "/motoboys",
   "/empresas",
-  "/integracoes",
   "/financeiro",
   "/saques",
   "/escala",
@@ -132,7 +131,7 @@ const navigationGroups = [
         name: "Integrações (PDV/Hub)",
         href: "/integracoes",
         icon: Plug,
-        roles: ["superadmin", "operador_admin"],
+        roles: ["superadmin", "operador_admin", "lojista"],
       },
       {
         name: "Usuários",
@@ -776,13 +775,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
               <div className="h-6 w-px bg-zinc-200 hidden sm:block mx-1"></div>
 
-              <button
-                className="p-2 text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 rounded-lg relative transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#E55C00]"
-                aria-label="Notificações"
-              >
-                <span className="absolute top-2 right-2.5 h-1.5 w-1.5 rounded-full bg-rose-500 ring-2 ring-white"></span>
-                <Bell strokeWidth={2} className="h-4 w-4" />
-              </button>
+              <OrderNotices key={`${user?.id}:${user?.company_id}`} />
             </div>
           </div>
         </header>

@@ -242,6 +242,17 @@ def apply_schema(database_url: str, migrations_dir: Path, baseline_name: str | N
                         "recommendation. The runner will not guess."
                     )
                 baseline = migrations_through(migrations, baseline_name)
+                # A filename alone cannot establish that its DDL exists.
+                if __package__:
+                    from .audit_schema_baseline import run_audit
+                else:
+                    from audit_schema_baseline import run_audit
+                report = run_audit(connection)
+                if not report["safe_to_configure_baseline"] or report["recommended_baseline"] != baseline_name:
+                    raise MigrationError(
+                        "The configured baseline does not match the observed contiguous schema. "
+                        "Run the read-only baseline audit and reconcile partial migrations."
+                    )
                 _record_baseline(connection, baseline)
                 print(f"Baselined {len(baseline)} existing migration(s) through {baseline_name}.")
                 history = _load_history(connection)

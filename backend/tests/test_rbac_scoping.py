@@ -404,6 +404,8 @@ def test_operator_cannot_list_or_patch_driver_from_another_tenant(client: Client
 
 @pytest.mark.django_db
 def test_operator_created_driver_is_forced_to_authenticated_tenant(client: Client):
+    from logistics.models import Store, StoreDriver
+
     op1 = Operator.objects.create(id=uuid.uuid4(), name="Op Cadastro 1", status="ACTIVE")
     op2 = Operator.objects.create(id=uuid.uuid4(), name="Op Cadastro 2", status="ACTIVE")
     staff = StaffMember.objects.create(
@@ -415,6 +417,15 @@ def test_operator_created_driver_is_forced_to_authenticated_tenant(client: Clien
         "is_platform_admin": False, "operator_id": str(op1.id),
     })
 
+    foreign_store = Store.objects.create(operator=op2, name="Loja externa")
+    rejected = client.post(
+        "/api/v1/db/company-drivers",
+        data={"companyId": str(op2.id), "storeId": str(foreign_store.id),
+              "nome": "Novo Motoboy", "phone": "11933334444",
+              "email": "driver@example.com", "password": "senha-segura"},
+        content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+    assert rejected.status_code == 422
     response = client.post(
         "/api/v1/db/company-drivers",
         data=json.dumps({
@@ -430,10 +441,47 @@ def test_operator_created_driver_is_forced_to_authenticated_tenant(client: Clien
     assert driver.operator_id == op1.id
     assert driver.phone == "11933334444"
     assert driver.document == "12345678901"
+    assert not StoreDriver.objects.filter(driver=driver).exists()
 
 
 @pytest.mark.django_db
-def test_only_platform_owner_can_transfer_driver_and_transfer_is_audited(client: Client):
+def test_schedule_routes_reject_shift_from_different_store(client):
+    from datetime import time
+    from logistics.models import Store, Turno
+
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS "Turno" (
+                id CHAR(32) PRIMARY KEY, operator_id CHAR(32), store_id CHAR(32),
+                name VARCHAR(255), "startTime" TIME, "endTime" TIME
+            )
+        """)
+    operator = Operator.objects.create(id=uuid.uuid4(), name="Operador das duas lojas")
+    staff = StaffMember.objects.create(
+        id=uuid.uuid4(), operator=operator, name="Operadora", email="schedule-admin@example.invalid",
+        role="ADMIN", active=True,
+    )
+    driver = Driver.objects.create(operator=operator, name="Motorista", phone="11912543567")
+    primary = Store.objects.create(operator=operator, name="Loja da escala")
+    other = Store.objects.create(operator=operator, name="Loja do turno")
+    shift = Turno.objects.create(operator=operator, store=other, name="Noite", startTime=time(18), endTime=time(22))
+    token = create_access_token({"sub": str(staff.id), "operator_id": str(operator.id)})
+    data = {"driver_id": str(driver.id), "store_id": str(primary.id), "turno_id": str(shift.id)}
+    for path, date_field in [
+        ("/api/v1/operator/schedule", "target_date"),
+        ("/api/v1/admin/logistics/schedules", "date"),
+    ]:
+        response = client.post(
+            path, data={**data, date_field: "2026-11-22"}, content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        assert response.status_code == 404, response.content
+
+
+@pytest.mark.django_db
+def test_only_platform_owner_can_transfer_driver_and_transfer_is_audited(client: Client, settings):
+    with connection.cursor() as cursor:
+        cursor.execute('CREATE TABLE IF NOT EXISTS "ScheduleEntry" (id CHAR(32) PRIMARY KEY, driver_id CHAR(32), date DATE)')
     op1 = Operator.objects.create(id=uuid.uuid4(), name="Origem", status="ACTIVE")
     op2 = Operator.objects.create(id=uuid.uuid4(), name="Destino", status="ACTIVE")
     staff = StaffMember.objects.create(
@@ -465,6 +513,13 @@ def test_only_platform_owner_can_transfer_driver_and_transfer_is_audited(client:
         "sub": str(owner.id), "email": owner.email, "role": "SUPERADMIN",
         "is_platform_admin": True, "operator_id": None,
     })
+    response = client.post(
+        f"/api/v1/db/company-drivers/{driver.id}/transfer",
+        data=json.dumps(payload), content_type="application/json",
+        HTTP_AUTHORIZATION=f"Bearer {owner_token}",
+    )
+    assert response.status_code == 403
+    settings.PLATFORM_OWNER_ID = str(owner.id)
     response = client.post(
         f"/api/v1/db/company-drivers/{driver.id}/transfer",
         data=json.dumps(payload), content_type="application/json",

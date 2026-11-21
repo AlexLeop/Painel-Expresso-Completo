@@ -30,8 +30,8 @@ export async function authFetch(url: string, options: RequestInit = {}) {
 
   if (
     options.body &&
-    (!options.headers ||
-      !(options.headers as Record<string, string>)["Content-Type"])
+    !(options.body instanceof FormData) &&
+    !headers.has("Content-Type")
   ) {
     headers.set("Content-Type", "application/json");
   }

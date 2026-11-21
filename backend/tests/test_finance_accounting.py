@@ -476,6 +476,13 @@ def test_operator_cash_reconciliation_and_settle(client, accounting_setup):
     settle_data = settle_resp.json()
     assert settle_data["success"] is True
     assert settle_data["status"] == "ACERTADO"
+    repeated = client.post(
+        "/api/v1/operator/settle-cash",
+        data={"driver_id": str(driver.id), "amount_cents": 5000, "notes": "Baixa de acerto no balcão"},
+        content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+    assert repeated.status_code == 200
+    assert repeated.json()["entry_id"] == settle_data["entry_id"]
 
 
 @pytest.mark.django_db

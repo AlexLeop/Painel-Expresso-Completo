@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 from django.db import connection
 from config.middleware import NativeAuthRLSMiddleware
 from accounts.security import create_access_token
+from contextlib import nullcontext
 
 
 def test_rls_claims_use_is_local_true():
@@ -34,7 +35,9 @@ def test_rls_claims_use_is_local_true():
             executed_queries.append((sql, params))
 
     with patch.object(connection, "vendor", "postgresql"):
-        with patch.object(connection, "cursor", return_value=MockCursor()):
+        with patch.object(connection, "cursor", return_value=MockCursor()), patch(
+            "config.middleware.transaction.atomic", return_value=nullcontext()
+        ):
             response = middleware(request)
 
     assert response == "OK"

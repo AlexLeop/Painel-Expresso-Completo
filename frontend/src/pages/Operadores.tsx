@@ -157,6 +157,69 @@ export const STATUS_CONFIG: Record<
   },
 };
 
+interface OperatorApplication {
+  id: string;
+  company_name: string;
+  document: string;
+  email: string;
+  phone: string;
+}
+
+function OperatorApplications() {
+  const [items, setItems] = useState<OperatorApplication[]>([]);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function load() {
+    setBusy(true);
+    setError("");
+    try {
+      const response = await authFetch("/api/admin/operator-applications");
+      if (!response.ok) throw new Error("Não foi possível carregar as solicitações.");
+      setItems(await response.json());
+      setOpen(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Falha ao consultar solicitações.");
+    } finally { setBusy(false); }
+  }
+
+  async function markReviewed(id: string) {
+    setBusy(true);
+    setError("");
+    try {
+      const response = await authFetch(`/api/admin/operator-applications/${id}/review`, { method: "POST" });
+      if (!response.ok) throw new Error("Não foi possível atualizar a solicitação.");
+      setItems(previous => previous.filter(item => item.id !== id));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Falha ao atualizar a solicitação.");
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <section aria-labelledby="operator-applications" className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 id="operator-applications" className="font-semibold">Solicitações de adesão</h2>
+        <button type="button" onClick={() => void load()} disabled={busy} className="rounded-lg border px-3 py-2 text-sm">
+          {busy ? "Aguarde…" : open ? "Atualizar" : "Consultar solicitações"}
+        </button>
+      </div>
+      {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
+      {open && items.length === 0 && !error && <p className="text-sm text-zinc-600">Nenhuma solicitação pendente.</p>}
+      {items.map(item => (
+        <div key={item.id} className="flex flex-wrap items-start justify-between gap-3 border-t border-zinc-100 py-3">
+          <div>
+            <p className="font-medium">{item.company_name}</p>
+            <p className="break-all text-sm text-zinc-600">{item.document} · {item.email} · {item.phone}</p>
+          </div>
+          <button type="button" disabled={busy} onClick={() => void markReviewed(item.id)} className="rounded border px-2 py-1 text-sm">Marcar como analisada</button>
+        </div>
+      ))}
+      {open && items.length > 0 && <p className="text-sm text-zinc-600">Após a aprovação comercial, use Novo Operador para criar a conta.</p>}
+    </section>
+  );
+}
+
 export function Operadores() {
   const [operadores, setOperadores] = useState<OperatorType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -280,6 +343,7 @@ export function Operadores() {
           </button>
         </div>
       </div>
+      <OperatorApplications />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">

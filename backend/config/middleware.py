@@ -1,6 +1,6 @@
 import json
 import logging
-from django.db import connection
+from django.db import connection, transaction
 from accounts.security import decode_token, SecurityError
 
 logger = logging.getLogger(__name__)
@@ -36,8 +36,9 @@ class NativeAuthRLSMiddleware:
         if jwt_payload:
             request.auth = jwt_payload
 
-            # Se a conexão for PostgreSQL, injeta os claims para conformidade com RLS
-            if connection.vendor == "postgresql":
+        if connection.vendor == "postgresql":
+            rls_claims = {}
+            if jwt_payload:
                 rls_claims = {
                     "sub": jwt_payload.get("sub"),
                     "email": jwt_payload.get("email"),
@@ -46,16 +47,48 @@ class NativeAuthRLSMiddleware:
                         "operator_id": str(jwt_payload.get("operator_id") or ""),
                     },
                 }
-                try:
-                    with connection.cursor() as cursor:
-                        cursor.execute(
-                            "SELECT set_config('request.jwt.claims', %s, true);",
-                            [json.dumps(rls_claims)],
-                        )
-                    return self.get_response(request)
-                finally:
-                    with connection.cursor() as cursor:
-                        cursor.execute("SELECT set_config('request.jwt.claims', '', false);")
+            with transaction.atomic():
+                if jwt_payload and jwt_payload.get("is_platform_admin"):
+                    from uuid import UUID
+                    from accounts.models import PlatformAdmin
+                    try:
+                        admin_id = UUID(str(jwt_payload.get("sub")))
+                    except ValueError:
+                        admin_id = None
+                    if not admin_id or not PlatformAdmin.objects.filter(pk=admin_id).exists():
+                        rls_claims = {}
+                # Public authentication endpoints need tenant discovery while
+                # their credential checks remain subject to ordinary policies.
+                if not jwt_payload and request.path.rstrip("/") in {
+                    "/api/auth/login", "/api/auth/refresh", "/api/auth/recover",
+                    "/api/v1/auth/login", "/api/v1/auth/refresh",
+                }:
+                    identity = ""
+                    try:
+                        body = json.loads(request.body or b"{}")
+                        identity = str(body.get("email") or "")
+                        if request.path.rstrip("/").endswith("/refresh"):
+                            token = request.COOKIES.get("neves_refresh") or body.get("refresh_token")
+                            identity = str(decode_token(token, expected_type="refresh").get("sub", "")) if token else ""
+                    except (ValueError, TypeError, AttributeError, SecurityError):
+                        pass
+                    if identity:
+                        with connection.cursor() as cursor:
+                            cursor.execute("SELECT public.native_auth_operator(%s)", [identity])
+                            row = cursor.fetchone()
+                        if row and row[0]:
+                            rls_claims = {"app_metadata": {"operator_id": str(row[0])}}
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT set_config('request.jwt.claims', %s, true);",
+                        [json.dumps(rls_claims)],
+                    )
+                response = self.get_response(request)
+                # Django can convert a view exception to an HTTP response before
+                # returning through middleware. Never commit its partial writes.
+                if getattr(response, "status_code", 200) >= 500:
+                    transaction.set_rollback(True)
+                return response
 
         # Requests sem auth rodam sem claims ou com SET LOCAL ROLE anon no Postgres
         return self.get_response(request)

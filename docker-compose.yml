@@ -63,6 +63,16 @@ services:
       - GOOGLE_MAPS_PLATFORM_KEY=${GOOGLE_MAPS_PLATFORM_KEY:-}
       - EFI_WEBHOOK_HMAC=${EFI_WEBHOOK_HMAC:?EFI_WEBHOOK_HMAC is required}
       - EFI_REQUIRE_MTLS_HEADER=${EFI_REQUIRE_MTLS_HEADER:-True}
+      - EFI_EDGE_ATTESTATION_SECRET=${EFI_EDGE_ATTESTATION_SECRET:-}
+      - PLATFORM_OWNER_ID=${PLATFORM_OWNER_ID:-}
+      - INTEGRATION_ENCRYPTION_KEYS=${INTEGRATION_ENCRYPTION_KEYS:-}
+      - PASSWORD_RESET_URL=${PASSWORD_RESET_URL:-}
+      - EMAIL_HOST=${EMAIL_HOST:-}
+      - EMAIL_PORT=${EMAIL_PORT:-587}
+      - EMAIL_HOST_USER=${EMAIL_HOST_USER:-}
+      - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD:-}
+      - EMAIL_USE_TLS=${EMAIL_USE_TLS:-True}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL:-}
       - BIOMETRICS_PROVIDER_URL=${BIOMETRICS_PROVIDER_URL:?BIOMETRICS_PROVIDER_URL is required}
       - BIOMETRICS_API_KEY=${BIOMETRICS_API_KEY:?BIOMETRICS_API_KEY is required}
       - BIOMETRICS_WEBHOOK_SECRET=${BIOMETRICS_WEBHOOK_SECRET:?BIOMETRICS_WEBHOOK_SECRET is required}
@@ -79,7 +89,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
+      test: ["CMD", "python", "-c", "import urllib.request; from config.settings import ALLOWED_HOSTS; request = urllib.request.Request('http://127.0.0.1:8000/api/v1/health', headers={'Host': ALLOWED_HOSTS[0].lstrip('.')}); urllib.request.urlopen(request, timeout=3)"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -142,7 +152,18 @@ services:
       context: .
       dockerfile: Dockerfile
     command: celery -A config worker -l info -Q integrations,finance,celery,default -c 4
+    volumes:
+      - type: bind
+        source: ${EFI_CERT_HOST_PATH:?EFI_CERT_HOST_PATH is required}
+        target: /run/secrets/efi.pem
+        read_only: true
     environment:
+      - EFI_CLIENT_ID=${EFI_CLIENT_ID:?EFI_CLIENT_ID is required}
+      - EFI_CLIENT_SECRET=${EFI_CLIENT_SECRET:?EFI_CLIENT_SECRET is required}
+      - EFI_OPERATOR_PIX_KEY=${EFI_OPERATOR_PIX_KEY:?EFI_OPERATOR_PIX_KEY is required}
+      - EFI_CERT_PATH=/run/secrets/efi.pem
+      - EFI_SANDBOX=${EFI_SANDBOX:-False}
+      - INTEGRATION_ENCRYPTION_KEYS=${INTEGRATION_ENCRYPTION_KEYS:-}
       # Standalone PostgreSQL 17 + PostGIS & Auth Nativo
       - DATABASE_URL=${DATABASE_URL:?DATABASE_URL is required}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
@@ -220,9 +241,10 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-}
     environment:
       # Frontend (Vite/React)
-      - VITE_API_URL=${VITE_API_URL:?VITE_API_URL is required}
       - PORT=${PORT:-5173}
       - NODE_ENV=${NODE_ENV:-production}
     expose:

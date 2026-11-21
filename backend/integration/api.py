@@ -109,15 +109,16 @@ def _get_auth_info(request: HttpRequest) -> tuple[Optional[uuid.UUID], bool]:
     is_platform_admin = False
 
     if isinstance(user, dict):
-        from accounts.auth import get_staff_member
+        from accounts.auth import get_staff_member, platform_admin_required
 
         role = str(user.get("role", "")).upper()
-        is_platform_admin = bool(user.get("is_platform_admin")) or role in ("PLATFORM_ADMIN", "SUPERADMIN")
+        is_platform_admin = bool(user.get("is_platform_admin"))
         if is_platform_admin:
+            platform_admin_required(request)
             raw_op_id = request.headers.get("X-Operator-Id") or user.get("operator_id")
         else:
             staff = get_staff_member(request)
-            raw_op_id = staff.operator_id if staff else user.get("operator_id")
+            raw_op_id = staff.operator_id if staff else None
             role = str(staff.role if staff else "").upper()
     else:
         role = str(getattr(user, "role", "")).upper()
@@ -148,6 +149,22 @@ def _get_operator_id(request: HttpRequest) -> Optional[uuid.UUID]:
 def _get_admin_operator_id(request: HttpRequest) -> Optional[uuid.UUID]:
     operator_id, is_admin = _get_auth_info(request)
     return operator_id if is_admin else None
+
+
+def _client_integration_scope(request: HttpRequest):
+    """Resolve a store manager from the persisted identity, never from a store in the payload."""
+    from accounts.auth import get_client_portal_user
+    from ninja.errors import HttpError
+
+    auth = getattr(request, "auth", None)
+    if not isinstance(auth, dict) or not (auth.get("client_id") or auth.get("user_type") == "client_portal_user"):
+        return None
+    actor = get_client_portal_user(request)
+    if not actor:
+        raise HttpError(401, "Usuário lojista revogado ou não encontrado.")
+    if actor.role.lower() != "lojista":
+        raise HttpError(403, "Somente o gestor da loja pode administrar integrações.")
+    return actor.operator_id, Store.objects.filter(operator_id=actor.operator_id, client_id=actor.client_id)
 
 
 def _validate_public_config(config: dict) -> Optional[str]:
@@ -461,6 +478,10 @@ def list_operator_stores(request: HttpRequest):
     """
     Lista as lojas do operador para seleção rápida no cadastro de integrações.
     """
+    client_scope = _client_integration_scope(request)
+    if client_scope is not None:
+        _, stores = client_scope
+        return [{"id": str(store.id), "name": store.name} for store in stores.order_by("name")]
     operator_id, is_admin = _get_auth_info(request)
     if not operator_id:
         if is_admin:
@@ -477,12 +498,32 @@ def list_operator_stores(request: HttpRequest):
     return [{"id": str(s.id), "name": s.name} for s in stores]
 
 
+@router.get("/sync-status")
+def sync_status(request: HttpRequest):
+    from accounts.auth import platform_admin_required
+    from django.db.models import Count
+    from django.utils import timezone
+    from datetime import timedelta
+
+    platform_admin_required(request)
+    queried_at = timezone.now()
+    logs = IntegrationWebhookLog.objects.filter(createdAt__gte=queried_at - timedelta(minutes=15))
+    metrics = {row["status"]: row["total"] for row in logs.values("status").annotate(total=Count("id"))}
+    return {
+        "queried_at": queried_at.isoformat(),
+        "window_minutes": 15,
+        "metrics": metrics,
+        "last_event_at": IntegrationWebhookLog.objects.order_by("-createdAt").values_list("createdAt", flat=True).first(),
+    }
+
+
 @router.get("", response={200: List[StoreIntegrationOut], 401: dict})
 def list_store_integrations(request: HttpRequest):
     """
     Lista todas as integrações configuradas nas lojas do operador logado.
     """
-    operator_id, is_admin = _get_auth_info(request)
+    client_scope = _client_integration_scope(request)
+    operator_id, is_admin = (client_scope[0], False) if client_scope else _get_auth_info(request)
     if not operator_id and not is_admin:
         return 401, {"error": "Autenticação requerida."}
 
@@ -492,6 +533,8 @@ def list_store_integrations(request: HttpRequest):
     )
     if operator_id:
         integrations = integrations.filter(operator_id=operator_id)
+    if client_scope:
+        integrations = integrations.filter(store_id__in=client_scope[1].values("id"))
     return [_serialize_integration(item, show_secret=False) for item in integrations]
 
 
@@ -501,12 +544,14 @@ def create_store_integration(request: HttpRequest, payload: StoreIntegrationCrea
     Cria uma nova integração de conector vinculada a uma loja do operador.
     Gera automaticamente o webhook_secret para assinatura HMAC.
     """
-    operator_id = _get_admin_operator_id(request)
+    client_scope = _client_integration_scope(request)
+    operator_id = client_scope[0] if client_scope else _get_admin_operator_id(request)
     if not operator_id:
         return 401, {"error": "Administrador do operador requerido."}
 
     # Validar loja
-    store = Store.objects.filter(id=payload.store_id, operator_id=operator_id).first()
+    stores = client_scope[1] if client_scope else Store.objects.filter(operator_id=operator_id)
+    store = stores.filter(id=payload.store_id).first()
     if not store:
         return 404, {"error": "Loja não encontrada para este operador."}
 
@@ -558,7 +603,8 @@ def update_store_integration(
     """
     Atualiza status (ativar/pausar), auto_create_order, configs ou regenera o webhook_secret.
     """
-    operator_id = _get_admin_operator_id(request)
+    client_scope = _client_integration_scope(request)
+    operator_id = client_scope[0] if client_scope else _get_admin_operator_id(request)
     if not operator_id:
         return 401, {"error": "Administrador do operador requerido."}
 
@@ -567,11 +613,10 @@ def update_store_integration(
     except (ValueError, TypeError):
         return 404, {"error": "ID de integração inválido."}
 
-    integration = (
-        StoreIntegration.objects.filter(id=target_id, operator_id=operator_id)
-        .select_related("store", "connector")
-        .first()
-    )
+    integrations = StoreIntegration.objects.filter(id=target_id, operator_id=operator_id)
+    if client_scope:
+        integrations = integrations.filter(store_id__in=client_scope[1].values("id"))
+    integration = integrations.select_related("store", "connector").first()
     if not integration:
         return 404, {"error": "Integração não encontrada."}
 
@@ -609,7 +654,8 @@ def delete_store_integration(request: HttpRequest, integration_id: str):
     """
     Exclui uma integração de loja.
     """
-    operator_id = _get_admin_operator_id(request)
+    client_scope = _client_integration_scope(request)
+    operator_id = client_scope[0] if client_scope else _get_admin_operator_id(request)
     if not operator_id:
         return 401, {"error": "Administrador do operador requerido."}
 
@@ -618,9 +664,10 @@ def delete_store_integration(request: HttpRequest, integration_id: str):
     except (ValueError, TypeError):
         return 404, {"error": "ID de integração inválido."}
 
-    integration = StoreIntegration.objects.filter(
-        id=target_id, operator_id=operator_id
-    ).first()
+    integrations = StoreIntegration.objects.filter(id=target_id, operator_id=operator_id)
+    if client_scope:
+        integrations = integrations.filter(store_id__in=client_scope[1].values("id"))
+    integration = integrations.first()
     if not integration:
         return 404, {"error": "Integração não encontrada."}
 
@@ -640,7 +687,8 @@ def list_integration_webhook_logs(
     """
     Retorna o histórico de webhooks recebidos por uma integração específica para auditoria e depuração.
     """
-    operator_id = _get_operator_id(request)
+    client_scope = _client_integration_scope(request)
+    operator_id = client_scope[0] if client_scope else _get_operator_id(request)
     if not operator_id:
         return 401, {"error": "Autenticação requerida."}
 
@@ -649,9 +697,10 @@ def list_integration_webhook_logs(
     except (ValueError, TypeError):
         return 404, {"error": "ID de integração inválido."}
 
-    integration = StoreIntegration.objects.filter(
-        id=target_id, operator_id=operator_id
-    ).first()
+    integrations = StoreIntegration.objects.filter(id=target_id, operator_id=operator_id)
+    if client_scope:
+        integrations = integrations.filter(store_id__in=client_scope[1].values("id"))
+    integration = integrations.first()
     if not integration:
         return 404, {"error": "Integração não encontrada."}
 

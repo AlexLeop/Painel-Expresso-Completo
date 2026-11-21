@@ -2,6 +2,7 @@
  * Native Authentication Client
  * Replaces Supabase Auth with direct calls to Django Ninja Native Auth API.
  */
+import { clearBusinessCache } from "./session-cache";
 
 export interface User {
   id?: string;
@@ -11,6 +12,7 @@ export interface User {
   is_platform_admin?: boolean;
   company_id: string;
   operator_id?: string | null;
+  operator_name?: string;
   client_id?: string | null;
   store_id?: string | null;
   machine_empresa_id?: string;
@@ -47,6 +49,7 @@ export const authStorage = {
     return (sessionInMemory as T) || null;
   },
   clearTokens() {
+    clearBusinessCache();
     accessTokenInMemory = null;
     sessionInMemory = null;
   },
@@ -79,7 +82,16 @@ export async function nativeLogin(email: string, password: string): Promise<Auth
   return data;
 }
 
+let refreshInFlight: Promise<string | null> | null = null;
+
 export async function nativeRefreshToken(): Promise<string | null> {
+  if (!refreshInFlight) {
+    refreshInFlight = performRefresh().finally(() => { refreshInFlight = null; });
+  }
+  return refreshInFlight;
+}
+
+async function performRefresh(): Promise<string | null> {
   try {
     const baseUrl = getBaseUrl();
     const res = await fetch(`${baseUrl}/api/auth/refresh`, {

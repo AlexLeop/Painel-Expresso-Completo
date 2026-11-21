@@ -287,12 +287,12 @@ def test_positions_endpoint_reads_from_redis():
             if key == "driver_positions:op-live-1":
                 return ["driver-abc", "driver-xyz"]
             return []
-        def geopos(self, key, member):
-            if member == "driver-abc":
-                return [(-47.9292, -15.7801)]
-            if member == "driver-xyz":
-                return [(-47.9100, -15.7900)]
-            return [None]
+        def geopos(self, key, *members):
+            coordinates = {
+                "driver-abc": (-47.9292, -15.7801),
+                "driver-xyz": (-47.9100, -15.7900),
+            }
+            return [coordinates.get(member) for member in members]
 
     with patch("accounts.auth.get_staff_member", return_value=staff_mock):
         with patch("config.redis_client.get_redis", return_value=FakeGeoRedis()):

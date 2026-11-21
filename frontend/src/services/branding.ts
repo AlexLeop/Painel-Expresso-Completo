@@ -65,17 +65,9 @@ export async function fetchPublicBranding(slug: string): Promise<BrandingPublic 
 }
 
 export async function fetchBranding(): Promise<BrandingFull> {
-  try {
-    const res = await authFetch("/api/v1/branding/");
-    if (!res.ok) {
-      return DEFAULT_BRANDING;
-    }
-    const data = await res.json();
-    return { ...DEFAULT_BRANDING, ...data };
-  } catch (err) {
-    console.warn("Erro ao carregar branding autenticado:", err);
-    return DEFAULT_BRANDING;
-  }
+  const res = await authFetch("/api/v1/branding/");
+  if (!res.ok) throw new Error("Não foi possível consultar a marca do operador.");
+  return { ...DEFAULT_BRANDING, ...await res.json() };
 }
 
 export async function updateBranding(payload: Partial<BrandingFull>): Promise<BrandingFull> {

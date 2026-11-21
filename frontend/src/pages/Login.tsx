@@ -12,16 +12,6 @@ type RegisterForm = {
   documento: string;
   telefone: string;
   email: string;
-  password: string;
-  cep: string;
-  endereco: string;
-  complemento: string;
-  bairro: string;
-  cidade: string;
-  uf: string;
-  lat: string;
-  lng: string;
-  website: string;
 };
 
 const INITIAL_REGISTER: RegisterForm = {
@@ -29,16 +19,6 @@ const INITIAL_REGISTER: RegisterForm = {
   documento: "",
   telefone: "",
   email: "",
-  password: "",
-  cep: "",
-  endereco: "",
-  complemento: "",
-  bairro: "",
-  cidade: "",
-  uf: "",
-  lat: "",
-  lng: "",
-  website: "",
 };
 
 function formatCNPJ(value: string) {
@@ -56,11 +36,6 @@ function formatPhone(value: string) {
     return digits.replace(/^(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3");
   }
   return digits.replace(/^(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3");
-}
-
-function formatCEP(value: string) {
-  const digits = value.replace(/\D/g, "").slice(0, 8);
-  return digits.replace(/^(\d{5})(\d)/, "$1-$2");
 }
 
 function validateCNPJ(cnpj: string): boolean {
@@ -260,10 +235,8 @@ export function Login() {
   const [registerSuccess, setRegisterSuccess] = useState(false);
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [cnpjError, setCnpjError] = useState<string | null>(null);
-  const [contractNumber, setContractNumber] = useState<string | null>(null);
-  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
 
-  const BASE_URL = useMemo(() => import.meta.env.VITE_API_URL || "", []);
+  const BASE_URL = useMemo(() => (import.meta.env.VITE_API_URL || "").replace(/\/api\/v1\/?$/, "").replace(/\/$/, ""), []);
 
   const labelStyle: React.CSSProperties = useMemo(
     () => ({
@@ -305,10 +278,9 @@ export function Login() {
     if (!hash) return;
     const params = new URLSearchParams(hash);
     const type = params.get("type") || "";
-    const accessToken = params.get("access_token") || "";
-    const refreshToken = params.get("refresh_token") || "";
-    if (type === "recovery" && accessToken && refreshToken) {
-      setResetTokens({ accessToken, refreshToken });
+    const token = params.get("token") || "";
+    if (type === "recovery" && token) {
+      setResetTokens({ accessToken: token, refreshToken: "" });
       setMode("set_password");
     }
   }, []);
@@ -335,60 +307,12 @@ export function Login() {
     [loginEmail, loginPassword, navigate, login],
   );
 
-  const lookupCEP = useCallback(async (cep: string) => {
-    const digits = cep.replace(/\D/g, "");
-    if (digits.length !== 8) return;
-    try {
-      const viaRes = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
-      if (viaRes.ok) {
-        const data = await viaRes.json();
-        if (!data.erro) {
-          setRegisterForm((prev) => ({
-            ...prev,
-            endereco: data.logradouro || prev.endereco,
-            bairro: data.bairro || prev.bairro,
-            cidade: data.localidade || prev.cidade,
-            uf: data.uf || prev.uf,
-          }));
-        }
-      }
-
-      try {
-        const geoRes = await fetch(
-          `https://nominatim.openstreetmap.org/search?postalcode=${digits}&country=BR&format=json&limit=1`,
-          { headers: { "User-Agent": "NevesGo/1.0" } },
-        );
-        if (geoRes.ok) {
-          const geoData = await geoRes.json();
-          if (Array.isArray(geoData) && geoData.length > 0) {
-            setRegisterForm((prev) => ({
-              ...prev,
-              lat: String(geoData[0].lat || prev.lat),
-              lng: String(geoData[0].lon || prev.lng),
-            }));
-          }
-        }
-      } catch {
-        return;
-      }
-    } catch {
-      return;
-    }
-  }, []);
-
   const registerEmailError = useMemo(() => {
     const v = registerForm.email.trim();
     if (!v) return null;
     if (!v.includes("@")) return "Informe um e-mail válido.";
     return null;
   }, [registerForm.email]);
-
-  const registerPasswordError = useMemo(() => {
-    const v = registerForm.password;
-    if (!v) return null;
-    if (v.length < 6) return "A senha deve ter pelo menos 6 caracteres.";
-    return null;
-  }, [registerForm.password]);
 
   const handleRegister = useCallback(
     async (e: React.FormEvent) => {
@@ -404,10 +328,6 @@ export function Login() {
         setRegisterError(registerEmailError);
         return;
       }
-      if (registerPasswordError) {
-        setRegisterError(registerPasswordError);
-        return;
-      }
 
       setRegisterSubmitting(true);
       try {
@@ -420,11 +340,10 @@ export function Login() {
         const data = await res.json().catch(() => ({}));
         if (res.ok && data.success) {
           setRegisterSuccess(true);
-          setContractNumber(data.numero_contrato || null);
         } else {
           const msg =
             data?.details?.errors?.[0]?.message ||
-            data?.error ||
+            data?.error || data?.detail ||
             "Erro ao cadastrar. Tente novamente.";
           setRegisterError(String(msg));
         }
@@ -436,7 +355,7 @@ export function Login() {
         setRegisterSubmitting(false);
       }
     },
-    [BASE_URL, registerForm, registerEmailError, registerPasswordError],
+    [BASE_URL, registerForm, registerEmailError],
   );
 
   const handleRecover = useCallback(
@@ -451,14 +370,20 @@ export function Login() {
           setRecoverError("Informe um e-mail válido.");
           return;
         }
-        setRecoverMessage(
-          "Se este e-mail estiver cadastrado, entre em contato com o suporte ou seu gestor para redefinição segura de senha.",
-        );
+        const response = await fetch(BASE_URL + "/api/auth/recover", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.detail || result.error || "Não foi possível solicitar o link.");
+        setRecoverMessage("Se o e-mail estiver cadastrado, você receberá um link para redefinir sua senha.");
+      } catch (cause) {
+        setRecoverError(cause instanceof Error ? cause.message : "Falha ao solicitar recuperação.");
       } finally {
         setRecoverLoading(false);
       }
     },
-    [recoverEmail],
+    [recoverEmail, BASE_URL],
   );
 
   const handleSetPassword = useCallback(
@@ -470,8 +395,8 @@ export function Login() {
         setResetError("Link inválido. Solicite a recuperação novamente.");
         return;
       }
-      if (!resetPassword || resetPassword.length < 6) {
-        setResetError("A senha deve ter pelo menos 6 caracteres.");
+      if (!resetPassword || resetPassword.length < 10) {
+        setResetError("A senha deve ter pelo menos 10 caracteres.");
         return;
       }
       if (resetPassword !== resetPassword2) {
@@ -479,14 +404,25 @@ export function Login() {
         return;
       }
       setResetLoading(true);
-      setResetSuccess(
-        "Senha atualizada com sucesso. Faça login com suas novas credenciais para continuar.",
-      );
-      window.location.hash = "";
-      setMode("login");
-      setResetLoading(false);
+      try {
+        const response = await fetch(BASE_URL + "/api/auth/reset-password", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: resetTokens.accessToken, password: resetPassword }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.detail || result.error || "Falha ao redefinir a senha.");
+        setResetSuccess("Senha atualizada. Entre com a nova senha.");
+        setLoginPassword("");
+        setResetTokens(null);
+        window.location.hash = "";
+        setMode("login");
+      } catch (cause) {
+        setResetError(cause instanceof Error ? cause.message : "Falha ao redefinir a senha.");
+      } finally {
+        setResetLoading(false);
+      }
     },
-    [resetPassword, resetPassword2, resetTokens],
+    [resetPassword, resetPassword2, resetTokens, BASE_URL],
   );
 
   const footer = (
@@ -529,19 +465,8 @@ export function Login() {
                 lineHeight: 1.5,
               }}
             >
-              Sua empresa foi registrada e está aguardando aprovação.
+              Recebemos sua solicitação. A equipe entrará em contato para analisar a adesão.
             </p>
-            {contractNumber && (
-              <div
-                style={{
-                  marginTop: "14px",
-                  fontSize: "0.85rem",
-                  color: "#333333",
-                }}
-              >
-                Número do contrato: <strong>{contractNumber}</strong>
-              </div>
-            )}
             <button
               type="button"
               onClick={() => {
@@ -1031,7 +956,7 @@ export function Login() {
                     marginTop: "6px",
                   }}
                 >
-                  Crie sua conta e registre sua loja
+                  Solicite análise para cadastrar sua operação logística
                 </p>
               </div>
 
@@ -1054,17 +979,6 @@ export function Login() {
               )}
 
               <form onSubmit={handleRegister}>
-                <input
-                  type="text"
-                  value={registerForm.website}
-                  onChange={(e) =>
-                    setRegisterForm((p) => ({ ...p, website: e.target.value }))
-                  }
-                  style={{ display: "none" }}
-                  tabIndex={-1}
-                  autoComplete="off"
-                />
-
                 <div style={{ marginBottom: "14px" }}>
                   <label style={labelStyle}>Nome Fantasia</label>
                   <input
@@ -1075,7 +989,7 @@ export function Login() {
                         nome_fantasia: e.target.value,
                       }))
                     }
-                    placeholder="Nome da loja"
+                    placeholder="Nome da empresa"
                     required
                     style={inputStyle}
                     onFocus={(e) =>
@@ -1174,220 +1088,6 @@ export function Login() {
                       {registerEmailError}
                     </div>
                   )}
-                </div>
-
-                <div style={{ marginBottom: "14px" }}>
-                  <label style={labelStyle}>Senha</label>
-                  <div style={{ position: "relative" }}>
-                    <input
-                      type={showRegisterPassword ? "text" : "password"}
-                      value={registerForm.password}
-                      onChange={(e) =>
-                        setRegisterForm((p) => ({
-                          ...p,
-                          password: e.target.value,
-                        }))
-                      }
-                      placeholder="••••••••"
-                      required
-                      style={{ ...inputStyle, paddingRight: "44px" }}
-                      onFocus={(e) =>
-                        (e.currentTarget.style.borderColor = "#E55C00")
-                      }
-                      onBlur={(e) =>
-                        (e.currentTarget.style.borderColor = "#E5E5E5")
-                      }
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowRegisterPassword((v) => !v)}
-                      style={{
-                        position: "absolute",
-                        right: "12px",
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        color: "#999",
-                        padding: "4px",
-                        lineHeight: 1,
-                      }}
-                      tabIndex={-1}
-                      aria-label={
-                        showRegisterPassword ? "Ocultar senha" : "Mostrar senha"
-                      }
-                    >
-                      {showRegisterPassword ? (
-                        <EyeOff size={18} />
-                      ) : (
-                        <Eye size={18} />
-                      )}
-                    </button>
-                  </div>
-                  {registerPasswordError && (
-                    <div
-                      style={{
-                        marginTop: "6px",
-                        fontSize: "0.78rem",
-                        color: "#DC2626",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {registerPasswordError}
-                    </div>
-                  )}
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "140px 1fr",
-                    gap: "12px",
-                    marginBottom: "14px",
-                  }}
-                >
-                  <div>
-                    <label style={labelStyle}>CEP</label>
-                    <input
-                      value={registerForm.cep}
-                      onChange={(e) => {
-                        const next = formatCEP(e.target.value);
-                        setRegisterForm((p) => ({ ...p, cep: next }));
-                        if (next.replace(/\D/g, "").length === 8) {
-                          lookupCEP(next);
-                        }
-                      }}
-                      placeholder="00000-000"
-                      style={inputStyle}
-                      onFocus={(e) =>
-                        (e.currentTarget.style.borderColor = "#E55C00")
-                      }
-                      onBlur={(e) =>
-                        (e.currentTarget.style.borderColor = "#E5E5E5")
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Endereço</label>
-                    <input
-                      value={registerForm.endereco}
-                      onChange={(e) =>
-                        setRegisterForm((p) => ({
-                          ...p,
-                          endereco: e.target.value,
-                        }))
-                      }
-                      placeholder="Rua, número"
-                      style={inputStyle}
-                      onFocus={(e) =>
-                        (e.currentTarget.style.borderColor = "#E55C00")
-                      }
-                      onBlur={(e) =>
-                        (e.currentTarget.style.borderColor = "#E5E5E5")
-                      }
-                    />
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "12px",
-                    marginBottom: "14px",
-                  }}
-                >
-                  <div>
-                    <label style={labelStyle}>Bairro</label>
-                    <input
-                      value={registerForm.bairro}
-                      onChange={(e) =>
-                        setRegisterForm((p) => ({
-                          ...p,
-                          bairro: e.target.value,
-                        }))
-                      }
-                      placeholder="Bairro"
-                      style={inputStyle}
-                      onFocus={(e) =>
-                        (e.currentTarget.style.borderColor = "#E55C00")
-                      }
-                      onBlur={(e) =>
-                        (e.currentTarget.style.borderColor = "#E5E5E5")
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Complemento</label>
-                    <input
-                      value={registerForm.complemento}
-                      onChange={(e) =>
-                        setRegisterForm((p) => ({
-                          ...p,
-                          complemento: e.target.value,
-                        }))
-                      }
-                      placeholder="Opcional"
-                      style={inputStyle}
-                      onFocus={(e) =>
-                        (e.currentTarget.style.borderColor = "#E55C00")
-                      }
-                      onBlur={(e) =>
-                        (e.currentTarget.style.borderColor = "#E5E5E5")
-                      }
-                    />
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 70px",
-                    gap: "12px",
-                    marginBottom: "14px",
-                  }}
-                >
-                  <div>
-                    <label style={labelStyle}>Cidade</label>
-                    <input
-                      value={registerForm.cidade}
-                      onChange={(e) =>
-                        setRegisterForm((p) => ({
-                          ...p,
-                          cidade: e.target.value,
-                        }))
-                      }
-                      placeholder="Cidade"
-                      style={inputStyle}
-                      onFocus={(e) =>
-                        (e.currentTarget.style.borderColor = "#E55C00")
-                      }
-                      onBlur={(e) =>
-                        (e.currentTarget.style.borderColor = "#E5E5E5")
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>UF</label>
-                    <input
-                      value={registerForm.uf}
-                      onChange={(e) =>
-                        setRegisterForm((p) => ({
-                          ...p,
-                          uf: e.target.value.toUpperCase().slice(0, 2),
-                        }))
-                      }
-                      placeholder="UF"
-                      style={inputStyle}
-                      onFocus={(e) =>
-                        (e.currentTarget.style.borderColor = "#E55C00")
-                      }
-                      onBlur={(e) =>
-                        (e.currentTarget.style.borderColor = "#E5E5E5")
-                      }
-                    />
-                  </div>
                 </div>
 
                 <button

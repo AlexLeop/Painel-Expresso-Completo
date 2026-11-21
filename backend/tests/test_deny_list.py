@@ -1,15 +1,15 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from logistics.models import Driver
-from accounts.models import Operator, SecurityDenylist
+from accounts.models import Operator
 import uuid
 
 
 @pytest.mark.django_db
 class TestDenyListSignals:
     @patch("accounts.signals.r")
-    @patch.object(SecurityDenylist.objects, "filter")
-    @patch.object(SecurityDenylist.objects, "create")
+    @patch("accounts.signals.SecurityDenylist.objects.filter")
+    @patch("accounts.signals.SecurityDenylist.objects.create")
     def test_driver_deactivation_triggers_denylist(
         self, mock_create_denylist, mock_filter, mock_redis
     ):
@@ -56,8 +56,8 @@ class TestDenyListSignals:
         )
 
     @patch("accounts.signals.r")
-    @patch.object(SecurityDenylist.objects, "filter")
-    @patch.object(SecurityDenylist.objects, "create")
+    @patch("accounts.signals.SecurityDenylist.objects.filter")
+    @patch("accounts.signals.SecurityDenylist.objects.create")
     def test_already_blocked_driver_skips_denylist_creation(
         self, mock_create, mock_filter, mock_redis
     ):

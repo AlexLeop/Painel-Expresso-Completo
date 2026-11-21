@@ -14,7 +14,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { cn, formatCurrency } from "../lib/utils";
-import { authFetch, getSession } from "../lib/api";
+import { authFetch } from "../lib/api";
 
 interface Snapshot {
   id: string;
@@ -33,27 +33,32 @@ interface Snapshot {
   notes?: string;
 }
 
+interface SnapshotDetail {
+  store_name: string;
+  start_date: string;
+  end_date: string;
+  total_cents: number;
+  captured_at: string | null;
+  lines: { description: string; amount_cents: number; date: string | null; status: string }[];
+}
+
 export function Snapshots() {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [selected, setSelected] = useState<Snapshot | null>(null);
+  const [detail, setDetail] = useState<SnapshotDetail | null>(null);
+  const [actionError, setActionError] = useState("");
+  const [pending, setPending] = useState(false);
 
   useEffect(() => {
     const fetchSnapshots = async () => {
       setLoading(true);
       setError(null);
       try {
-        const session = getSession();
-        const companyId = session?.user?.machine_empresa_id;
-        if (!companyId) {
-          setError("Empresa não encontrada na sessão. Faça login novamente.");
-          setLoading(false);
-          return;
-        }
-        const res = await authFetch(
-          `/api/v1/db/snapshots?company_id=${companyId}`,
-        );
+        const res = await authFetch("/api/v1/db/snapshots");
         if (res.ok) {
           const data = await res.json();
           setSnapshots(Array.isArray(data) ? data : []);
@@ -70,10 +75,40 @@ export function Snapshots() {
   }, []);
 
   const filtered = snapshots.filter((s) =>
+    (!statusFilter || s.status === statusFilter) &&
     (s.weekLabel || s.weekStart || s.id)
       .toLowerCase()
       .includes(searchTerm.toLowerCase()),
   );
+
+  async function loadDetail(snapshot: Snapshot, method: "GET" | "POST" = "GET") {
+    setPending(true);
+    setActionError("");
+    try {
+      const response = await authFetch(`/api/v1/invoice-snapshots/${snapshot.id}`, { method });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail || result.error || "Falha ao consultar o fechamento.");
+      setSelected(snapshot);
+      setDetail(result);
+      return result as SnapshotDetail;
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Falha na operação.");
+      return null;
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function exportSnapshot(snapshot: Snapshot) {
+    const data = await loadDetail(snapshot);
+    if (!data) return;
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `fechamento-${snapshot.id}.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 
   const countRascunho = snapshots.filter(
     (s) => s.status === "draft" || s.status === "rascunho",
@@ -109,9 +144,6 @@ export function Snapshots() {
             trave faturamentos para pagamento.
           </p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 text-[13px] font-semibold transition-all shadow-[0_1px_2px_rgba(0,0,0,0.1)]">
-          Gerar Novo Snapshot
-        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -171,9 +203,12 @@ export function Snapshots() {
               className="w-full pl-9 pr-4 py-1.5 text-[13px] font-medium bg-white border border-zinc-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0a0a0a]/10 focus:border-zinc-300 transition-all placeholder:text-zinc-400 shadow-sm"
             />
           </div>
-          <button className="flex items-center gap-2 px-3 py-1.5 bg-white border border-zinc-200 text-zinc-700 rounded-lg hover:bg-zinc-50 text-[13px] font-semibold shadow-sm transition-all w-full sm:w-auto justify-center">
-            <Filter strokeWidth={1.5} className="h-4 w-4" /> Filtros
-          </button>
+          <select aria-label="Filtrar por status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="rounded-lg border border-zinc-200 px-3 py-2 text-sm">
+            <option value="">Todos os status</option>
+            <option value="draft">Rascunho</option>
+            <option value="finalized">Finalizado</option>
+            <option value="locked">Bloqueado</option>
+          </select>
         </div>
 
         {loading && (
@@ -275,12 +310,16 @@ export function Snapshots() {
                         <td className="px-5 py-3.5">
                           <div className="flex justify-center items-center gap-1">
                             <button
+                              disabled={pending}
+                              onClick={() => void loadDetail(snap)}
                               className="p-1.5 text-zinc-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
                               title="Visualizar"
                             >
                               <Eye strokeWidth={2} className="h-4 w-4" />
                             </button>
                             <button
+                              disabled={pending}
+                              onClick={() => void exportSnapshot(snap)}
                               className="p-1.5 text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 rounded-md transition-colors"
                               title="Exportar"
                             >
@@ -297,6 +336,25 @@ export function Snapshots() {
           </div>
         )}
       </div>
+      {actionError && <p role="alert" className="text-sm text-rose-700">{actionError}</p>}
+      {selected && detail && (
+        <section aria-labelledby="snapshot-detail" className="space-y-3 rounded-xl border border-zinc-200 bg-white p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 id="snapshot-detail" className="font-semibold">{detail.store_name} · {selected.weekLabel}</h2>
+              <p className="text-sm text-zinc-600">{detail.captured_at ? `Registrado em ${new Date(detail.captured_at).toLocaleString("pt-BR")}` : "Fechamento atual, sem cópia registrada"}</p>
+            </div>
+            <div className="flex gap-3">
+              <button disabled={pending || !!detail.captured_at || selected.status === "draft"} onClick={() => void loadDetail(selected, "POST")} className="rounded-lg bg-zinc-900 px-3 py-2 text-sm text-white disabled:opacity-50">Gerar snapshot</button>
+              <button onClick={() => { setSelected(null); setDetail(null); }} className="px-3 py-2 text-sm">Fechar</button>
+            </div>
+          </div>
+          <ul className="divide-y divide-zinc-100">
+            {detail.lines.map((line, index) => <li key={index} className="flex justify-between gap-3 py-2 text-sm"><span>{line.date || "—"} · {line.description}</span><span>{formatCurrency(line.amount_cents / 100)}</span></li>)}
+          </ul>
+          <p className="font-medium">Total {formatCurrency(detail.total_cents / 100)}</p>
+        </section>
+      )}
     </div>
   );
 }

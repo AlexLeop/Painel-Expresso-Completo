@@ -9,6 +9,7 @@ import { logger } from "@/lib/logger";
  */
 
 import { authFetch } from "../lib/api";
+import { sessionCache } from "../lib/session-cache";
 
 // ============================================================
 // Types
@@ -53,7 +54,7 @@ const MANUAL_KEY = "machine_admin_manual_entries";
 function getDailiesCache(): DailyEntry[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem(DAILY_KEY);
+    const raw = sessionCache.getItem(DAILY_KEY);
     if (!raw) return [];
     const entries: DailyEntry[] = JSON.parse(raw);
     return entries.map((e) => ({
@@ -67,13 +68,13 @@ function getDailiesCache(): DailyEntry[] {
 
 function saveDailiesCache(entries: DailyEntry[]) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(DAILY_KEY, JSON.stringify(entries));
+  sessionCache.setItem(DAILY_KEY, JSON.stringify(entries));
 }
 
 function getManualEntriesCache(): ManualEntry[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem(MANUAL_KEY);
+    const raw = sessionCache.getItem(MANUAL_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -82,7 +83,7 @@ function getManualEntriesCache(): ManualEntry[] {
 
 function saveManualEntriesCache(entries: ManualEntry[]) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(MANUAL_KEY, JSON.stringify(entries));
+  sessionCache.setItem(MANUAL_KEY, JSON.stringify(entries));
 }
 
 // ============================================================
@@ -393,7 +394,7 @@ export interface CreditLogEntry {
 function getCreditLogCache(): CreditLogEntry[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem(CREDIT_LOG_KEY);
+    const raw = sessionCache.getItem(CREDIT_LOG_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -402,7 +403,7 @@ function getCreditLogCache(): CreditLogEntry[] {
 
 function saveCreditLogCache(entries: CreditLogEntry[]) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(CREDIT_LOG_KEY, JSON.stringify(entries));
+  sessionCache.setItem(CREDIT_LOG_KEY, JSON.stringify(entries));
 }
 
 export function getCreditLog(): CreditLogEntry[] {

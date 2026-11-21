@@ -3,6 +3,11 @@ from unittest.mock import patch, MagicMock
 from finance.baas_client import EfiBaasClient, BaasPayoutResult, EfiBaasError
 
 
+@pytest.fixture(autouse=True)
+def efi_test_configuration(monkeypatch):
+    monkeypatch.setenv("EFI_OPERATOR_PIX_KEY", "payer@example.invalid")
+
+
 def test_sanitize_pix_keys():
     """Valida as regras de sanitização de chaves PIX de acordo com o Bacen."""
     # CPF
@@ -78,6 +83,7 @@ def test_real_http_send_pix_success(mock_client_class):
     client = EfiBaasClient(
         client_id="dummy_id",
         client_secret="dummy_secret",
+        cert_path=__file__,
         mock_mode=False,
     )
 
@@ -113,6 +119,7 @@ def test_real_http_send_pix_transient_error(mock_client_class):
     client = EfiBaasClient(
         client_id="dummy_id",
         client_secret="dummy_secret",
+        cert_path=__file__,
         mock_mode=False,
     )
 
@@ -128,9 +135,10 @@ def test_real_http_send_pix_transient_error(mock_client_class):
     assert "503" in result.error_message
 
 
-def test_production_environment_strictly_forbids_mock_mode(monkeypatch):
+def test_production_environment_strictly_forbids_mock_mode(monkeypatch, settings):
     """Garante que em produção (DJANGO_ENV=production) o modo mock é estritamente bloqueado."""
     monkeypatch.setenv("DJANGO_ENV", "production")
+    settings.ENVIRONMENT = "production"
 
     # 1. Tentar instanciar com mock_mode=True deve lançar EfiBaasError
     with pytest.raises(EfiBaasError, match="não é permitido em ambiente de produção"):

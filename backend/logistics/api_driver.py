@@ -181,18 +181,13 @@ def upload_to_storage(namespace: str, entity_id: UUID, file) -> str:
     if ext not in [".jpg", ".jpeg", ".png", ".pdf"]:
         ext = ".bin"  # Fallback
 
-    filename = f"{uuid4().hex}{ext}"
-    media_root = getattr(settings, "MEDIA_ROOT", os.path.join(settings.BASE_DIR, "media"))
-    dest_dir = os.path.join(str(media_root), namespace, str(entity_id))
-    os.makedirs(dest_dir, exist_ok=True)
-    file_path = os.path.join(dest_dir, filename)
+    filename = f"{namespace}/{entity_id}/{uuid4().hex}{ext}"
 
     try:
-        file_bytes = file.read()
-        with open(file_path, "wb") as f:
-            f.write(file_bytes)
+        from django.core.files.storage import default_storage
+        stored_name = default_storage.save(filename, file)
         media_url = getattr(settings, "MEDIA_URL", "/media/")
-        return f"{media_url.rstrip('/')}/{namespace}/{entity_id}/{filename}"
+        return f"{media_url.rstrip('/')}/{stored_name}"
     except Exception as e:
         import logging
         logging.error(f"Failed to save upload to local media storage: {e}")

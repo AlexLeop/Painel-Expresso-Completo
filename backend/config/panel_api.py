@@ -120,6 +120,90 @@ def panel_refresh(request, payload: Optional[RefreshPayload] = None):
 def panel_logout(request):
     return logout_endpoint(request)
 
+
+class PasswordRecoveryPayload(Schema):
+    email: str
+
+
+class PasswordResetPayload(Schema):
+    token: str
+    password: str
+
+
+@panel_api.post("/auth/recover", auth=None)
+def panel_recover(request, payload: PasswordRecoveryPayload):
+    from accounts.password_recovery import request_recovery
+    return request_recovery(payload.email)
+
+
+@panel_api.post("/auth/reset-password", auth=None)
+def panel_reset_password(request, payload: PasswordResetPayload):
+    from accounts.password_recovery import reset_password
+    return reset_password(payload.token, payload.password)
+
+
+class OperatorApplicationPayload(Schema):
+    nome_fantasia: str
+    documento: str
+    email: str
+    telefone: str
+
+
+@panel_api.post("/auth/register", auth=None)
+def submit_operator_application(request, payload: OperatorApplicationPayload):
+    from hashlib import sha256
+    from django.core.cache import cache
+    from django.core.exceptions import ValidationError
+    from django.core.validators import validate_email
+    from accounts.models import OperatorApplication
+
+    name = payload.nome_fantasia.strip()
+    email = payload.email.strip().lower()
+    document = "".join(char for char in payload.documento if char in "0123456789")
+    phone = "".join(char for char in payload.telefone if char in "0123456789")
+    try:
+        validate_email(email)
+    except ValidationError as exc:
+        raise HttpError(422, "Informe um e-mail válido.") from exc
+    if not (2 <= len(name) <= 255 and len(email) <= 254 and len(document) == 14 and 10 <= len(phone) <= 13):
+        raise HttpError(422, "Confira o nome da empresa, CNPJ e telefone.")
+    address = str(request.META.get("REMOTE_ADDR", ""))
+    throttle_key = "auth:application:" + sha256(address.encode()).hexdigest()
+    if not cache.add(throttle_key, 1, timeout=60) and cache.incr(throttle_key) > 20:
+        raise HttpError(429, "Limite de solicitações atingido. Aguarde um minuto.")
+    OperatorApplication.objects.get_or_create(
+        document=document, email=email, defaults={"company_name": name, "phone": phone}
+    )
+    return {"success": True, "status": "pending_review"}
+
+
+@panel_api.get("/admin/operator-applications")
+def list_operator_applications(request):
+    from accounts.auth import platform_admin_required
+    from accounts.models import OperatorApplication
+
+    platform_admin_required(request)
+    return list(OperatorApplication.objects.filter(reviewed_at__isnull=True).order_by("created_at").values(
+        "id", "company_name", "document", "email", "phone", "created_at",
+    )[:100])
+
+
+@panel_api.post("/admin/operator-applications/{application_id}/review")
+def mark_application_reviewed(request, application_id: str):
+    from uuid import UUID
+    from django.utils import timezone
+    from accounts.auth import platform_admin_required
+    from accounts.models import OperatorApplication
+
+    platform_admin_required(request)
+    try:
+        updated = OperatorApplication.objects.filter(pk=UUID(application_id)).update(reviewed_at=timezone.now())
+    except ValueError as exc:
+        raise HttpError(404, "Solicitação não encontrada.") from exc
+    if not updated:
+        raise HttpError(404, "Solicitação não encontrada.")
+    return {"success": True}
+
 @panel_api.post("/auth/change-tenant")
 def change_tenant(request, payload: dict):
     raise HttpError(

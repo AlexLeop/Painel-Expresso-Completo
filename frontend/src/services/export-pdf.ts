@@ -441,14 +441,14 @@ export function exportToPDF(options: ExportPDFOptions): void {
     });
 
     // Linha divisória
-    doc.setDrawColor(BRAND.r, BRAND.g, BRAND.b);
+    doc.setDrawColor(headerColor.r, headerColor.g, headerColor.b);
     doc.setLineWidth(0.3);
     doc.line(boxX + 4, finalY + 30, boxX + boxW - 4, finalY + 30);
 
     // Total a Liquidar em destaque
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
-    doc.setTextColor(BRAND.r, BRAND.g, BRAND.b);
+    doc.setTextColor(headerColor.r, headerColor.g, headerColor.b);
     doc.text("TOTAL A LIQUIDAR", boxX + 4, finalY + 36);
     doc.setTextColor(255, 220, 150);
     doc.text(fmtBRL(effectiveTotalALiquidar), boxX + boxW - 4, finalY + 36, {

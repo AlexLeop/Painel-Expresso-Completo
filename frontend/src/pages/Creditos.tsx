@@ -46,6 +46,7 @@ interface InvoiceItem {
 
 interface RechargeResponse {
   recharge_id: string;
+  simulation?: boolean;
   amount_cents: number;
   amount_reais: number;
   status: string;
@@ -594,7 +595,7 @@ export function Creditos() {
                     >
                       Fechar
                     </button>
-                    <button
+                    {rechargeData.simulation && <button
                       type="button"
                       onClick={handleConfirmSimulation}
                       disabled={simulatingPayment}
@@ -602,7 +603,7 @@ export function Creditos() {
                     >
                       <CheckCircle2 className="h-4 w-4" />
                       {simulatingPayment ? "Processando..." : "Confirmar Pagamento (Simulação)"}
-                    </button>
+                    </button>}
                   </div>
                 </motion.div>
               </div>

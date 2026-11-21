@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "../lib/utils";
+import { authFetch } from "../lib/api";
 
 interface RideChatModalProps {
   isOpen: boolean;
@@ -28,11 +29,28 @@ export function RideChatModal({
   const [messages, setMessages] = useState<any[]>([]);
   const [inputText, setInputText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState("");
+  const [sending, setSending] = useState(false);
+  const pendingMessage = useRef<{ id: string; text: string } | null>(null);
 
   useEffect(() => {
-    if (isOpen && corrida) {
-      setMessages([]);
-    }
+    if (!isOpen || !corrida?.id) return;
+    let active = true;
+    setMessages([]);
+    setError("");
+    const load = async () => {
+      try {
+        const response = await authFetch(`/api/v1/communications/orders/${corrida.id}/messages`);
+        if (!response.ok) throw new Error("Não foi possível carregar a conversa.");
+        const result = await response.json();
+        if (active) setMessages(result);
+      } catch (cause) {
+        if (active) setError(cause instanceof Error ? cause.message : "Falha ao carregar conversa.");
+      }
+    };
+    void load();
+    const timer = setInterval(load, 5000);
+    return () => { active = false; clearInterval(timer); };
   }, [isOpen, corrida]);
 
   useEffect(() => {
@@ -54,23 +72,26 @@ export function RideChatModal({
 
   if (!isOpen || !corrida) return null;
 
-  const handleSend = (e: React.FormEvent) => {
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim()) return;
-
-    const newMessage = {
-      id: Date.now(),
-      text: inputText,
-      sender: "admin",
-      time: new Date().toLocaleTimeString("pt-BR", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      status: "sent",
-    };
-
-    setMessages([...messages, newMessage]);
-    setInputText("");
+    if (!inputText.trim() || sending) return;
+    setSending(true);
+    setError("");
+    if (!pendingMessage.current || pendingMessage.current.text !== inputText.trim()) {
+      pendingMessage.current = { id: crypto.randomUUID(), text: inputText.trim() };
+    }
+    try {
+      const response = await authFetch(`/api/v1/communications/orders/${corrida.id}/messages`, {
+        method: "POST", body: JSON.stringify(pendingMessage.current),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || result.detail || "A mensagem não foi registrada.");
+      setMessages(previous => [...previous.filter(message => message.id !== result.id), result]);
+      pendingMessage.current = null;
+      setInputText("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Falha ao enviar.");
+    } finally { setSending(false); }
   };
 
   return typeof document !== "undefined"
@@ -170,7 +191,8 @@ export function RideChatModal({
                             )}
                           >
                             <span className="text-[10px] uppercase font-medium tracking-wider">
-                              {message.time}
+                              {new Date(message.time).toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"})}
+                              {isMe && " · Registrada"}
                             </span>
                             {isMe &&
                               (message.status === "read" ? (
@@ -187,6 +209,7 @@ export function RideChatModal({
                 </div>
               </div>
 
+              {error && <p role="alert" className="px-6 py-2 text-sm text-rose-700">{error}</p>}
               {/* Input Footer */}
               <div className="p-4 border-t border-zinc-200 bg-zinc-50/90 backdrop-blur-xs shrink-0">
                 <form onSubmit={handleSend} className="flex gap-2">
@@ -199,7 +222,7 @@ export function RideChatModal({
                   />
                   <button
                     type="submit"
-                    disabled={!inputText.trim()}
+                    disabled={!inputText.trim() || sending}
                     className="px-4 py-2.5 bg-zinc-900 text-white rounded-xl hover:bg-zinc-800 disabled:opacity-50 transition-all shrink-0 shadow-sm cursor-pointer flex items-center gap-1.5 text-xs font-bold"
                   >
                     <Send className="w-4 h-4" />

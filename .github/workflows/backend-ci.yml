@@ -61,3 +61,12 @@ jobs:
           REDIS_URL: redis://localhost:6379/1
           PYTHONPATH: .
         run: python -m pytest tests/ -v
+
+      - name: Apply canonical schema and verify runtime isolation
+        env:
+          DIRECT_URL: postgres://postgres:postgres@localhost:5432/postgres
+          TEST_SCHEMA_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+          TEST_SCHEMA_REDIS_URL: redis://localhost:6379/1
+        run: |
+          python scripts/apply_schema.py
+          python scripts/check_runtime_isolation.py

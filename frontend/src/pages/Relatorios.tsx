@@ -46,7 +46,7 @@ export function Relatorios() {
   const [machineRides, setMachineRides] = useState<any[]>([]);
   const [ridesWarning, setRidesWarning] = useState<string | null>(null);
   const [storeConfig, setStoreConfig] = useState(() =>
-    companyId ? getCompanyConfig(Number(companyId), companyName) : null,
+    companyId ? getCompanyConfig(companyId, companyName) : null,
   );
   const [scheduleDailyByDriver, setScheduleDailyByDriver] = useState<
     Record<string, Record<string, number>>
@@ -233,8 +233,8 @@ export function Relatorios() {
     setRidesWarning(null);
 
     try {
-      const freshConfig = await pullConfigFromSupabase(Number(companyId), companyName);
-      setStoreConfig(freshConfig || getCompanyConfig(Number(companyId), companyName));
+      const freshConfig = await pullConfigFromSupabase(companyId, companyName);
+      setStoreConfig(freshConfig || getCompanyConfig(companyId, companyName));
 
       await pullEntriesFromSupabase(
         companyId,
@@ -1292,6 +1292,8 @@ export function Relatorios() {
               onClick={() => {
                 if (!reportData) return;
                 exportToPDF({
+                  brandName: branding.brand_name,
+                  brandColorHex: branding.color_primary,
                   rows: reportData.drivers.map((d: any) => ({
                     nome: d.name,
                     dias: Object.fromEntries(

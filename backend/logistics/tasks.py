@@ -1,5 +1,6 @@
 from celery import shared_task
 import json
+import uuid
 from math import radians, cos, sin, asin, sqrt
 from datetime import timedelta
 from django.utils import timezone as django_tz
@@ -331,6 +332,7 @@ def persist_telemetry_buffer():
 
                     positions_to_create.append(
                         Position(
+                            id=uuid.uuid5(uuid.NAMESPACE_URL, json.dumps(event, sort_keys=True)),
                             operator_id=event["operator_id"],
                             driver_id=event["driver_id"],
                             geom=Point(float(event["lng"]), float(event["lat"]), srid=4326),
@@ -349,19 +351,25 @@ def persist_telemetry_buffer():
                     Position.objects.bulk_create(positions_to_create, ignore_conflicts=True)
                 total_persisted += len(positions_to_create)
 
-            # PASSO 3: SÓ AGORA deletar do Redis (ack-first: Postgres confirmou)
-            # Se crash antes daqui: dados duplicam no próximo ciclo (ignore_conflicts cuida)
-            # Se crash depois: dados já estão no Postgres, tudo seguro.
-            r.ltrim(queue_key, len(raw_items), -1)
-
-            # PASSO 4: Copiar para fila analítica
-            if positions_to_create:
-                analytics_key = f"analytics:telemetry_batch_{operator_id}"
-                analytics_pipe = r.pipeline()
-                for raw_item in raw_items:
-                    analytics_pipe.rpush(analytics_key, raw_item)
-                analytics_pipe.expire(analytics_key, 3600)  # TTL de 1h
-                analytics_pipe.execute()
+            # Compare the exact batch before acknowledging it. A concurrent
+            # consumer cannot trim newer events. Forwarding and trim are atomic.
+            acknowledged = r.eval(
+                """
+                local n = #ARGV
+                local head = redis.call('LRANGE', KEYS[1], 0, n - 1)
+                if #head ~= n then return 0 end
+                for i = 1,n do
+                    if head[i] ~= ARGV[i] then return 0 end
+                end
+                for i = 1,n do redis.call('RPUSH', KEYS[2], ARGV[i]) end
+                redis.call('LTRIM', KEYS[1], n, -1)
+                return n
+                """,
+                2, queue_key, f"analytics:telemetry_batch_{operator_id}",
+                *raw_items,
+            )
+            if not acknowledged:
+                break
 
             # Se drenou menos que o lote completo, a fila já esvaziou
             if len(raw_items) < BATCH_SIZE:

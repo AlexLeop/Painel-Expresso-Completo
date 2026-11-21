@@ -239,6 +239,7 @@ class TestFernetKeyDerivation:
         from integration.models import get_cipher
 
         mock_settings.SECRET_KEY = "key-alpha-very-long-secret-value-123456789"
+        mock_settings.INTEGRATION_ENCRYPTION_KEYS = []
         cipher_a = get_cipher()
 
         mock_settings.SECRET_KEY = "key-bravo-very-long-secret-value-987654321"
@@ -259,6 +260,7 @@ class TestFernetKeyDerivation:
         from integration.models import get_cipher
 
         mock_settings.SECRET_KEY = "test-secret-key-for-roundtrip-test-12345"
+        mock_settings.INTEGRATION_ENCRYPTION_KEYS = []
         cipher = get_cipher()
 
         original = b"webhook-url-https://api.client.com/v1/orders"
@@ -266,6 +268,22 @@ class TestFernetKeyDerivation:
         decrypted = cipher.decrypt(encrypted)
 
         assert decrypted == original
+
+    @patch("integration.models.settings")
+    def test_connector_key_rotation_can_read_previous_values(self, mock_settings):
+        from integration.models import get_cipher
+        from cryptography.fernet import InvalidToken
+        old, new = "previous-material-123", "new-material-456"
+        mock_settings.INTEGRATION_ENCRYPTION_KEYS = [old]
+        previous_cipher = get_cipher()
+        saved = previous_cipher.encrypt(b"credential")
+        mock_settings.INTEGRATION_ENCRYPTION_KEYS = [new, old]
+        current = get_cipher()
+        rotated = current.encrypt(current.decrypt(saved))
+        mock_settings.INTEGRATION_ENCRYPTION_KEYS = [new]
+        assert get_cipher().decrypt(rotated) == b"credential"
+        with pytest.raises(InvalidToken):
+            previous_cipher.decrypt(rotated)
 
 
 # ============================================================
@@ -303,11 +321,14 @@ class TestTelemetryPipeline:
         # Verifica a ordem DENTRO da função: lrange → bulk_create → ltrim
         lrange_pos = source.find(".lrange(")
         bulk_create_pos = source.find(".bulk_create(")
-        ltrim_pos = source.find(".ltrim(")
+        ltrim_pos = source.find("r.eval(")
 
         assert lrange_pos != -1, "Deve ter .lrange() na função"
         assert bulk_create_pos != -1, "Deve ter bulk_create na função"
-        assert ltrim_pos != -1, "Deve ter .ltrim() na função"
+        assert ltrim_pos != -1, "Deve confirmar o lote atomicamente via Lua"
+        assert "head[i] ~= ARGV[i]" in source
+        assert "redis.call('RPUSH'" in source
+        assert "redis.call('LTRIM'" in source
         assert lrange_pos < bulk_create_pos < ltrim_pos, (
             f"Ordem deve ser: LRANGE({lrange_pos}) → bulk_create({bulk_create_pos}) → LTRIM({ltrim_pos}) (ack-first)"
         )

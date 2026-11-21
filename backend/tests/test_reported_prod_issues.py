@@ -835,6 +835,9 @@ def test_company_drivers_client_portal_user_scoping_no_401(client: Client, sampl
     E valida que apenas os motoboys pertencentes ao Operador da loja sejam retornados.
     """
     operator = sample_data["operator"]
+    from logistics.models import StoreDriver
+    with connection.cursor() as cursor:
+        cursor.execute('CREATE TABLE IF NOT EXISTS "StoreDriver" (id CHAR(32) PRIMARY KEY, operator_id CHAR(32), store_id CHAR(32), driver_id CHAR(32), "createdAt" TIMESTAMP, "updatedAt" TIMESTAMP)')
     client_store = StoreClient.objects.create(
         id=uuid.uuid4(),
         operator=operator,
@@ -849,6 +852,15 @@ def test_company_drivers_client_portal_user_scoping_no_401(client: Client, sampl
         name="Motoboy Do Operador",
         phone="11999990001",
         active=True,
+    )
+    own_store = Store.objects.create(
+        id=uuid.uuid4(), operator=operator, client=client_store, name="Loja autorizada"
+    )
+    StoreDriver.objects.create(
+        id=uuid.uuid4(), operator=operator, store=own_store, driver=driver1
+    )
+    unlinked = Driver.objects.create(
+        id=uuid.uuid4(), operator=operator, name="Outra loja", phone="11999990003", active=True
     )
     # Cria outro operador e outro motoboy
     other_op = Operator.objects.create(id=uuid.uuid4(), name="Outro Operador Logístico", status="ACTIVE")
@@ -896,6 +908,8 @@ def test_company_drivers_client_portal_user_scoping_no_401(client: Client, sampl
     driver_ids = [d["id"] for d in drivers]
     assert str(driver1.id) in driver_ids
     assert str(other_driver.id) not in driver_ids
+    assert str(unlinked.id) not in driver_ids
+    assert all(not row["document"] and not row["pixKey"] for row in drivers)
 
 
 @pytest.mark.django_db
@@ -1123,6 +1137,39 @@ def test_snapshots_returns_real_weekly_invoices(client: Client, sample_data):
     assert snap["total_motoboys"] == 1
     assert str(driver.id) in snap["drivers"]
 
+
+@pytest.mark.django_db
+def test_snapshot_capture_freezes_invoice_and_is_admin_only(client, sample_data):
+    import datetime
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS "InvoiceSnapshot" (
+                invoice_id CHAR(32) PRIMARY KEY, operator_id CHAR(32) NOT NULL,
+                "createdBy" CHAR(32) NOT NULL, "createdAt" TIMESTAMP NOT NULL,
+                payload TEXT NOT NULL
+            )
+        """)
+    invoice = WeeklyStoreInvoice.objects.create(
+        operator=sample_data["operator"], store=sample_data["store"],
+        startDate=datetime.date(2026, 11, 9), endDate=datetime.date(2026, 11, 15),
+        totalCents=15000, status="FINALIZED",
+    )
+    staff = sample_data["staff"]
+    staff_token = create_access_token({"sub": str(staff.id), "operator_id": str(staff.operator_id)})
+    url = f"/api/v1/invoice-snapshots/{invoice.id}"
+    assert client.post(url, HTTP_AUTHORIZATION=f"Bearer {staff_token}").status_code == 403
+
+    admin = PlatformAdmin.objects.create(id=uuid.uuid4(), name="Owner", email="snapshot-owner@example.invalid")
+    admin_token = create_access_token({"sub": str(admin.id), "is_platform_admin": True})
+    authorization = {"HTTP_AUTHORIZATION": f"Bearer {admin_token}"}
+    created = client.post(url, **authorization)
+    assert created.status_code == 200, created.content
+    assert created.json()["captured_at"]
+    invoice.totalCents = 17000
+    invoice.save(update_fields=["totalCents"])
+    assert client.get(url, **authorization).json()["total_cents"] == 15000
+    assert client.post(url, **authorization).json() == created.json()
+
     # Valida que staff sem operador associado recebe 403 Forbidden
     from unittest.mock import patch, MagicMock
     with patch("accounts.auth.get_staff_member") as mock_get_staff:
@@ -1133,9 +1180,33 @@ def test_snapshots_returns_real_weekly_invoices(client: Client, sample_data):
 
         resp_orphan = client.get(
             "/api/v1/db/snapshots",
-            HTTP_AUTHORIZATION=f"Bearer {token}",
+            HTTP_AUTHORIZATION=f"Bearer {staff_token}",
         )
         assert resp_orphan.status_code == 403
+
+
+@pytest.mark.django_db
+def test_order_notice_read_persists_and_is_scoped_to_store(client, sample_data):
+    from logistics.models import Order
+    op = sample_data["operator"]
+    customer = StoreClient.objects.create(operator=op, name="Loja da gestora", document="11222333000199")
+    own_store = Store.objects.create(operator=op, client=customer, name="Loja autorizada")
+    manager = ClientPortalUser.objects.create(
+        operator=op, client=customer, name="Gestora", email="notice-manager@example.invalid",
+        supabase_uid=uuid.uuid4(), role="lojista", active=True,
+    )
+    own = Order.objects.create(operator=op, store=own_store, status="COMPLETED")
+    other = Order.objects.create(operator=op, store=sample_data["store"], status="COMPLETED")
+    token = create_access_token({
+        "sub": str(manager.id), "operator_id": str(op.id),
+        "user_type": "client_portal_user", "client_id": str(customer.id),
+    })
+    headers = {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+    url = "/api/v1/db/order-notices"
+    assert [(item["id"], item["read"]) for item in client.get(url, **headers).json()] == [(str(own.id), False)]
+    assert client.post(f"{url}/{other.id}/read", **headers).status_code == 404
+    assert client.post(f"{url}/{own.id}/read", **headers).status_code == 200
+    assert client.get(url, **headers).json()[0]["read"] is True
 
 
 @pytest.mark.django_db

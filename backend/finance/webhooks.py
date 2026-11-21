@@ -65,14 +65,20 @@ def efi_pix_webhook(request):
     """
     expected_hmac = getattr(settings, "EFI_WEBHOOK_HMAC", "")
     received_hmac = request.GET.get("hmac", "")
-    if not expected_hmac or not hmac.compare_digest(received_hmac, expected_hmac):
+    if not expected_hmac or not hmac.compare_digest(received_hmac.encode(), expected_hmac.encode()):
         logger.warning("Webhook Efí rejeitado por HMAC ausente ou inválido.")
         return JsonResponse({"error": "Unauthorized"}, status=401)
 
-    if getattr(settings, "EFI_REQUIRE_MTLS_HEADER", True):
+    production = getattr(settings, "ENVIRONMENT", "development") in {"production", "prod"}
+    if production or getattr(settings, "EFI_REQUIRE_MTLS_HEADER", True):
         verified = request.headers.get("X-Client-Cert-Verified", "").upper()
         if verified not in {"SUCCESS", "VERIFIED"}:
             logger.warning("Webhook Efí rejeitado: certificado cliente não verificado.")
+            return JsonResponse({"error": "Unauthorized"}, status=401)
+    if production:
+        expected_edge = settings.EFI_EDGE_ATTESTATION_SECRET
+        received_edge = request.headers.get("X-Efi-Edge-Attestation", "")
+        if len(expected_edge) < 32 or not hmac.compare_digest(received_edge.encode(), expected_edge.encode()):
             return JsonResponse({"error": "Unauthorized"}, status=401)
 
     if len(request.body) > 1_048_576:
@@ -92,6 +98,7 @@ def efi_pix_webhook(request):
         pix_events = [data]
 
     processed_count = 0
+    processing_failed = False
     for event in pix_events:
         if not isinstance(event, dict):
             continue
@@ -122,5 +129,8 @@ def efi_pix_webhook(request):
 
         except Exception as exc:
             logger.exception("Erro ao processar evento Pix individual no webhook: %s", exc)
+            processing_failed = True
 
+    if processing_failed:
+        return JsonResponse({"status": "retry"}, status=503)
     return JsonResponse({"status": "received", "processed": processed_count}, status=200)

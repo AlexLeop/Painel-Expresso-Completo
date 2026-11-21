@@ -156,21 +156,12 @@ def create_contract(request, payload: ContractPayload):
 @router.post("/schedule", response=Dict)
 def create_schedule(request, payload: SchedulePayload):
     staff = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE"])(request)
-
-    with transaction.atomic():
-        driver = Driver.objects.get(pk=payload.driver_id, operator=staff.operator)
-        store = Store.objects.get(pk=payload.store_id, operator=staff.operator)
-        turno = Turno.objects.get(pk=payload.turno_id, operator=staff.operator)
-
-        schedule, created = ScheduleEntry.objects.get_or_create(
-            operator=staff.operator,
-            driver=driver,
-            store=store,
-            turno=turno,
-            date=payload.target_date,
-            defaults={"minGuaranteedOverrideCents": payload.minGuaranteedOverrideCents},
-        )
-        return {"id": str(schedule.id), "created": created}
+    from config.scheduling import schedule_driver
+    schedule, created = schedule_driver(
+        staff.operator, payload.driver_id, payload.store_id, payload.turno_id,
+        payload.target_date, payload.minGuaranteedOverrideCents,
+    )
+    return {"id": str(schedule.id), "created": created}
 
 
 @router.post("/orders/dispatch", response=OrderSchema)
@@ -652,47 +643,43 @@ def get_proof_url(request, proof_id: UUID):
     except Proof.DoesNotExist:
         return 404, {"error": "Proof não encontrado."}
 
-    import os
-    import httpx
+    from django.core import signing
+    from urllib.parse import urlencode
 
-    SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
-    SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    token = signing.dumps(
+        {"proof_id": str(proof.id), "operator_id": str(proof.operator_id)},
+        salt="proof-download-v1",
+    )
+    return 200, {"url": request.build_absolute_uri(
+        "/api/v1/operator/proofs/download?" + urlencode({"token": token})
+    )}
 
-    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-        # Fallback local se não configurado
-        return 200, {"url": proof.fileUrl}
 
-    # Assume que proof.fileUrl guarde o path dentro do bucket, ex: "proofs/123/file.jpg"
-    # ou guarde o próprio path, e usaremos 'proofs' como bucket default.
-    parts = proof.fileUrl.split("/", 1)
-    if len(parts) >= 2 and parts[0] in ["proofs", "driver-docs"]:
-        bucket_name = parts[0]
-        file_path = parts[1]
-    else:
-        bucket_name = "proofs"
-        file_path = proof.fileUrl
-
-    sign_url = f"{SUPABASE_URL}/storage/v1/object/sign/{bucket_name}/{file_path}"
-    headers = {
-        "apikey": SUPABASE_SERVICE_KEY,
-        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
-        "Content-Type": "application/json",
-    }
+@router.get("/proofs/download", auth=None)
+def download_proof(request, token: str):
+    from django.core import signing
+    from django.core.files.storage import default_storage
+    from django.http import FileResponse
+    from django.conf import settings
+    from pathlib import PurePosixPath
+    from logistics.models import Proof
 
     try:
-        # Pede URL válida por 900s (15 min)
-        resp = httpx.post(
-            sign_url, json={"expiresIn": 900}, headers=headers, timeout=5.0
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            signed_url_path = data.get("signedURL")
-            return 200, {"url": f"{SUPABASE_URL}/storage/v1{signed_url_path}"}
-        else:
-            return 403, {"error": f"Falha ao gerar URL assinada: {resp.text}"}
-    except Exception as e:
-        return 403, {"error": f"Erro interno ao gerar URL: {str(e)}"}
-
+        payload = signing.loads(token, salt="proof-download-v1", max_age=900)
+        with tenant_context(payload["operator_id"]):
+            proof = Proof.objects.get(pk=payload["proof_id"], operator_id=payload["operator_id"])
+        prefix = settings.MEDIA_URL.rstrip("/") + "/"
+        path = proof.fileUrl or ""
+        if path.startswith(prefix):
+            path = path[len(prefix):]
+        if not path.startswith("proofs/") or "\\" in path or ".." in PurePosixPath(path).parts:
+            raise HttpError(422, "O arquivo legado precisa ser migrado ao armazenamento privado.")
+        response = FileResponse(default_storage.open(path, "rb"), filename=PurePosixPath(path).name)
+        response["Cache-Control"] = "private, no-store"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
+    except (signing.BadSignature, KeyError, ValueError, Proof.DoesNotExist, FileNotFoundError) as exc:
+        raise HttpError(404, "Comprovante indisponível ou link expirado.") from exc
 
 # ==============================================================================
 # MÓDULOS DE SALDO DAS LOJAS, DRE, CONFERÊNCIA DE DINHEIRO E DESPACHO PELA LOJA

@@ -22,6 +22,7 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
   const [branding, setBranding] = useState<BrandingFull>(DEFAULT_BRANDING);
   const [isLoading, setIsLoading] = useState(true);
   const requestVersion = useRef(0);
+  const lastBranding = useRef<{scope: string; value: BrandingFull} | null>(null);
 
   // Aplica as variáveis CSS e favicon no documento
   const applyBrandingToDOM = useCallback((b: BrandingFull) => {
@@ -66,12 +67,23 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
 
   const loadBranding = useCallback(async () => {
     const version = ++requestVersion.current;
+    const slug = new URLSearchParams(window.location.search).get("op");
+    const scope = session?.user
+      ? `account:${session.user.id}:${session.user.company_id}`
+      : `public:${slug || ""}`;
+    const initial = lastBranding.current?.scope === scope ? lastBranding.current.value : {
+      ...DEFAULT_BRANDING,
+      brand_name: session?.user?.operator_name || (slug ? "Portal Logístico" : DEFAULT_BRANDING.brand_name),
+    };
+    setBranding(initial);
+    applyBrandingToDOM(initial);
     setIsLoading(true);
     try {
       if (session?.user) {
         // Usuário autenticado: busca branding completo
         const data = await fetchBranding();
         if (version !== requestVersion.current) return;
+        lastBranding.current = {scope, value: data};
         setBranding(data);
         applyBrandingToDOM(data);
       } else {
@@ -93,6 +105,7 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
               theme_mode: pub.theme_mode,
             };
             if (version !== requestVersion.current) return;
+            lastBranding.current = {scope, value: merged};
             setBranding(merged);
             applyBrandingToDOM(merged);
             return;
@@ -101,14 +114,10 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
 
         // Sem slug ou não encontrado: usa padrão
         if (version !== requestVersion.current) return;
-        setBranding(DEFAULT_BRANDING);
-        applyBrandingToDOM(DEFAULT_BRANDING);
       }
     } catch (err) {
       console.warn("Erro ao inicializar branding:", err);
       if (version !== requestVersion.current) return;
-      setBranding(DEFAULT_BRANDING);
-      applyBrandingToDOM(DEFAULT_BRANDING);
     } finally {
       if (version === requestVersion.current) setIsLoading(false);
     }

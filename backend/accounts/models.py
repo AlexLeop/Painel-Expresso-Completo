@@ -9,6 +9,8 @@ Todos os modelos herdam de `TenantModel` ou `TimeStampedTenantModel` (exceto o p
 e operam com `managed = False` para respeitar a soberania do banco de dados (Supabase CLI).
 """
 
+import uuid
+
 from django.db import models
 from django.utils.text import slugify
 from config.core_models import TimeStampedTenantModel
@@ -200,6 +202,34 @@ class Operator(models.Model):
             "base_rate_reais": round(rate_cents / 100.0, 2),
             "applied_floor": applied_floor,
         }
+
+
+class OrderNoticeRead(models.Model):
+    actor_id = models.UUIDField()
+    order_id = models.UUIDField()
+    read_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("actor_id", "order_id"), name="order_notice_actor_order")
+        ]
+
+
+class OperatorApplication(models.Model):
+    """Public request for assisted onboarding as an operator."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company_name = models.CharField(max_length=255)
+    document = models.CharField(max_length=14)
+    email = models.EmailField()
+    phone = models.CharField(max_length=20)
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("document", "email"), name="operator_application_identity")
+        ]
 
 
 class PlatformAdmin(models.Model):

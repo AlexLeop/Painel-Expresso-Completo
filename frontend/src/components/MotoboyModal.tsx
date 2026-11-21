@@ -15,9 +15,11 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "../lib/utils";
+import { authFetch } from "../lib/api";
 
 export interface MotoboyType {
   id?: string;
+  storeId?: string;
   nome: string;
   telefone: string;
   email?: string;
@@ -79,6 +81,9 @@ export function MotoboyModal({
   onUpdate,
 }: MotoboyModalProps) {
   const [saving, setSaving] = useState(false);
+  const [storeId, setStoreId] = useState("");
+  const [stores, setStores] = useState<Array<{id: string; name: string}>>([]);
+  const [storesError, setStoresError] = useState("");
   const [loadingCep, setLoadingCep] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>("geral");
   const [formData, setFormData] = useState({
@@ -110,6 +115,24 @@ export function MotoboyModal({
     maxActiveOrders: 3,
     password: "",
   });
+
+  useEffect(() => {
+    if (!isOpen || motoboy) return;
+    let current = true;
+    setStoreId("");
+    setStores([]);
+    setStoresError("");
+    authFetch("/api/v1/integration/stores")
+      .then(async response => {
+        if (!response.ok) throw new Error("Não foi possível consultar as lojas.");
+        const result = await response.json();
+        if (current) setStores(result);
+      })
+      .catch(() => {
+        if (current) setStoresError("Lojas indisponíveis. Você pode cadastrar o motoboy sem vínculo de loja.");
+      });
+    return () => { current = false; };
+  }, [isOpen, motoboy]);
 
   useEffect(() => {
     if (isOpen) {
@@ -223,7 +246,7 @@ export function MotoboyModal({
     try {
       if (isCreating) {
         if (!onSave) return;
-        await onSave(formData);
+        await onSave({ ...formData, storeId: storeId || undefined });
       } else if (motoboy?.id && onUpdate) {
         await onUpdate(motoboy.id, formData);
       }
@@ -361,6 +384,17 @@ export function MotoboyModal({
                             placeholder="Ex: Carlos Eduardo de Oliveira"
                           />
                         </div>
+
+                        {!motoboy && (
+                          <div className="space-y-1">
+                            <label htmlFor="driver-store" className="block text-xs font-semibold text-zinc-700">Loja vinculada (opcional)</label>
+                            <select id="driver-store" value={storeId} onChange={event => setStoreId(event.target.value)} className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm">
+                              <option value="">Sem vínculo de loja</option>
+                              {stores.map(store => <option key={store.id} value={store.id}>{store.name}</option>)}
+                            </select>
+                            {storesError && <p role="status" className="text-xs text-zinc-600">{storesError}</p>}
+                          </div>
+                        )}
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div>

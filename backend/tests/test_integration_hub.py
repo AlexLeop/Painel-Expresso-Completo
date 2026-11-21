@@ -12,6 +12,43 @@ from logistics.models import Client as LogisticsClient, Store, Order, Stop
 from integration.models import IntegrationConnector, StoreIntegration, IntegrationWebhookLog
 
 
+def test_store_manager_cannot_integrate_another_store_in_same_operator(
+    api_client, operator_and_store, connector_generic
+):
+    from logistics.models import ClientPortalUser
+
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS "ClientPortalUser" (
+                id CHAR(32) PRIMARY KEY, operator_id CHAR(32), client_id CHAR(32),
+                supabase_uid CHAR(32), name VARCHAR(255), email VARCHAR(255),
+                active BOOLEAN, role VARCHAR(50), "passwordHash" TEXT,
+                "createdAt" TIMESTAMP, "updatedAt" TIMESTAMP
+            )
+        """)
+    operator = operator_and_store["operator"]
+    store = operator_and_store["store"]
+    other_client = LogisticsClient.objects.create(operator=operator, name="Outra loja", document="09876543000100")
+    other_store = Store.objects.create(operator=operator, client=other_client, name="Outra loja")
+    manager = ClientPortalUser.objects.create(
+        operator=operator, client=store.client, name="Gestora",
+        email="manager-integration@example.invalid", supabase_uid=uuid.uuid4(), role="lojista",
+    )
+    token = create_access_token({
+        "sub": str(manager.id), "operator_id": str(operator.id),
+        "user_type": "client_portal_user", "client_id": str(manager.client_id),
+    })
+    authorization = {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+    for target, expected in [(other_store, 404), (store, 201)]:
+        response = api_client.post(
+            "/api/v1/integration/",
+            data={"store_id": str(target.id), "connector_slug": connector_generic.slug},
+            content_type="application/json", **authorization,
+        )
+        assert response.status_code == expected, response.content
+    assert [item["store_id"] for item in api_client.get("/api/v1/integration/", **authorization).json()] == [str(store.id)]
+
+
 @pytest.fixture(autouse=True)
 def setup_integration_tables(db):
     if not hasattr(connection.ops, "select"):

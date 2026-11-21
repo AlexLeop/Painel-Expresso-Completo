@@ -7,6 +7,7 @@ from finance.models import ManualEntry
 from logistics.models import Driver, Store
 from accounts.models import Operator
 from config.idempotency import idempotent
+from django.db import transaction
 
 logger = logging.getLogger(__name__)
 
@@ -812,7 +813,7 @@ def get_company_drivers(request, company_id: Optional[str] = None, active_only: 
 
     try:
         from django.core.exceptions import ValidationError
-        from logistics.models import Driver, Vehicle
+        from logistics.models import Driver, StoreDriver
 
         auth = getattr(request, "auth", None) or {}
         if auth.get("user_type") == "client_portal_user" or auth.get("client_id"):
@@ -820,8 +821,15 @@ def get_company_drivers(request, company_id: Optional[str] = None, active_only: 
             client_user = get_client_portal_user(request)
             if not client_user:
                 raise HttpError(401, "Usuário lojista não autenticado.")
-            if client_user.operator_id:
-                drivers = Driver.objects.filter(operator_id=client_user.operator_id)
+            if client_user.operator_id and client_user.client_id:
+                allowed_drivers = StoreDriver.objects.filter(
+                    operator_id=client_user.operator_id,
+                    store__client_id=client_user.client_id,
+                    store__operator_id=client_user.operator_id,
+                ).values("driver_id")
+                drivers = Driver.objects.filter(
+                    operator_id=client_user.operator_id, id__in=allowed_drivers
+                )
             else:
                 drivers = Driver.objects.none()
         else:
@@ -844,39 +852,35 @@ def get_company_drivers(request, company_id: Optional[str] = None, active_only: 
         if active_only:
             drivers = drivers.filter(active=True)
 
+        is_client = bool(auth.get("user_type") == "client_portal_user" or auth.get("client_id"))
         res = []
         for d in drivers.order_by("-createdAt"):
-            veh = None
-            try:
-                veh = Vehicle.objects.filter(operator=d.operator).first()
-            except Exception:
-                veh = None
             res.append({
                 "id": str(d.id),
                 "driverId": str(d.id),
                 "nome": d.name,
                 "phone": d.phone,
                 "telefone": d.phone,
-                "document": d.document or "",
-                "placa": veh.plate if veh else "",
-                "modelo": "Motocicleta" if (veh and veh.type == "MOTORCYCLE") else (veh.type if veh else "Motocicleta"),
+                "document": "" if is_client else (d.document or ""),
+                "placa": "",
+                "modelo": "",
                 "status": "Ativo" if d.active else "Inativo",
                 "active": d.active,
                 "maxActiveOrders": d.maxActiveOrders,
-                "pixKeyType": d.pixKeyType,
-                "pixKey": d.pixKey,
+                "pixKeyType": None if is_client else d.pixKeyType,
+                "pixKey": None if is_client else d.pixKey,
             })
         return res
     except HttpError:
         raise
-    except Exception:
-        import traceback
-        traceback.print_exc()
-        return []
+    except Exception as cause:
+        logger.exception("Falha ao consultar motoboys autorizados.")
+        raise HttpError(503, "Não foi possível consultar os motoboys agora.") from cause
 
 
 class DriverCreateSchema(BaseModel):
     companyId: Optional[str] = None
+    storeId: Optional[str] = None
     nome: str
     phone: Optional[str] = None
     telefone: Optional[str] = None
@@ -948,6 +952,15 @@ def create_company_driver(request, payload: DriverCreateSchema):
         if not operator:
             raise HttpError(422, "Operador logístico obrigatório não identificado.")
 
+        store = None
+        if payload.storeId:
+            try:
+                store = Store.objects.filter(id=payload.storeId, operator_id=operator.id).first()
+            except (ValidationError, ValueError):
+                store = None
+            if store is None:
+                raise HttpError(422, "A loja selecionada não pertence ao operador do motoboy.")
+
         duplicate = Driver.objects.filter(active=True, phone=phone)
         if document:
             duplicate = duplicate | Driver.objects.filter(active=True, document=document)
@@ -1007,8 +1020,7 @@ def create_company_driver(request, payload: DriverCreateSchema):
                     status="APPROVED"
                 )
 
-        # 4. Vincular a uma Store do operador (primeira Store encontrada)
-            store = Store.objects.filter(operator_id=operator.id).first()
+        # 4. Vincular somente à loja selecionada explicitamente.
             if store:
                 StoreDriver.objects.get_or_create(
                     operator=operator,
@@ -1033,14 +1045,14 @@ def transfer_company_driver(request, driver_id: str, payload: DriverTransferPayl
     import json
     import uuid
 
-    from accounts.auth import platform_admin_required
+    from accounts.auth import platform_owner_required
     from accounts.models import Operator, OperatorAuditLog
     from django.db import transaction
     from django.db.models import Q
     from logistics.models import Driver, StoreDriver
     from ninja.errors import HttpError
 
-    platform_admin = platform_admin_required(request)
+    platform_admin = platform_owner_required(request)
     reason = payload.reason.strip()
     if len(reason) < 10:
         raise HttpError(422, "Informe uma justificativa com ao menos 10 caracteres.")
@@ -1052,6 +1064,15 @@ def transfer_company_driver(request, driver_id: str, payload: DriverTransferPayl
             raise HttpError(404, "Motoboy ou operador de destino não encontrado.")
         if source.operator_id == target.id:
             raise HttpError(409, "O motoboy já pertence ao operador de destino.")
+
+        from logistics.models import Order, ScheduleEntry
+        from django.utils import timezone
+        if Order.objects.filter(driver=source).exclude(
+            status__in=["COMPLETED", "CANCELED", "RETURNED"]
+        ).exists():
+            raise HttpError(409, "Encerre ou reatribua as corridas abertas antes de transferir o motoboy.")
+        if ScheduleEntry.objects.filter(driver=source, date__gte=timezone.localdate()).exists():
+            raise HttpError(409, "Cancele ou reatribua as escalas futuras antes de transferir o motoboy.")
 
         identity_filter = Q(phone=source.phone)
         if source.document:
@@ -1638,7 +1659,7 @@ def get_snapshots(request, company_id: Optional[str] = None, limit: int = 50):
     qs = WeeklyStoreInvoice.objects.select_related("store", "operator")
     if op:
         qs = qs.filter(operator=op)
-    if target_store_ids:
+    if client_user:
         qs = qs.filter(store_id__in=target_store_ids)
     elif company_id and company_id not in ("global", "NaN", "undefined"):
         try:
@@ -1971,7 +1992,11 @@ def _orders_visible_to_request(request):
     auth = getattr(request, "auth", None) or {}
     if auth.get("client_id") or auth.get("user_type") == "client_portal_user":
         client_user = get_client_portal_user(request)
-        return Order.objects.filter(store__client=client_user.client) if client_user else Order.objects.none()
+        return Order.objects.filter(
+            store__client_id=client_user.client_id,
+            operator_id=client_user.operator_id,
+            store__operator_id=client_user.operator_id,
+        ) if client_user else Order.objects.none()
     actor = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
     orders = Order.objects.all()
     if not getattr(actor, "is_platform_admin", False):
@@ -1979,6 +2004,42 @@ def _orders_visible_to_request(request):
     elif actor.operator_id:
         orders = orders.filter(operator_id=actor.operator_id)
     return orders
+
+
+def _notice_orders(request):
+    return _orders_visible_to_request(request).filter(status__in=["COMPLETED", "CANCELED", "RETURNED"])
+
+
+@router.get("/order-notices")
+def list_order_notices(request):
+    from accounts.models import OrderNoticeRead
+    from django.db.models import Exists, OuterRef, F
+    from django.db.models.functions import Coalesce
+
+    actor_id = request.auth["sub"]
+    recent = _notice_orders(request).annotate(
+        event_date=Coalesce("completedAt", "canceledAt", "requestedAt"),
+        read=Exists(OrderNoticeRead.objects.filter(actor_id=actor_id, order_id=OuterRef("pk"))),
+    ).order_by(F("event_date").desc(nulls_last=True), "-pk")[:30]
+    return [
+        {"id": str(order.id), "status": order.status, "read": order.read,
+         "date": order.event_date.isoformat() if order.event_date else None}
+        for order in recent
+    ]
+
+
+@router.post("/order-notices/{order_id}/read")
+def read_order_notice(request, order_id: str):
+    from uuid import UUID
+    from accounts.models import OrderNoticeRead
+    from ninja.errors import HttpError
+
+    try:
+        order = get_object_or_404(_notice_orders(request), pk=UUID(order_id))
+    except ValueError as exc:
+        raise HttpError(404, "Notificação não encontrada.") from exc
+    OrderNoticeRead.objects.get_or_create(actor_id=request.auth["sub"], order_id=order.id)
+    return {"success": True}
 
 @router.get("/orders")
 def get_orders(
@@ -2704,6 +2765,7 @@ def client_recharge(request, payload: ClientRechargePayload):
     return {
         "success": True,
         "recharge_id": str(invoice.id),
+        "simulation": True,
         "amount_cents": payload.amount_cents,
         "amount_reais": reais,
         "status": "PENDING",
@@ -3215,7 +3277,7 @@ def get_cash_reconciliation(request, date: Optional[str] = None):
         raise HttpError(422, "Selecione explicitamente um operador.")
 
     try:
-        target_date = datetime.strptime(date, "%Y-%m-%d").date() if date else timezone.now().date()
+        target_date = datetime.strptime(date, "%Y-%m-%d").date() if date else timezone.localdate()
     except ValueError:
         raise HttpError(422, "Data inválida; use AAAA-MM-DD.")
 
@@ -3281,11 +3343,12 @@ def get_cash_reconciliation(request, date: Optional[str] = None):
     # Verificar acertos já realizados (ManualEntry com descrição ou categoria de acerto)
     settlements = ManualEntry.objects.filter(
         createdAt__date=target_date,
-        description__icontains="ACERTO_DINHEIRO"
+        description__contains="ACERTO_DINHEIRO:",
+        status=ManualEntry.EntryStatus.APPROVED,
     )
     if operator:
         settlements = settlements.filter(operator=operator)
-    settled_drivers = set(str(s.driver_id) for s in settlements if s.driver_id)
+    settled_drivers = {str(s.driver_id): str(s.id) for s in settlements if s.driver_id}
 
     total_circulando = 0
     drivers_list = []
@@ -3310,6 +3373,7 @@ def get_cash_reconciliation(request, date: Optional[str] = None):
             "net_due_operator_reais": round(saldo_devido / 100.0, 2),
             "orders": data["pedidos"],
             "status_acerto": data["status_acerto"],
+            "settlement_id": settled_drivers.get(d_id),
             # Campos legados mantidos para compatibilidade
             "total_corridas": data["total_corridas"],
             "total_dinheiro_cents": data["total_dinheiro_cents"],
@@ -3352,6 +3416,7 @@ class SettleCashPayload(BaseModel):
     notes: Optional[str] = "Acerto diário de dinheiro em espécie"
 
 @router.post("/operator/settle-cash")
+@transaction.atomic
 def settle_cash_balance(request, payload: SettleCashPayload):
     """
     Registra a quitação e prestação de contas do dinheiro físico recebido pelo motoboy.
@@ -3366,12 +3431,28 @@ def settle_cash_balance(request, payload: SettleCashPayload):
     actor = require_role(["ADMIN", "MANAGER"])(request)
     if payload.amount_cents <= 0:
         raise HttpError(422, "O valor do acerto deve ser positivo.")
-    drivers = Driver.objects.filter(id=payload.driver_id)
+    drivers = Driver.objects.select_for_update().filter(id=payload.driver_id)
     if not getattr(actor, "is_platform_admin", False):
         drivers = drivers.filter(operator=actor.operator)
     driver = drivers.first()
     if not driver:
         raise HttpError(404, "Motoboy não encontrado.")
+
+    from django.utils import timezone
+    previous = ManualEntry.objects.filter(
+        operator=driver.operator, driver=driver,
+        createdAt__date=timezone.localdate(),
+        description__contains="ACERTO_DINHEIRO:",
+        status=ManualEntry.EntryStatus.APPROVED,
+    ).first()
+    if previous:
+        if previous.amountCents != -abs(payload.amount_cents):
+            raise HttpError(409, "Este motoboy já possui um acerto nesta data. Confira o recibo antes de ajustar o valor.")
+        return {
+            "success": True, "entry_id": str(previous.id),
+            "settled_amount_reais": round(payload.amount_cents / 100.0, 2),
+            "driver_id": str(driver.id), "status": "ACERTADO",
+        }
 
     from accounts.models import StaffMember
     staff_member = actor if not getattr(actor, "is_platform_admin", False) else None

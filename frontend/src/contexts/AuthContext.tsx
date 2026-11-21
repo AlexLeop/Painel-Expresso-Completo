@@ -108,6 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user: {
           ...session.user,
           company_id: companyId,
+          machine_empresa_id: companyId,
         },
       };
       if (session.user.is_platform_admin) {
