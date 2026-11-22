@@ -30,33 +30,32 @@ import { formatCurrency, cn } from "../lib/utils";
 
 interface WithdrawalItem {
   id: string;
-  condutor_id: string;
-  condutor_name?: string;
-  amount_cents: number;
-  fee_amount_cents: number;
-  net_amount_cents: number;
+  driver_id: string;
+  driver_name?: string;
+  amountCents: number;
+  feeAmountCents: number;
+  netAmountCents: number;
   status: "PENDING" | "PROCESSING" | "PAID" | "REJECTED" | "FAILED";
-  approval_mode: "AUTO_INSTANT" | "MANUAL_APPROVAL";
-  pix_key_type?: string;
-  pix_key: string;
-  rejection_reason?: string;
-  baas_tx_id?: string;
+  approvalMode: "AUTO_INSTANT" | "MANUAL_PENDING";
+  pixKeyType?: string;
+  pixKey: string;
+  rejectionReason?: string | null;
+  baasTransactionId?: string | null;
   baas_e2e_id?: string;
-  created_at: string;
-  approved_at?: string;
-  paid_at?: string;
+  createdAt: string;
+  approvedAt?: string | null;
+  processedAt?: string | null;
 }
 
 interface PayoutPolicyConfig {
-  approval_mode: "HYBRID_THRESHOLD" | "MANUAL_ALL";
-  auto_approval_threshold_cents: number;
-  daily_limit_per_driver_cents: number;
-  fee_mode: "ABSORBED_BY_PLATFORM" | "CHARGED_TO_DRIVER";
-  payout_fee_cents: number;
-  notify_push_enabled: boolean;
-  notify_whatsapp_enabled: boolean;
-  allow_nightly_payouts: boolean;
-  is_active: boolean;
+  mode: "HYBRID_THRESHOLD" | "MANUAL_ALL";
+  autoThresholdCents: number;
+  dailyLimitPerDriverCents: number;
+  payoutFeeMode: "ABSORBED_BY_PLATFORM" | "CHARGED_TO_DRIVER";
+  payoutFeeCents: number;
+  notifyPushEnabled: boolean;
+  notifyWhatsappEnabled: boolean;
+  minWithdrawalCents: number;
 }
 
 interface BaasBalance {
@@ -127,7 +126,11 @@ export function Saques() {
         throw new Error(`Erro ao carregar saques: ${res.status}`);
       }
       const data = await res.json();
-      setWithdrawals(Array.isArray(data) ? data : data.items || []);
+      const items: unknown = Array.isArray(data) ? data : data?.items;
+      if (!Array.isArray(items) || items.some((item) => typeof item?.driver_id !== "string")) {
+        throw new Error("A API retornou uma lista de saques inválida.");
+      }
+      setWithdrawals(items);
     } catch (err: any) {
       console.error(err);
       setError(err.message || "Falha ao carregar lista de saques.");
@@ -144,9 +147,11 @@ export function Saques() {
       if (res.ok) {
         const data = await res.json();
         setBaasBalance(data);
+      } else {
+        setBaasBalance(null);
       }
-    } catch (err) {
-      console.error("Falha ao buscar saldo Efí:", err);
+    } catch {
+      setBaasBalance(null);
     } finally {
       setLoadingBalance(false);
     }
@@ -195,7 +200,7 @@ export function Saques() {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.detail || "Falha ao aprovar saque.");
       }
-      showToast("Saque aprovado e enviado para liquidação PIX instantânea!", "success");
+      showToast("Saque aprovado. Liquidação em processamento.", "success");
       loadWithdrawals();
       loadBaasBalance();
     } catch (err: any) {
@@ -221,7 +226,7 @@ export function Saques() {
       if (!res.ok) {
         throw new Error(data.detail || "Falha na aprovação em lote.");
       }
-      showToast(`${data.approved_count} de ${data.requested_count} saques aprovados com sucesso!`, "success");
+      showToast(`${data.approved_count} de ${selectedIds.length} saques aprovados com sucesso!`, "success");
       setSelectedIds([]);
       loadWithdrawals();
       loadBaasBalance();
@@ -235,15 +240,16 @@ export function Saques() {
   // Actions: Reject
   const handleConfirmReject = async () => {
     if (!selectedWithdrawalForReject) return;
-    if (!rejectionReason.trim()) {
-      alert("Informe obrigatoriamente o motivo da rejeição para constar no extrato e notificação do entregador.");
+    const reason = rejectionReason.trim();
+    if (reason.length < 3) {
+      alert("Informe um motivo de rejeição com pelo menos 3 caracteres.");
       return;
     }
     setProcessingAction(true);
     try {
       const res = await authFetch(`/api/v1/admin/finance/withdrawals/${selectedWithdrawalForReject.id}/reject`, {
         method: "POST",
-        body: JSON.stringify({ rejection_reason: rejectionReason.trim() }),
+        body: JSON.stringify({ reason }),
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -297,10 +303,10 @@ export function Saques() {
     withdrawals.forEach((w) => {
       if (w.status === "PENDING") {
         pendingCount++;
-        pendingAmountCents += w.amount_cents;
+        pendingAmountCents += w.amountCents;
       } else if (w.status === "PAID") {
         paidCount++;
-        paidAmountCents += w.net_amount_cents;
+        paidAmountCents += w.netAmountCents;
       } else if (w.status === "REJECTED" || w.status === "FAILED") {
         rejectedCount++;
       }
@@ -320,10 +326,10 @@ export function Saques() {
     return withdrawals.filter((item) => {
       const matchesSearch =
         !searchTerm ||
-        (item.condutor_name && item.condutor_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        item.condutor_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.pix_key.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item.baas_tx_id && item.baas_tx_id.toLowerCase().includes(searchTerm.toLowerCase()));
+        (item.driver_name && item.driver_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        item.driver_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.pixKey.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.baasTransactionId && item.baasTransactionId.toLowerCase().includes(searchTerm.toLowerCase()));
       return matchesSearch;
     });
   }, [withdrawals, searchTerm]);
@@ -492,10 +498,10 @@ export function Saques() {
           </div>
           <div className="mt-3">
             <div className="text-2xl font-bold text-blue-950">
-              {baasBalance ? formatCurrency(baasBalance.saldo) : "---"}
+              {loadingBalance ? "Consultando…" : baasBalance ? formatCurrency(baasBalance.saldo) : "Indisponível"}
             </div>
             <p className="text-xs text-blue-700 mt-1 font-medium">
-              Disponível para liquidação imediata
+              {baasBalance ? "Disponível para liquidação" : "Saldo informado pela Efí Pay"}
             </p>
           </div>
         </div>
@@ -511,7 +517,7 @@ export function Saques() {
               { id: "ALL", label: "Todos" },
               { id: "PENDING", label: "Pendentes", badge: metrics.pendingCount },
               { id: "PAID", label: "Pagos" },
-              { id: "REJECTED", label: "Rejeitados" },
+              { id: "FAILED", label: "Falhos" },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -656,10 +662,10 @@ export function Saques() {
                       {/* Entregador */}
                       <td className="p-3.5">
                         <div className="font-medium text-zinc-900">
-                          {item.condutor_name || "Entregador #" + item.condutor_id.substring(0, 8)}
+                          {item.driver_name || "Entregador #" + item.driver_id.substring(0, 8)}
                         </div>
                         <div className="text-[11px] text-zinc-400 font-mono">
-                          ID: {item.condutor_id}
+                          ID: {item.driver_id}
                         </div>
                       </td>
 
@@ -667,13 +673,13 @@ export function Saques() {
                       <td className="p-3.5">
                         <div className="flex items-center gap-1.5">
                           <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 bg-zinc-100 text-zinc-600 rounded">
-                            {item.pix_key_type || "PIX"}
+                            {item.pixKeyType || "PIX"}
                           </span>
                           <span className="font-mono text-zinc-800 text-[11px]">
-                            {item.pix_key}
+                            {item.pixKey}
                           </span>
                           <button
-                            onClick={() => handleCopyKey(item.pix_key, item.id)}
+                            onClick={() => handleCopyKey(item.pixKey, item.id)}
                             title="Copiar Chave PIX"
                             className="p-1 text-zinc-400 hover:text-zinc-700 transition"
                           >
@@ -688,14 +694,14 @@ export function Saques() {
 
                       {/* Bruto */}
                       <td className="p-3.5 font-medium text-zinc-700">
-                        {formatCurrency(item.amount_cents / 100)}
+                        {formatCurrency(item.amountCents / 100)}
                       </td>
 
                       {/* Taxa */}
                       <td className="p-3.5 text-zinc-500">
-                        {item.fee_amount_cents > 0 ? (
+                        {item.feeAmountCents > 0 ? (
                           <span className="text-rose-600 font-medium">
-                            -{formatCurrency(item.fee_amount_cents / 100)}
+                            -{formatCurrency(item.feeAmountCents / 100)}
                           </span>
                         ) : (
                           <span className="text-zinc-400 text-[11px]">Grátis</span>
@@ -705,13 +711,13 @@ export function Saques() {
                       {/* Líquido */}
                       <td className="p-3.5">
                         <span className="font-bold text-emerald-600">
-                          {formatCurrency(item.net_amount_cents / 100)}
+                          {formatCurrency(item.netAmountCents / 100)}
                         </span>
                       </td>
 
                       {/* Alçada / Modo */}
                       <td className="p-3.5">
-                        {item.approval_mode === "AUTO_INSTANT" ? (
+                        {item.approvalMode === "AUTO_INSTANT" ? (
                           <span className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-700 bg-indigo-50 border border-indigo-200/60 px-2 py-0.5 rounded-full">
                             <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
                             Automático
@@ -754,7 +760,7 @@ export function Saques() {
 
                       {/* Data */}
                       <td className="p-3.5 text-zinc-500 text-[11px]">
-                        {new Date(item.created_at).toLocaleString("pt-BR", {
+                        {new Date(item.createdAt).toLocaleString("pt-BR", {
                           day: "2-digit",
                           month: "2-digit",
                           hour: "2-digit",
@@ -844,7 +850,7 @@ export function Saques() {
                     <p className="text-xs text-zinc-500 mt-0.5 leading-relaxed">
                       O valor de{" "}
                       <strong>
-                        {formatCurrency(selectedWithdrawalForReject.amount_cents / 100)}
+                        {formatCurrency(selectedWithdrawalForReject.amountCents / 100)}
                       </strong>{" "}
                       será desbloqueado e devolvido à carteira do entregador via transação contábil de estorno (REFUND).
                     </p>
@@ -948,7 +954,7 @@ export function Saques() {
                       <div>
                         <span className="text-zinc-400 block text-[11px] font-semibold">Entregador</span>
                         <span className="font-bold text-sm text-zinc-900">
-                          {detailsModalItem.condutor_name || detailsModalItem.condutor_id}
+                          {detailsModalItem.driver_name || detailsModalItem.driver_id}
                         </span>
                       </div>
                       <div>
@@ -960,13 +966,13 @@ export function Saques() {
                       <div>
                         <span className="text-zinc-400 block text-[11px] font-semibold">Chave PIX Destino</span>
                         <span className="font-mono font-bold text-zinc-800">
-                          {detailsModalItem.pix_key} ({detailsModalItem.pix_key_type})
+                          {detailsModalItem.pixKey} ({detailsModalItem.pixKeyType})
                         </span>
                       </div>
                       <div>
                         <span className="text-zinc-400 block text-[11px] font-semibold">Valor Líquido Enviado</span>
                         <span className="font-black text-base text-emerald-600">
-                          {formatCurrency(detailsModalItem.net_amount_cents / 100)}
+                          {formatCurrency(detailsModalItem.netAmountCents / 100)}
                         </span>
                       </div>
                     </div>
@@ -994,33 +1000,33 @@ export function Saques() {
                   )}
 
                   {/* TXID */}
-                  {detailsModalItem.baas_tx_id && (
+                  {detailsModalItem.baasTransactionId && (
                     <div className="bg-white border border-zinc-200 p-4 rounded-2xl space-y-1 shadow-xs">
                       <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold block">
                         Efí Transaction ID (TXID)
                       </span>
                       <span className="font-mono text-xs text-zinc-800 block select-all break-all">
-                        {detailsModalItem.baas_tx_id}
+                        {detailsModalItem.baasTransactionId}
                       </span>
                     </div>
                   )}
 
                   {/* Rejection Reason */}
-                  {detailsModalItem.rejection_reason && (
+                  {detailsModalItem.rejectionReason && (
                     <div className="bg-rose-50 border border-rose-200 p-4 rounded-2xl space-y-1">
                       <span className="text-xs font-bold text-rose-900 block">
                         Motivo da Rejeição Registrado
                       </span>
                       <p className="text-xs text-rose-800">
-                        {detailsModalItem.rejection_reason}
+                        {detailsModalItem.rejectionReason}
                       </p>
                     </div>
                   )}
 
                   <div className="text-[11px] text-zinc-500 pt-2 bg-zinc-50 p-3 rounded-xl border border-zinc-200">
-                    Solicitado em: {new Date(detailsModalItem.created_at).toLocaleString("pt-BR")}
-                    {detailsModalItem.paid_at && (
-                      <span> • Liquidado em: {new Date(detailsModalItem.paid_at).toLocaleString("pt-BR")}</span>
+                    Solicitado em: {new Date(detailsModalItem.createdAt).toLocaleString("pt-BR")}
+                    {detailsModalItem.status === "PAID" && detailsModalItem.processedAt && (
+                      <span> • Liquidado em: {new Date(detailsModalItem.processedAt).toLocaleString("pt-BR")}</span>
                     )}
                   </div>
                 </div>
@@ -1103,17 +1109,17 @@ export function Saques() {
                         <button
                           type="button"
                           onClick={() =>
-                            setPolicyConfig({ ...policyConfig, approval_mode: "HYBRID_THRESHOLD" })
+                            setPolicyConfig({ ...policyConfig, mode: "HYBRID_THRESHOLD" })
                           }
                           className={cn(
                             "p-3.5 rounded-xl border text-left transition-all cursor-pointer",
-                            policyConfig.approval_mode === "HYBRID_THRESHOLD"
+                            policyConfig.mode === "HYBRID_THRESHOLD"
                               ? "border-zinc-900 bg-zinc-900 text-white shadow-xs"
                               : "border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100"
                           )}
                         >
                           <div className="font-bold text-xs">Híbrido (Limite Inteligente)</div>
-                          <div className={cn("text-[11px] mt-1 leading-relaxed", policyConfig.approval_mode === "HYBRID_THRESHOLD" ? "text-zinc-300" : "text-zinc-500")}>
+                          <div className={cn("text-[11px] mt-1 leading-relaxed", policyConfig.mode === "HYBRID_THRESHOLD" ? "text-zinc-300" : "text-zinc-500")}>
                             Saques abaixo do limite são automáticos via BaaS; acima exigem aprovação manual.
                           </div>
                         </button>
@@ -1121,17 +1127,17 @@ export function Saques() {
                         <button
                           type="button"
                           onClick={() =>
-                            setPolicyConfig({ ...policyConfig, approval_mode: "MANUAL_ALL" })
+                            setPolicyConfig({ ...policyConfig, mode: "MANUAL_ALL" })
                           }
                           className={cn(
                             "p-3.5 rounded-xl border text-left transition-all cursor-pointer",
-                            policyConfig.approval_mode === "MANUAL_ALL"
+                            policyConfig.mode === "MANUAL_ALL"
                               ? "border-zinc-900 bg-zinc-900 text-white shadow-xs"
                               : "border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100"
                           )}
                         >
                           <div className="font-bold text-xs">100% Manual</div>
-                          <div className={cn("text-[11px] mt-1 leading-relaxed", policyConfig.approval_mode === "MANUAL_ALL" ? "text-zinc-300" : "text-zinc-500")}>
+                          <div className={cn("text-[11px] mt-1 leading-relaxed", policyConfig.mode === "MANUAL_ALL" ? "text-zinc-300" : "text-zinc-500")}>
                             Todos os saques passam obrigatoriamente por autorização do operador no painel.
                           </div>
                         </button>
@@ -1154,12 +1160,12 @@ export function Saques() {
                               type="number"
                               step="0.01"
                               min="0"
-                              disabled={policyConfig.approval_mode === "MANUAL_ALL"}
-                              value={(policyConfig.auto_approval_threshold_cents / 100).toFixed(2)}
+                              disabled={policyConfig.mode === "MANUAL_ALL"}
+                              value={(policyConfig.autoThresholdCents / 100).toFixed(2)}
                               onChange={(e) =>
                                 setPolicyConfig({
                                   ...policyConfig,
-                                  auto_approval_threshold_cents: Math.round(parseFloat(e.target.value || "0") * 100),
+                                  autoThresholdCents: Math.round(parseFloat(e.target.value || "0") * 100),
                                 })
                               }
                               className="w-full pl-9 pr-3 py-2.5 border border-zinc-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 disabled:bg-zinc-100 disabled:text-zinc-400 transition-all"
@@ -1177,11 +1183,11 @@ export function Saques() {
                               type="number"
                               step="0.01"
                               min="0"
-                              value={(policyConfig.daily_limit_per_driver_cents / 100).toFixed(2)}
+                              value={(policyConfig.dailyLimitPerDriverCents / 100).toFixed(2)}
                               onChange={(e) =>
                                 setPolicyConfig({
                                   ...policyConfig,
-                                  daily_limit_per_driver_cents: Math.round(parseFloat(e.target.value || "0") * 100),
+                                  dailyLimitPerDriverCents: Math.round(parseFloat(e.target.value || "0") * 100),
                                 })
                               }
                               className="w-full pl-9 pr-3 py-2.5 border border-zinc-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 transition-all"
@@ -1200,11 +1206,11 @@ export function Saques() {
                         <button
                           type="button"
                           onClick={() =>
-                            setPolicyConfig({ ...policyConfig, fee_mode: "ABSORBED_BY_PLATFORM" })
+                            setPolicyConfig({ ...policyConfig, payoutFeeMode: "ABSORBED_BY_PLATFORM" })
                           }
                           className={cn(
                             "p-3 rounded-xl border text-left transition-all cursor-pointer",
-                            policyConfig.fee_mode === "ABSORBED_BY_PLATFORM"
+                            policyConfig.payoutFeeMode === "ABSORBED_BY_PLATFORM"
                               ? "border-emerald-600 bg-emerald-50 text-emerald-900 shadow-xs"
                               : "border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100"
                           )}
@@ -1218,34 +1224,34 @@ export function Saques() {
                         <button
                           type="button"
                           onClick={() =>
-                            setPolicyConfig({ ...policyConfig, fee_mode: "CHARGED_TO_DRIVER" })
+                            setPolicyConfig({ ...policyConfig, payoutFeeMode: "CHARGED_TO_DRIVER" })
                           }
                           className={cn(
                             "p-3 rounded-xl border text-left transition-all cursor-pointer",
-                            policyConfig.fee_mode === "CHARGED_TO_DRIVER"
+                            policyConfig.payoutFeeMode === "CHARGED_TO_DRIVER"
                               ? "border-zinc-900 bg-zinc-900 text-white shadow-xs"
                               : "border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100"
                           )}
                         >
                           <div className="font-bold text-xs">Cobrar do Entregador</div>
-                          <div className={cn("text-[11px] mt-0.5", policyConfig.fee_mode === "CHARGED_TO_DRIVER" ? "text-zinc-300" : "text-zinc-500")}>
+                          <div className={cn("text-[11px] mt-0.5", policyConfig.payoutFeeMode === "CHARGED_TO_DRIVER" ? "text-zinc-300" : "text-zinc-500")}>
                             Desconta taxa fixa do valor líquido transferido.
                           </div>
                         </button>
                       </div>
 
-                      {policyConfig.fee_mode === "CHARGED_TO_DRIVER" && (
+                      {policyConfig.payoutFeeMode === "CHARGED_TO_DRIVER" && (
                         <div className="mt-3 relative w-1/2">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-xs font-bold">R$</span>
                           <input
                             type="number"
                             step="0.01"
                             min="0"
-                            value={(policyConfig.payout_fee_cents / 100).toFixed(2)}
+                            value={(policyConfig.payoutFeeCents / 100).toFixed(2)}
                             onChange={(e) =>
                               setPolicyConfig({
                                 ...policyConfig,
-                                payout_fee_cents: Math.round(parseFloat(e.target.value || "0") * 100),
+                                payoutFeeCents: Math.round(parseFloat(e.target.value || "0") * 100),
                               })
                             }
                             className="w-full pl-9 pr-3 py-2 border border-zinc-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 transition-all"
@@ -1270,9 +1276,9 @@ export function Saques() {
                         </div>
                         <input
                           type="checkbox"
-                          checked={policyConfig.notify_push_enabled}
+                          checked={policyConfig.notifyPushEnabled}
                           onChange={(e) =>
-                            setPolicyConfig({ ...policyConfig, notify_push_enabled: e.target.checked })
+                            setPolicyConfig({ ...policyConfig, notifyPushEnabled: e.target.checked })
                           }
                           className="rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900 w-4 h-4 cursor-pointer"
                         />
@@ -1288,9 +1294,9 @@ export function Saques() {
                         </div>
                         <input
                           type="checkbox"
-                          checked={policyConfig.notify_whatsapp_enabled}
+                          checked={policyConfig.notifyWhatsappEnabled}
                           onChange={(e) =>
-                            setPolicyConfig({ ...policyConfig, notify_whatsapp_enabled: e.target.checked })
+                            setPolicyConfig({ ...policyConfig, notifyWhatsappEnabled: e.target.checked })
                           }
                           className="rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900 w-4 h-4 cursor-pointer"
                         />
