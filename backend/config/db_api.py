@@ -157,7 +157,7 @@ def delete_entry(request, id: str):
     return {"success": True}
 
 @router.get("/companies")
-def get_companies(request):
+def get_companies(request, locations_only: bool = False):
     from accounts.auth import get_client_portal_user, require_role
     from accounts.models import Operator
     from logistics.models import Store
@@ -171,13 +171,24 @@ def get_companies(request):
     qs = Store.objects.select_related("operator", "client").all()
     if client_id or auth.get("user_type") == "client_portal_user":
         client_user = get_client_portal_user(request)
-        qs = qs.filter(client=client_user.client) if client_user else qs.none()
+        qs = qs.filter(client_id=client_user.client_id, operator_id=client_user.operator_id) if client_user else qs.none()
     else:
         staff = require_role(["ADMIN", "MANAGER", "OPERATOR_ROLE", "VIEWER"])(request)
         if not getattr(staff, "is_platform_admin", False):
             qs = qs.filter(operator_id=staff.operator_id)
         elif staff.operator_id:
             qs = qs.filter(operator_id=staff.operator_id)
+
+    if locations_only:
+        return [
+            {
+                "id": str(store_id),
+                "nome": name,
+                "lat": point.y if point else None,
+                "lng": point.x if point else None,
+            }
+            for store_id, name, point in qs.order_by("name", "id").values_list("id", "name", "geom")
+        ]
 
     res = []
     for s in qs:
@@ -806,8 +817,59 @@ def update_company_driver(request, payload: CompanyDriverPayload):
     except Driver.DoesNotExist:
         raise HttpError(404, "Motoboy não encontrado")
 
+def _monthly_driver_stats(drivers, client_user=None):
+    from datetime import datetime, time, timedelta
+    from django.db.models import Count, F, Q, Sum
+    from django.utils import timezone
+    from finance.models import WalletTransaction
+    from logistics.models import Order
+
+    month = timezone.localdate().replace(day=1)
+    next_month = (month + timedelta(days=32)).replace(day=1)
+    start = timezone.make_aware(datetime.combine(month, time.min))
+    end = timezone.make_aware(datetime.combine(next_month, time.min))
+
+    orders = Order.objects.filter(
+        driver__in=drivers,
+        operator_id=F("driver__operator_id"),
+        store__operator_id=F("operator_id"),
+        status=Order.OrderStatus.COMPLETED,
+        completedAt__gte=start,
+        completedAt__lt=end,
+    )
+    if client_user:
+        orders = orders.filter(store__client_id=client_user.client_id)
+    completed = dict(orders.values_list("driver_id").annotate(total=Count("pk")))
+
+    if client_user:
+        return completed, None
+
+    category = WalletTransaction.TransactionCategory
+    credits = (
+        WalletTransaction.objects.filter(
+            destination_driver_wallet__driver__in=drivers,
+            operator_id=F("destination_driver_wallet__operator_id"),
+            operator_id__exact=F("destination_driver_wallet__driver__operator_id"),
+            createdAt__gte=start,
+            createdAt__lt=end,
+        )
+        .filter(
+            Q(category__in=[category.DAILY_SETTLEMENT, category.BONUS, category.RETURN_RIDE])
+            | Q(category=category.PAYOUT, metadata__has_key="order_id")
+        )
+        .values_list("destination_driver_wallet__driver_id")
+        .annotate(total=Sum("amountCents"))
+    )
+    return completed, dict(credits)
+
+
 @router.get("/company-drivers")
-def get_company_drivers(request, company_id: Optional[str] = None, active_only: int = 0):
+def get_company_drivers(
+    request,
+    company_id: Optional[str] = None,
+    active_only: int = 0,
+    include_monthly_stats: bool = False,
+):
     from accounts.auth import require_role
     from ninja.errors import HttpError
 
@@ -816,7 +878,9 @@ def get_company_drivers(request, company_id: Optional[str] = None, active_only: 
         from logistics.models import Driver, StoreDriver
 
         auth = getattr(request, "auth", None) or {}
-        if auth.get("user_type") == "client_portal_user" or auth.get("client_id"):
+        is_client = bool(auth.get("user_type") == "client_portal_user" or auth.get("client_id"))
+        client_user = None
+        if is_client:
             from accounts.auth import get_client_portal_user
             client_user = get_client_portal_user(request)
             if not client_user:
@@ -837,7 +901,7 @@ def get_company_drivers(request, company_id: Optional[str] = None, active_only: 
             is_admin = getattr(staff, "is_platform_admin", False)
             auth_op_id = staff.operator_id
 
-            if not is_admin and auth_op_id:
+            if auth_op_id:
                 drivers = Driver.objects.filter(operator_id=auth_op_id)
             elif company_id and company_id != "global":
                 try:
@@ -852,7 +916,9 @@ def get_company_drivers(request, company_id: Optional[str] = None, active_only: 
         if active_only:
             drivers = drivers.filter(active=True)
 
-        is_client = bool(auth.get("user_type") == "client_portal_user" or auth.get("client_id"))
+        if include_monthly_stats:
+            completed, credits = _monthly_driver_stats(drivers, client_user)
+
         res = []
         for d in drivers.order_by("-createdAt"):
             res.append({
@@ -870,6 +936,11 @@ def get_company_drivers(request, company_id: Optional[str] = None, active_only: 
                 "pixKeyType": None if is_client else d.pixKeyType,
                 "pixKey": None if is_client else d.pixKey,
             })
+            if include_monthly_stats:
+                res[-1].update(
+                    monthlyCompletedRides=completed.get(d.id, 0),
+                    monthlyEarningsCents=credits.get(d.id, 0) if credits is not None else None,
+                )
         return res
     except HttpError:
         raise
@@ -2048,16 +2119,21 @@ def get_orders(
     limite: int = 500,
     status_solicitacao: Optional[str] = None,
     data_hora_solicitacao_min: Optional[str] = None,
-    data_hora_solicitacao_max: Optional[str] = None
+    data_hora_solicitacao_max: Optional[str] = None,
+    include_map: bool = False,
 ):
+    from django.db.models import F
     from logistics.models import Order
-    from accounts.models import Operator
-    from django.core.exceptions import ValidationError
 
     qs = _orders_visible_to_request(request).select_related('driver', 'store').order_by("-requestedAt")
     auth = getattr(request, "auth", None) or {}
     if auth.get("is_platform_admin") and empresa_id and empresa_id != "global":
-        qs = qs.filter(operator_id=empresa_id)
+        from django.core.exceptions import ValidationError
+
+        try:
+            qs = qs.filter(operator_id=empresa_id)
+        except (ValidationError, ValueError):
+            qs = qs.none()
         
     if status_solicitacao:
         status_map = {
@@ -2075,6 +2151,9 @@ def get_orders(
     if data_hora_solicitacao_max:
         qs = qs.filter(requestedAt__lte=data_hora_solicitacao_max)
         
+    if include_map:
+        return _map_rides(qs.filter(store__operator_id=F("operator_id"))[:min(max(limite, 1), 1000)])
+
     orders = qs[:limite]
     
     res = []
@@ -2115,6 +2194,69 @@ def get_orders(
             continue
             
     return res
+
+
+def _map_rides(orders):
+    from collections import defaultdict
+    from django.db.models import F
+    from django.utils import timezone
+    from logistics.models import Order, Stop
+
+    orders = list(orders)
+    stops_by_order = defaultdict(list)
+    for stop in Stop.objects.filter(
+        order_id__in=[order.id for order in orders],
+        operator_id=F("order__operator_id"),
+    ).order_by("sequence"):
+        stops_by_order[stop.order_id].append(stop)
+
+    statuses = {
+        Order.OrderStatus.PREPARING: "P",
+        Order.OrderStatus.READY_FOR_DISPATCH: "D",
+        Order.OrderStatus.OFFERED: "G",
+        Order.OrderStatus.ACCEPTED: "A",
+        Order.OrderStatus.STARTED: "E",
+        Order.OrderStatus.ARRIVED: "S",
+        Order.OrderStatus.RETURNING_TO_STORE: "S",
+        Order.OrderStatus.COMPLETED: "F",
+        Order.OrderStatus.CANCELED: "C",
+        Order.OrderStatus.CANCELED_IN_TRANSIT: "C",
+        Order.OrderStatus.RETURNED: "N",
+    }
+
+    def serialize_stop(stop, point, fallback_name=""):
+        metadata = (stop.metadata or {}) if stop else {}
+        return {
+            "endereco": metadata.get("address") or fallback_name,
+            "latitude": point.y if point else None,
+            "longitude": point.x if point else None,
+            "nome_contato": metadata.get("contact_name", ""),
+            "telefone_contato": metadata.get("contact_phone", ""),
+        }
+
+    rides = []
+    for order in orders:
+        stops = stops_by_order[order.id]
+        pickup = next((stop for stop in stops if stop.type == Stop.StopType.PICKUP), None)
+        driver = order.driver if order.driver and order.driver.operator_id == order.operator_id else None
+        rides.append({
+            "id": str(order.id),
+            "empresa_id": str(order.store_id),
+            "nome_empresa": order.store.name,
+            "condutor_id": str(driver.id) if driver else None,
+            "nome_condutor": driver.name if driver else "",
+            "telefone_condutor": driver.phone if driver else "",
+            "status_solicitacao": statuses.get(order.status, order.status),
+            "identificador_solicitacao": order.external_order_id or str(order.id)[:8],
+            "valor_corrida": (order.fareValueCents or 0) / 100,
+            "distancia_percorrida_km": (order.distanceMeters or 0) / 1000,
+            "data_hora_solicitacao": timezone.localtime(order.requestedAt).strftime("%Y-%m-%d %H:%M:%S"),
+            "data_hora_finalizacao": timezone.localtime(order.completedAt).strftime("%Y-%m-%d %H:%M:%S") if order.completedAt else None,
+            "coleta": serialize_stop(pickup, order.store.geom, order.store.name),
+            "paradas": [serialize_stop(stop, stop.geom) for stop in stops if stop.type == Stop.StopType.DROPOFF],
+            "com_retorno": any(stop.type == Stop.StopType.RETURN for stop in stops),
+        })
+    return {"rides": rides, "total": len(rides)}
 
 @router.post("/orders/create")
 def create_order(request, payload: OrderCreateSchema):

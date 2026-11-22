@@ -4,49 +4,20 @@ import { motion } from "framer-motion";
 import { cn, formatCurrency } from "../lib/utils";
 import { useState, useMemo } from "react";
 import { MotoboyModal, MotoboyType } from "../components/MotoboyModal";
-import { authFetch, getSession } from "../lib/api";
+import { authFetch } from "../lib/api";
+import { useAuth } from "../contexts/AuthContext";
 import { useApiQuery, mutateCache } from "../lib/useApiQuery";
 
 export function Motoboys() {
-  const session = getSession();
+  const { session } = useAuth();
   const companyId = session?.user?.machine_empresa_id || session?.user?.company_id || "";
-
-  const dbKey = companyId
-    ? `/api/v1/db/company-drivers?company_id=${companyId}&active_only=0`
-    : null;
-  const machineKey = `/api/v1/db/company-drivers`;
-
-  const {
-    data: dbRaw,
-    isLoading: loadingDb,
-    error: errorDb,
-    refresh,
-  } = useApiQuery<any[]>(dbKey, { refreshInterval: 60_000 });
-  const { data: machineRaw, isLoading: loadingMachine } = useApiQuery<any>(
-    machineKey,
+  const params = new URLSearchParams({ include_monthly_stats: "true" });
+  if (companyId) params.set("company_id", companyId);
+  const dbKey = session ? "/api/v1/db/company-drivers?" + params.toString() : null;
+  const { data: dbRaw, isLoading: loading, error, refresh } = useApiQuery<any[]>(
+    dbKey,
     { refreshInterval: 60_000 },
   );
-
-  // Get current month dates to fetch entries
-  const { startISO, endISO } = useMemo(() => {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    const formatDate = (d: Date) =>
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    return { startISO: formatDate(start), endISO: formatDate(end) };
-  }, []);
-
-  const entriesKey = companyId
-    ? `/api/v1/db/entries?company_id=${companyId}&start=${startISO}&end=${endISO}`
-    : null;
-  const { data: entriesRaw, isLoading: loadingEntries } = useApiQuery<any[]>(
-    entriesKey,
-    { refreshInterval: 60_000 },
-  );
-
-  const loading = loadingDb || loadingMachine || loadingEntries;
-  const error = errorDb;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedMotoboy, setSelectedMotoboy] = useState<MotoboyType | null>(
@@ -57,69 +28,23 @@ export function Motoboys() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("Todos");
 
-  const motoboys: MotoboyType[] = useMemo(() => {
-    const dbList: any[] = Array.isArray(dbRaw)
-      ? dbRaw
-      : (dbRaw as any)?.motoboys || [];
-    const machineDrivers: any[] = Array.isArray(machineRaw?.drivers)
-      ? machineRaw.drivers
-      : [];
-    const entries: any[] = Array.isArray(entriesRaw) ? entriesRaw : [];
-
-    const machineMap = new Map<string, any>();
-    machineDrivers.forEach((d: any) => {
-      if (d?.id != null) machineMap.set(String(d.id), d);
-    });
-
-    // Group entries by driver
-    const driverStats = new Map<
-      string,
-      { faturamento: number; corridas: number }
-    >();
-    entries.forEach((e: any) => {
-      const dId = String(e.driverId || "");
-      if (!dId) return;
-      if (!driverStats.has(dId))
-        driverStats.set(dId, { faturamento: 0, corridas: 0 });
-      const stats = driverStats.get(dId)!;
-      if (e.type === "diaria" || e.type === "extra") {
-        stats.faturamento += Number(e.amount) || 0;
-        stats.corridas += 1;
-      } else if (e.type === "adiantamento") {
-        stats.faturamento -= Number(e.amount) || 0;
-      }
-    });
-
-    return dbList.map((d: any) => {
-      const dId = String(d.driverId || d.id || "");
-      const stats = driverStats.get(dId) || { faturamento: 0, corridas: 0 };
-
-      return {
-        id: dId,
-        nome:
-          machineMap.get(dId)?.nome ||
-          d.driverName ||
-          d.nome ||
-          d.name ||
-          "Sem nome",
-        telefone:
-          machineMap.get(dId)?.telefone ||
-          d.driverPhone ||
-          d.telefone ||
-          d.phone ||
-          "",
-        placa: d.placa || d.plate || "",
-        modelo: d.modelo || d.vehicle || "",
-        status:
-          formatCadastroStatus(machineMap.get(dId)?.status) ||
-          formatDriverStatus(d.driverStatus || d.status || ""),
-        avaliacao: d.avaliacao || d.rating || 5.0,
-        corridas: stats.corridas,
-        faturamento: stats.faturamento,
-        ativo: d.active !== false,
-      };
-    });
-  }, [dbRaw, machineRaw, entriesRaw]);
+  const motoboys = useMemo<MotoboyType[]>(() => {
+    const drivers = Array.isArray(dbRaw) ? dbRaw : [];
+    return drivers.map((driver) => ({
+      id: String(driver.driverId || driver.id),
+      nome: driver.nome || "Sem nome",
+      telefone: driver.telefone || driver.phone || "",
+      placa: driver.placa || "",
+      modelo: driver.modelo || "",
+      status: formatDriverStatus(driver.status),
+      avaliacao: driver.avaliacao || driver.rating || 5.0,
+      corridas: driver.monthlyCompletedRides,
+      faturamento: typeof driver.monthlyEarningsCents === "number"
+        ? driver.monthlyEarningsCents / 100
+        : undefined,
+      ativo: driver.active !== false,
+    }));
+  }, [dbRaw]);
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -162,7 +87,7 @@ export function Motoboys() {
         mutateCache<any[]>(dbKey, (prev) =>
           (prev || []).map((d: any) => {
             const id = String(d.driverId || d.id || "");
-            return id === motoboyId ? { ...d, active: nextActive } : d;
+            return id === motoboyId ? { ...d, active: nextActive, status: nextActive ? "Ativo" : "Inativo" } : d;
           }),
         );
       }
@@ -182,7 +107,7 @@ export function Motoboys() {
           mutateCache<any[]>(dbKey, (prev) =>
             (prev || []).map((d: any) => {
               const id = String(d.driverId || d.id || "");
-              return id === motoboyId ? { ...d, active: !nextActive } : d;
+              return id === motoboyId ? { ...d, active: !nextActive, status: nextActive ? "Inativo" : "Ativo" } : d;
             }),
           );
         }
@@ -194,7 +119,7 @@ export function Motoboys() {
         mutateCache<any[]>(dbKey, (prev) =>
           (prev || []).map((d: any) => {
             const id = String(d.driverId || d.id || "");
-            return id === motoboyId ? { ...d, active: !nextActive } : d;
+            return id === motoboyId ? { ...d, active: !nextActive, status: nextActive ? "Inativo" : "Ativo" } : d;
           }),
         );
       }
@@ -304,12 +229,12 @@ export function Motoboys() {
                 <th className="px-4 py-2">Status</th>
                 <th
                   className="px-4 py-2 text-right"
-                  title="Número de lançamentos no mês"
+                  title="Corridas concluídas neste mês"
                 >
-                  Lançamentos
+                  Corridas no mês
                 </th>
-                <th className="px-4 py-2 text-right" title="Faturamento no mês">
-                  Faturamento Mês
+                <th className="px-4 py-2 text-right" title="Ganhos creditados na carteira neste mês">
+                  Ganhos creditados no mês
                 </th>
                 <th className="px-4 py-2"></th>
               </tr>
@@ -411,12 +336,12 @@ export function Motoboys() {
                   </td>
                   <td className="px-4 py-2 text-right">
                     <span className="font-mono font-medium text-zinc-900 text-xs">
-                      {motoboy.corridas}
+                      {motoboy.corridas ?? "—"}
                     </span>
                   </td>
                   <td className="px-4 py-2 text-right">
                     <span className="font-mono font-bold text-emerald-600 text-xs">
-                      {formatCurrency(motoboy.faturamento)}
+                      {motoboy.faturamento == null ? "—" : formatCurrency(motoboy.faturamento)}
                     </span>
                   </td>
                   <td className="px-4 py-2 text-right">
@@ -482,17 +407,4 @@ function formatDriverStatus(raw: string) {
   if (v === "inactive") return "Inativo";
   if (v === "blocked") return "Suspenso";
   return raw;
-}
-
-function formatCadastroStatus(raw: unknown) {
-  const v = String(raw || "")
-    .trim()
-    .toLowerCase();
-  if (!v) return "";
-  if (v.includes("analise") || v.includes("análise")) return "Em análise";
-  if (v.includes("excl")) return "Excluído";
-  if (v.includes("susp")) return "Suspenso";
-  if (v.includes("inativ")) return "Inativo";
-  if (v.includes("ativ")) return "Ativo";
-  return String(raw);
 }

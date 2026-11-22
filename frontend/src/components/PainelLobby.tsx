@@ -14,13 +14,13 @@ import {
 import { cn, formatCurrency } from "../lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { authFetch } from "../lib/api";
-import { useAuth } from "../contexts/AuthContext";
 
 export interface LobbyRide {
   id: string | number;
   codigoPedido: string;
   cliente: string;
   empresa: string;
+  storeId: string;
   coleta: { endereco: string; hora: string };
   entrega: { endereco: string; hora: string };
   paradas: any[];
@@ -37,18 +37,13 @@ export interface LobbyRide {
 
 interface PainelLobbyProps {
   rides: LobbyRide[];
-  storeLocation: [number, number] | null;
-  companyData: any | null;
   onRidesGrouped?: () => void;
 }
 
 export function PainelLobby({
   rides,
-  storeLocation,
-  companyData,
   onRidesGrouped,
 }: PainelLobbyProps) {
-  const { session } = useAuth();
   const [selectedIds, setSelectedIds] = useState<Set<string | number>>(
     new Set(),
   );
@@ -78,30 +73,22 @@ export function PainelLobby({
 
     try {
       const selectedOrders = rides.filter((o) => selectedIds.has(o.id));
-      const machineEmpId = session?.user?.machine_empresa_id || companyData?.id;
+      const pickup = selectedOrders[0];
 
-      if (!machineEmpId) {
-        throw new Error("ID da empresa não encontrado.");
+      if (!pickup?.storeId || !pickup.origin) {
+        throw new Error("A loja da corrida precisa ter um ponto de coleta cadastrado.");
+      }
+      if (selectedOrders.some((order) => order.storeId !== pickup.storeId)) {
+        throw new Error("Selecione corridas da mesma loja para agrupar.");
       }
 
-      const storeLat = storeLocation?.[0] || companyData?.lat || "";
-      const storeLng = storeLocation?.[1] || companyData?.lng || "";
-      const storeEndereco = companyData?.endereco || "";
-      const storeName = companyData?.nome_fantasia || companyData?.nome || "Loja";
-      const storeBairro = companyData?.bairro || "";
-      const storeCidade = companyData?.cidade || "";
-      const storeEstado = companyData?.estado || "RJ";
-
       const payload = {
-        empresa_id: machineEmpId,
+        empresa_id: pickup.storeId,
         forma_pagamento: "F",
-        endereco_partida: storeEndereco || "",
-        bairro_partida: storeBairro || "",
-        cidade_partida: storeCidade || "",
-        estado_partida: storeEstado || "",
-        lat_partida: String(storeLat),
-        lng_partida: String(storeLng),
-        nome_cliente_partida: storeName,
+        endereco_partida: pickup.coleta.endereco,
+        lat_partida: String(pickup.origin.lat),
+        lng_partida: String(pickup.origin.lng),
+        nome_cliente_partida: pickup.empresa,
         telefone_cliente_partida: "",
         observacao_partida: "Coleta agrupada",
         pontos: selectedOrders.flatMap((order) => {
@@ -109,12 +96,12 @@ export function PainelLobby({
             return order.paradas.map((p) => ({
               endereco_parada: p.endereco || order.entrega?.endereco || "",
               bairro_parada: p.bairro || "",
-              cidade_parada: p.cidade || storeCidade,
-              estado_parada: p.uf || storeEstado,
-              lat_parada: String(p.lat || order.destination?.lat || ""),
-              lng_parada: String(p.lng || order.destination?.lng || ""),
-              nome_cliente_parada: p.nome_cliente || order.cliente || "",
-              telefone_cliente_parada: p.telefone_cliente || "",
+              cidade_parada: p.cidade || "",
+              estado_parada: p.uf || "",
+              lat_parada: String(p.latitude ?? p.lat ?? ""),
+              lng_parada: String(p.longitude ?? p.lng ?? ""),
+              nome_cliente_parada: p.nome_contato || order.cliente || "",
+              telefone_cliente_parada: p.telefone_contato || "",
               observacao_parada:
                 p.observacao || `Pedido #${order.codigoPedido}`,
             }));
@@ -123,10 +110,10 @@ export function PainelLobby({
               {
                 endereco_parada: order.entrega?.endereco || "",
                 bairro_parada: "",
-                cidade_parada: storeCidade,
-                estado_parada: storeEstado,
-                lat_parada: String(order.destination?.lat || ""),
-                lng_parada: String(order.destination?.lng || ""),
+                cidade_parada: "",
+                estado_parada: "",
+                lat_parada: String(order.destination?.lat ?? ""),
+                lng_parada: String(order.destination?.lng ?? ""),
                 nome_cliente_parada: order.cliente || "",
                 telefone_cliente_parada: "",
                 observacao_parada: `Pedido #${order.codigoPedido}`,

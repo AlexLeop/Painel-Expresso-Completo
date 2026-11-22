@@ -398,6 +398,117 @@ def test_db_configs_company_id_global(client: Client, sample_data):
     assert resp.status_code != 500
 
 
+def test_monthly_driver_earnings_use_wallet_credits_and_completed_orders(client, sample_data, monkeypatch):
+    from datetime import date, datetime, timedelta
+    from django.utils import timezone
+    from finance.models import Wallet, WalletTransaction
+    from logistics.models import Order
+
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            CREATE TABLE "Wallet" (
+                id CHAR(32) PRIMARY KEY, operator_id CHAR(32), driver_id CHAR(32),
+                "balanceCents" BIGINT, "updatedAt" TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE "WalletTransaction" (
+                id CHAR(32) PRIMARY KEY, operator_id CHAR(32),
+                source_driver_wallet_id CHAR(32), source_operator_wallet_id CHAR(32),
+                destination_driver_wallet_id CHAR(32), destination_operator_wallet_id CHAR(32),
+                "amountCents" BIGINT, category VARCHAR(50), "taxCategory" VARCHAR(50),
+                metadata TEXT, "createdAt" TIMESTAMP, "updatedAt" TIMESTAMP
+            )
+        """)
+
+    monkeypatch.setattr(timezone, "localdate", lambda *args, **kwargs: date(2026, 11, 22))
+    start = timezone.make_aware(datetime(2026, 11, 1))
+    end = timezone.make_aware(datetime(2026, 12, 1))
+    operator, store, driver = (sample_data[key] for key in ("operator", "store", "driver"))
+    other_operator = Operator.objects.create(id=uuid.uuid4(), name="Outro operador")
+    wallet = Wallet.objects.create(operator=operator, driver=driver)
+    completed = Order.OrderStatus.COMPLETED
+    for status, date_completed in [
+        (completed, start),
+        (completed, end - timedelta(seconds=1)),
+        (completed, end),
+        (Order.OrderStatus.CANCELED, start),
+    ]:
+        Order.objects.create(
+            operator=operator, store=store, driver=driver, status=status,
+            completedAt=date_completed, businessDate=date_completed.date(), fareValueCents=9000,
+        )
+
+    for category, amount, metadata, posted_at, op in [
+        ("DAILY_SETTLEMENT", 3200, {}, start, operator),
+        ("PAYOUT", 700, {"order_id": "delivery"}, end - timedelta(seconds=1), operator),
+        ("REFUND", 20000, {}, start, operator),
+        ("PAYOUT", 8000, {"withdrawal_id": "withdrawal"}, start, operator),
+        ("DAILY_SETTLEMENT", 4000, {}, start - timedelta(seconds=1), operator),
+        ("DAILY_SETTLEMENT", 4000, {}, start, other_operator),
+    ]:
+        credit = WalletTransaction.objects.create(
+            operator=op, destination_driver_wallet=wallet, amountCents=amount,
+            category=category, taxCategory="TAXABLE_INCOME", metadata=metadata,
+        )
+        WalletTransaction.objects.filter(pk=credit.pk).update(createdAt=posted_at)
+
+    auth_header = {"HTTP_AUTHORIZATION": f"Bearer {sample_data['admin_token']}"}
+    response = client.get("/api/v1/db/company-drivers?include_monthly_stats=true", **auth_header)
+    assert response.status_code == 200, response.json()
+    result = response.json()[0]
+    assert result["id"] == str(driver.id)
+    assert result["monthlyCompletedRides"] == 2
+    assert result["monthlyEarningsCents"] == 3900
+
+    old_response = client.get("/api/v1/db/company-drivers", **auth_header)
+    assert "monthlyEarningsCents" not in old_response.json()[0]
+
+
+def test_map_orders_and_registered_stores_use_authenticated_operator(client, sample_data):
+    from django.utils import timezone
+    from logistics.models import Order
+
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            CREATE TABLE "Stop" (
+                id CHAR(32) PRIMARY KEY, operator_id CHAR(32), order_id CHAR(32),
+                sequence INT, type VARCHAR(20), geom TEXT, "requiresPin" BOOLEAN,
+                "deliveryPinHash" TEXT, "completedAt" TIMESTAMP, metadata TEXT
+            )
+        """)
+
+    operator, store, driver = (sample_data[key] for key in ("operator", "store", "driver"))
+    order = Order.objects.create(
+        operator=operator, store=store, driver=driver, status=Order.OrderStatus.STARTED,
+        businessDate=timezone.localdate(), fareValueCents=950, external_order_id="PED-123",
+    )
+    other_operator = Operator.objects.create(id=uuid.uuid4(), name="Outra operação")
+    other_store = Store.objects.create(operator=other_operator, name="Outra loja")
+    Order.objects.create(
+        operator=other_operator, store=other_store, status=Order.OrderStatus.OFFERED,
+        businessDate=timezone.localdate(), fareValueCents=800,
+    )
+
+    headers = {
+        "HTTP_AUTHORIZATION": f"Bearer {sample_data['admin_token']}",
+        "HTTP_X_OPERATOR_ID": str(operator.id),
+    }
+    response = client.get("/api/v1/db/orders?include_map=true", **headers)
+    assert response.status_code == 200, response.json()
+    rides = response.json()["rides"]
+    assert [ride["id"] for ride in rides] == [str(order.id)]
+    assert rides[0]["status_solicitacao"] == "E"
+    assert rides[0]["condutor_id"] == str(driver.id)
+    assert rides[0]["coleta"]["endereco"] == store.name
+    assert rides[0]["identificador_solicitacao"] == "PED-123"
+
+    assert isinstance(client.get("/api/v1/db/orders", **headers).json(), list)
+    locations = client.get("/api/v1/db/companies?locations_only=true", **headers)
+    assert locations.status_code == 200, locations.json()
+    assert [row["id"] for row in locations.json()] == [str(store.id)]
+
+
 @pytest.mark.django_db
 def test_branding_platform_admin_global_and_multi_tenant_isolation(client: Client, sample_data):
     from accounts.models_branding import OperatorBranding
@@ -910,6 +1021,14 @@ def test_company_drivers_client_portal_user_scoping_no_401(client: Client, sampl
     assert str(other_driver.id) not in driver_ids
     assert str(unlinked.id) not in driver_ids
     assert all(not row["document"] and not row["pixKey"] for row in drivers)
+
+    stats = client.get(
+        "/api/v1/db/company-drivers?active_only=1&include_monthly_stats=true",
+        HTTP_AUTHORIZATION=f"Bearer {token_lojista}",
+    )
+    assert stats.status_code == 200, stats.json()
+    assert {row["id"] for row in stats.json()} == set(driver_ids)
+    assert all(row["monthlyEarningsCents"] is None for row in stats.json())
 
 
 @pytest.mark.django_db

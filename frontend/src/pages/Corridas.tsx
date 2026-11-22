@@ -42,6 +42,7 @@ import { PainelLobby } from "../components/PainelLobby";
 import { FilaDinamica } from "../components/FilaDinamica";
 import { RideChatModal } from "../components/RideChatModal";
 import { authFetch } from "../lib/api";
+import { useApiQuery } from "../lib/useApiQuery";
 import { useAuth } from "../contexts/AuthContext";
 import { useBranding } from "../contexts/BrandingContext";
 import { ErrorBoundary } from "../components/ErrorBoundary";
@@ -112,41 +113,47 @@ const driverIconSelected = L.divIcon({
   iconAnchor: [17, 17],
 });
 
-const selfIcon = L.divIcon({
-  html: `<div title="Sua localização" style="width: 34px; height: 34px; border-radius: 9999px; background: #2563eb; border: 3px solid #ffffff; box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.18); display: flex; align-items: center; justify-content: center;">
-    <div style="width: 10px; height: 10px; border-radius: 9999px; background: #ffffff;"></div>
-  </div>`,
-  className: "",
-  iconSize: [34, 34],
-  iconAnchor: [17, 17],
-});
+type RegisteredStore = {
+  id: string;
+  nome: string;
+  lat: number | null;
+  lng: number | null;
+};
+
+const brazilCenter: [number, number] = [-14.2, -51.9];
 
 // Map Controller to handle camera movements
 function MapController({
   coords,
   rideId,
   focusKey,
+  storePoints,
 }: {
   coords: [number, number] | null;
   rideId: string | number | undefined;
   focusKey?: number;
+  storePoints: [number, number][];
 }) {
   const map = useMap();
   const lastRideId = useRef<string | number | undefined>(undefined);
   const lastFocusKey = useRef<number | undefined>(undefined);
 
   useEffect(() => {
-    if (!coords) return;
-    // Trigger flyTo when ride changes OR focusKey changes (driver click)
     if (
       rideId !== lastRideId.current ||
       (focusKey !== undefined && focusKey !== lastFocusKey.current)
     ) {
-      map.flyTo(coords, 15, { duration: 1.5 });
+      if (coords) {
+        map.flyTo(coords, 15, { duration: 1.5 });
+      } else if (storePoints.length) {
+        map.fitBounds(storePoints, { padding: [28, 28], maxZoom: 15 });
+      } else {
+        map.setView(brazilCenter, 4);
+      }
       lastRideId.current = rideId;
       lastFocusKey.current = focusKey;
     }
-  }, [coords, rideId, focusKey, map]);
+  }, [coords, rideId, focusKey, map, storePoints]);
   return null;
 }
 
@@ -254,7 +261,6 @@ export function Corridas() {
 
   const [activeRides, setActiveRides] = useState<any[]>([]);
   const [historyRides, setHistoryRides] = useState<any[]>([]);
-  const [companies, setCompanies] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -268,12 +274,6 @@ export function Corridas() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const [driverPositions, setDriverPositions] = useState<DriverPosition[]>([]);
-  const [storeLocation, setStoreLocation] = useState<[number, number] | null>(
-    null,
-  );
-  const [machineCompanyData, setMachineCompanyData] = useState<any | null>(
-    null,
-  );
   const [historyHeight, setHistoryHeight] = useState(350); // Altura inicial
   const isResizing = useRef(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -299,10 +299,6 @@ export function Corridas() {
       return false;
     }
   }, []);
-  const [selfPosition, setSelfPosition] = useState<[number, number] | null>(
-    null,
-  );
-
   useEffect(() => {
     const ids = new Set<string>();
     for (const r of activeRides) {
@@ -313,50 +309,27 @@ export function Corridas() {
   }, [activeRides]);
 
   useEffect(() => {
-    if (viewMode !== "map") return;
-    if (!("geolocation" in navigator)) return;
-
-    let watchId: number | null = null;
-    try {
-      watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          if (Number.isFinite(lat) && Number.isFinite(lng)) {
-            setSelfPosition([lat, lng]);
-          }
-        },
-        () => {
-          setSelfPosition(null);
-        },
-        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 },
-      );
-    } catch {
-      setSelfPosition(null);
-    }
-
-    return () => {
-      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-    };
-  }, [viewMode]);
-
-  useEffect(() => {
     setCurrentPage(1);
   }, [historySearch, historyFilter, activeSearch, activeFilter, globalSearch]);
-  const user = session?.user as any;
-  const companyId = user?.machine_empresa_id;
-
-  // Identificação robusta da empresa logada
-  const currentCompany = useMemo(() => {
-    const found = user?.companies?.find(
-      (c: any) => String(c.id) === String(companyId),
-    );
-    if (found) return found;
-    if (user?.companies?.length === 1) return user.companies[0];
-    return null;
-  }, [user, companyId]);
-
-  const companyName = currentCompany?.nome || user?.name || "Empresa";
+  const companyId = session?.user?.machine_empresa_id || session?.user?.company_id;
+  const { data: stores } = useApiQuery<RegisteredStore[]>(
+    companyId ? `/api/v1/db/companies?locations_only=true&scope=${encodeURIComponent(companyId)}` : null,
+  );
+  const registeredStores = useMemo(
+    () => Array.isArray(stores) ? stores : [],
+    [stores],
+  );
+  const machineCompanyData =
+    registeredStores.find((store) => String(store.id) === String(companyId)) ??
+    (registeredStores.length === 1 ? registeredStores[0] : null);
+  const storeMarkers = useMemo(() => registeredStores.flatMap((store) => {
+    const point = normalizeLatLng(store.lat, store.lng);
+    if (!point) return [];
+    const position: [number, number] = [point.lat, point.lng];
+    return [{ ...store, position }];
+  }), [registeredStores]);
+  const storePoints = useMemo(() => storeMarkers.map((store) => store.position), [storeMarkers]);
+  const storeLocation = storeMarkers.find((store) => store.id === machineCompanyData?.id)?.position ?? null;
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -381,16 +354,14 @@ export function Corridas() {
 
   const onlineCount = posByDriverId.size;
   const selectedDriverId = String(selectedCorrida?.motoboy?.id_num || "");
-  const selfToPickupKm = useMemo(() => {
-    if (!selfPosition) return null;
-    if (!selectedCorrida?.origin) return null;
-    const km = haversineKm(
-      { lat: selfPosition[0], lng: selfPosition[1] },
-      { lat: selectedCorrida.origin.lat, lng: selectedCorrida.origin.lng },
-    );
-    if (!Number.isFinite(km)) return null;
-    return km;
-  }, [selfPosition, selectedCorrida]);
+  const selectedDriverPosition = posByDriverId.get(selectedDriverId);
+  const driverToPickupKm = selectedDriverPosition && selectedCorrida?.origin
+    ? haversineKm(
+        { lat: selectedDriverPosition.latitude, lng: selectedDriverPosition.longitude },
+        selectedCorrida.origin,
+      )
+    : null;
+  const mapDriverPosition = (focusDriverId ? posByDriverId.get(focusDriverId) : null) ?? selectedDriverPosition;
 
   useEffect(() => {
     if (!mapDebug) return;
@@ -443,30 +414,7 @@ export function Corridas() {
       try {
         if (!silent) setLoading(true);
 
-        // Fetch companies first if not already loaded to map IDs to names
-        let currentCompanies = companies;
-        if (Object.keys(companies).length === 0) {
-          try {
-            const compRes = await authFetch("/api/v1/db/companies");
-            if (compRes.ok) {
-              const compData = await compRes.json();
-              const map: Record<string, string> = {};
-              compData.companies?.forEach((c: any) => {
-                map[String(c.id)] = c.nome;
-              });
-              setCompanies(map);
-              currentCompanies = map;
-            }
-          } catch (err) {
-            logger.error("Erro ao buscar lista de empresas:", err);
-          }
-        }
-
-        // Always reset selectedCorrida when fetching (company may have changed)
-        if (!silent) setSelectedCorrida(null);
-
-        // Use the correct backend route that filters by company and uses Machine API
-        const params = new URLSearchParams({ limite: "1000" });
+        const params = new URLSearchParams({ limite: "1000", include_map: "true" });
         if (companyId) params.set("empresa_id", String(companyId));
 
         const res = await authFetch(`/api/v1/db/orders?${params.toString()}`);
@@ -487,16 +435,11 @@ export function Corridas() {
             S: "A caminho",
             F: "Concluída",
             C: "Cancelada",
-            N: "Não atendida",
+            N: "Devolvida",
           };
 
           const mapRide = (r: any) => {
-            const rideEmpresaId = String(r.empresa_id);
-            const rideEmpresaNome =
-              currentCompanies[rideEmpresaId] ||
-              r.nome_empresa ||
-              rideEmpresaId ||
-              "Empresa";
+            const rideEmpresaNome = r.nome_empresa || "Empresa";
 
             const p0 = r.paradas?.[0] || {};
             let rawCode =
@@ -597,6 +540,7 @@ export function Corridas() {
               cliente: clienteNome,
               telefoneCliente,
               empresa: rideEmpresaNome,
+              storeId: r.empresa_id,
               distancia: r.distancia_percorrida_km
                 ? `${parseFloat(r.distancia_percorrida_km).toFixed(1)} km`
                 : "—",
@@ -623,30 +567,8 @@ export function Corridas() {
                   ? r.data_hora_finalizacao.split(" ")[1].substring(0, 5)
                   : "--:--",
               },
-              origin:
-                (r.coleta?.latitude ?? r.coleta?.lat) &&
-                (r.coleta?.longitude ?? r.coleta?.lng)
-                  ? {
-                      lat: parseFloat(
-                        String(r.coleta.latitude ?? r.coleta.lat),
-                      ),
-                      lng: parseFloat(
-                        String(r.coleta.longitude ?? r.coleta.lng),
-                      ),
-                    }
-                  : null,
-              destination:
-                (r.paradas?.[0]?.latitude ?? r.paradas?.[0]?.lat) &&
-                (r.paradas?.[0]?.longitude ?? r.paradas?.[0]?.lng)
-                  ? {
-                      lat: parseFloat(
-                        String(r.paradas[0].latitude ?? r.paradas[0].lat),
-                      ),
-                      lng: parseFloat(
-                        String(r.paradas[0].longitude ?? r.paradas[0].lng),
-                      ),
-                    }
-                  : null,
+              origin: normalizeLatLng(r.coleta?.latitude, r.coleta?.longitude),
+              destination: normalizeLatLng(p0.latitude, p0.longitude),
               lastLoc: r.coleta?.cidade || "Desconhecido",
               lastStop: r.paradas?.[0]?.endereco || "Nenhuma",
               speed: "—",
@@ -657,7 +579,7 @@ export function Corridas() {
               tarifa_categoria_id: r.tarifa_categoria_id,
               categoria_id: r.categoria_id,
               tipo_pagamento: r.tipo_pagamento || "F",
-              com_retorno: r.com_retorno || "0",
+              com_retorno: r.com_retorno,
             };
           };
 
@@ -681,42 +603,14 @@ export function Corridas() {
           setActiveRides(inProgress);
           setHistoryRides(completed);
 
-          if (inProgress.length > 0 && !selectedCorrida) {
-            setSelectedCorrida(inProgress[0]);
-          }
+          setSelectedCorrida((previous: any) =>
+            inProgress.find((ride) => ride.id === previous?.id) ?? inProgress[0] ?? null,
+          );
         } else {
           if (!silent) {
             setActiveRides([]);
             setHistoryRides([]);
           }
-        }
-
-        // Tentar pegar localização da loja
-        const companyIdStr = String(companyId);
-        try {
-          const compRes = await authFetch("/api/v1/db/companies");
-          if (compRes.ok) {
-            const compData = await compRes.json();
-            const myComp = compData.companies?.find(
-              (c: any) => String(c.id) === companyIdStr,
-            );
-            if (myComp) {
-              setMachineCompanyData(myComp);
-              if (myComp.lat && myComp.lng) {
-                setStoreLocation([
-                  parseFloat(myComp.lat),
-                  parseFloat(myComp.lng),
-                ]);
-              } else if (myComp.latitude && myComp.longitude) {
-                setStoreLocation([
-                  parseFloat(myComp.latitude),
-                  parseFloat(myComp.longitude),
-                ]);
-              }
-            }
-          }
-        } catch (err) {
-          logger.error("Erro ao buscar localização da loja:", err);
         }
 
         // Also fetch driver directory (names/phones) and driver positions
@@ -1156,8 +1050,6 @@ export function Corridas() {
           <div className="flex-1 overflow-hidden mt-2 border-t border-zinc-200/50 flex flex-col">
             <PainelLobby
               rides={aguardandoRides}
-              storeLocation={storeLocation}
-              companyData={machineCompanyData}
               onRidesGrouped={() => setRefreshKey((k) => k + 1)}
             />
           </div>
@@ -1551,8 +1443,8 @@ export function Corridas() {
           <div className="absolute inset-0 z-0">
             <ErrorBoundary>
               <MapContainer
-                center={storeLocation || [-22.8265, -43.3155]}
-                zoom={13}
+                center={storeLocation ?? brazilCenter}
+                zoom={storeLocation ? 15 : 4}
                 className="h-full w-full"
                 zoomControl={false}
               >
@@ -1581,36 +1473,17 @@ export function Corridas() {
               </div>
               <MapController
                 coords={
-                  // Priority 1: focusDriverId (driver clicked in Fila)
-                  focusDriverId && posByDriverId.get(focusDriverId)
-                    ? [
-                        posByDriverId.get(focusDriverId)!.latitude,
-                        posByDriverId.get(focusDriverId)!.longitude,
-                      ]
-                    : // Priority 2: selected ride driver position
-                      selectedCorrida?.motoboy?.id_num &&
-                        posByDriverId.get(
-                          String(selectedCorrida.motoboy.id_num),
-                        )
-                      ? [
-                          posByDriverId.get(
-                            String(selectedCorrida.motoboy.id_num),
-                          )!.latitude,
-                          posByDriverId.get(
-                            String(selectedCorrida.motoboy.id_num),
-                          )!.longitude,
-                        ]
-                      : selectedCorrida?.origin
-                        ? [
-                            selectedCorrida.origin.lat,
-                            selectedCorrida.origin.lng,
-                          ]
-                        : storeLocation || null
+                  mapDriverPosition
+                    ? [mapDriverPosition.latitude, mapDriverPosition.longitude]
+                    : selectedCorrida?.origin
+                      ? [selectedCorrida.origin.lat, selectedCorrida.origin.lng]
+                      : storeLocation
                 }
+                storePoints={storePoints}
                 rideId={
                   focusDriverId
                     ? `driver-${focusDriverId}`
-                    : selectedCorrida?.id || "store-initial"
+                    : selectedCorrida?.id || `stores-${companyId}-${storePoints.length}`
                 }
                 focusKey={focusKey}
               />
@@ -1628,31 +1501,16 @@ export function Corridas() {
                   <Popup>Coleta: {selectedCorrida.coleta?.endereco}</Popup>
                 </Marker>
               )}
-              {selfPosition && (
-                <Marker
-                  position={selfPosition}
-                  icon={selfIcon}
-                  zIndexOffset={1100}
-                >
-                  <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>
-                    Sua localização
-                  </Tooltip>
-                </Marker>
-              )}
-              {storeLocation &&
-                (!selectedCorrida ||
-                  (selectedCorrida.origin &&
-                    (Math.abs(selectedCorrida.origin.lat - storeLocation[0]) >
-                      0.0001 ||
-                      Math.abs(selectedCorrida.origin.lng - storeLocation[1]) >
-                        0.0001))) && (
-                  <Marker
-                    position={[storeLocation[0], storeLocation[1]]}
-                    icon={storeIcon}
-                  >
-                    <Popup>Sua Loja: {companyName}</Popup>
+              {storeMarkers.map(({ id, nome, position }) => {
+                const origin = selectedCorrida?.origin;
+                if (origin && Math.abs(origin.lat - position[0]) < 0.0001 &&
+                    Math.abs(origin.lng - position[1]) < 0.0001) return null;
+                return (
+                  <Marker key={id} position={position} icon={storeIcon}>
+                    <Popup>Loja cadastrada: {nome}</Popup>
                   </Marker>
-                )}
+                );
+              })}
               {selectedCorrida?.destination && (
                 <Marker
                   position={[
@@ -1795,12 +1653,12 @@ export function Corridas() {
                     <StatColumn
                       icon={<ChevronRight className="h-4 w-4 text-zinc-400" />}
                       label={
-                        selfToPickupKm !== null ? "Você → Coleta" : "Distância"
+                        driverToPickupKm !== null ? "Motoboy → Coleta" : "Distância"
                       }
                       value={
-                        selfToPickupKm !== null
-                          ? `${selfToPickupKm.toFixed(2)} km`
-                          : selectedCorrida.distancia || "0 km"
+                        driverToPickupKm !== null
+                          ? `${driverToPickupKm.toFixed(2)} km`
+                          : selectedCorrida.distancia || "—"
                       }
                     />
                     <StatColumn
@@ -2670,11 +2528,7 @@ export function Corridas() {
           setRedistributeRideData(null);
         }}
         onSave={handleCreateRide}
-        currentCompany={
-          machineCompanyData
-            ? { ...currentCompany, ...machineCompanyData }
-            : currentCompany
-        }
+        currentCompany={machineCompanyData}
         initialData={redistributeRideData}
       />
 
