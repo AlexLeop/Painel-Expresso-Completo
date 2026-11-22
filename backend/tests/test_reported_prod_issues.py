@@ -461,8 +461,39 @@ def test_monthly_driver_earnings_use_wallet_credits_and_completed_orders(client,
     assert result["monthlyCompletedRides"] == 2
     assert result["monthlyEarningsCents"] == 3900
 
+    historical_day = client.get(
+        "/api/v1/db/company-drivers?stats_start=2026-10-31&stats_end=2026-10-31",
+        **auth_header,
+    )
+    assert historical_day.status_code == 200, historical_day.json()
+    assert historical_day.json()[0]["periodEarningsCents"] == 4000
+    assert historical_day.json()[0]["periodCompletedRides"] == 0
+
+    month_end = client.get(
+        "/api/v1/db/company-drivers?stats_start=2026-11-30&stats_end=2026-11-30",
+        **auth_header,
+    )
+    assert month_end.status_code == 200, month_end.json()
+    assert month_end.json()[0]["periodEarningsCents"] == 700
+    assert month_end.json()[0]["periodCompletedRides"] == 1
+
     old_response = client.get("/api/v1/db/company-drivers", **auth_header)
     assert "monthlyEarningsCents" not in old_response.json()[0]
+    assert "periodEarningsCents" not in old_response.json()[0]
+
+
+@pytest.mark.parametrize("query", [
+    "stats_end=2026-11-30",
+    "stats_start=2026-11-01",
+    "stats_start=2026-11-30&stats_end=2026-11-01",
+    "stats_start=2026-02-30&stats_end=2026-11-01",
+])
+def test_driver_stats_reject_invalid_periods(client, sample_data, query):
+    response = client.get(
+        f"/api/v1/db/company-drivers?{query}",
+        HTTP_AUTHORIZATION=f"Bearer {sample_data['admin_token']}",
+    )
+    assert response.status_code == 422
 
 
 def test_map_orders_and_registered_stores_use_authenticated_operator(client, sample_data):
@@ -1029,6 +1060,14 @@ def test_company_drivers_client_portal_user_scoping_no_401(client: Client, sampl
     assert stats.status_code == 200, stats.json()
     assert {row["id"] for row in stats.json()} == set(driver_ids)
     assert all(row["monthlyEarningsCents"] is None for row in stats.json())
+
+    period = client.get(
+        "/api/v1/db/company-drivers?active_only=1&stats_start=2026-09-01&stats_end=2026-11-30",
+        HTTP_AUTHORIZATION=f"Bearer {token_lojista}",
+    )
+    assert period.status_code == 200, period.json()
+    assert {row["id"] for row in period.json()} == set(driver_ids)
+    assert all(row["periodEarningsCents"] is None for row in period.json())
 
 
 @pytest.mark.django_db

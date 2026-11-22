@@ -8,10 +8,36 @@ import { authFetch } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useApiQuery, mutateCache } from "../lib/useApiQuery";
 
+type StatsPeriod = { start: string; end: string };
+
+function currentMonth(): StatsPeriod {
+  const parts = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts();
+  const year = parts.find((part) => part.type === "year")!.value;
+  const month = parts.find((part) => part.type === "month")!.value;
+  const lastDay = new Date(Date.UTC(Number(year), Number(month), 0)).getUTCDate();
+  return { start: `${year}-${month}-01`, end: `${year}-${month}-${lastDay}` };
+}
+
+function displayDate(date: string) {
+  return date.split("-").reverse().join("/");
+}
+
 export function Motoboys() {
   const { session } = useAuth();
   const companyId = session?.user?.machine_empresa_id || session?.user?.company_id || "";
-  const params = new URLSearchParams({ include_monthly_stats: "true" });
+  const [period, setPeriod] = useState<StatsPeriod | null>(null);
+  const [draftPeriod, setDraftPeriod] = useState<StatsPeriod | null>(null);
+  const displayedPeriod = period ?? currentMonth();
+  const dateInputs = draftPeriod ?? displayedPeriod;
+  const params = new URLSearchParams(
+    period
+      ? { stats_start: period.start, stats_end: period.end }
+      : { include_monthly_stats: "true" },
+  );
   if (companyId) params.set("company_id", companyId);
   const dbKey = session ? "/api/v1/db/company-drivers?" + params.toString() : null;
   const { data: dbRaw, isLoading: loading, error, refresh } = useApiQuery<any[]>(
@@ -30,21 +56,22 @@ export function Motoboys() {
 
   const motoboys = useMemo<MotoboyType[]>(() => {
     const drivers = Array.isArray(dbRaw) ? dbRaw : [];
-    return drivers.map((driver) => ({
-      id: String(driver.driverId || driver.id),
-      nome: driver.nome || "Sem nome",
-      telefone: driver.telefone || driver.phone || "",
-      placa: driver.placa || "",
-      modelo: driver.modelo || "",
-      status: formatDriverStatus(driver.status),
-      avaliacao: driver.avaliacao || driver.rating || 5.0,
-      corridas: driver.monthlyCompletedRides,
-      faturamento: typeof driver.monthlyEarningsCents === "number"
-        ? driver.monthlyEarningsCents / 100
-        : undefined,
-      ativo: driver.active !== false,
-    }));
-  }, [dbRaw]);
+    return drivers.map((driver) => {
+      const earningsCents = period ? driver.periodEarningsCents : driver.monthlyEarningsCents;
+      return {
+        id: String(driver.driverId || driver.id),
+        nome: driver.nome || "Sem nome",
+        telefone: driver.telefone || driver.phone || "",
+        placa: driver.placa || "",
+        modelo: driver.modelo || "",
+        status: formatDriverStatus(driver.status),
+        avaliacao: driver.avaliacao || driver.rating || 5.0,
+        corridas: period ? driver.periodCompletedRides : driver.monthlyCompletedRides,
+        faturamento: typeof earningsCents === "number" ? earningsCents / 100 : undefined,
+        ativo: driver.active !== false,
+      };
+    });
+  }, [dbRaw, period]);
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -192,6 +219,56 @@ export function Motoboys() {
       </div>
 
       <div className="glass-panel overflow-hidden flex flex-col">
+        <form
+          className="border-b border-zinc-100 px-4 py-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (dateInputs.start && dateInputs.end && dateInputs.start <= dateInputs.end) {
+              setPeriod(dateInputs);
+            }
+          }}
+        >
+          <fieldset className="flex flex-wrap items-end gap-3">
+            <legend className="mb-2 text-sm font-semibold text-zinc-800">Período dos ganhos</legend>
+            <label className="grid min-w-0 gap-1 text-xs font-medium text-zinc-600">
+              Data inicial
+              <input
+                type="date"
+                required
+                value={dateInputs.start}
+                onChange={(event) => setDraftPeriod({ ...dateInputs, start: event.target.value })}
+                className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900"
+              />
+            </label>
+            <label className="grid min-w-0 gap-1 text-xs font-medium text-zinc-600">
+              Data final
+              <input
+                type="date"
+                required
+                min={dateInputs.start || undefined}
+                value={dateInputs.end}
+                onChange={(event) => setDraftPeriod({ ...dateInputs, end: event.target.value })}
+                className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900"
+              />
+            </label>
+            <button type="submit" className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-semibold text-white hover:bg-zinc-800">
+              Aplicar período
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPeriod(null);
+                setDraftPeriod(null);
+              }}
+              className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              Mês atual
+            </button>
+          </fieldset>
+          <p className="mt-2 text-xs text-zinc-600" role="status">
+            Período exibido: {displayDate(displayedPeriod.start)} a {displayDate(displayedPeriod.end)}
+          </p>
+        </form>
         <div className="p-4 border-b border-zinc-100 flex flex-col sm:flex-row gap-3 items-center justify-between bg-zinc-50/30">
           <div className="relative w-full sm:max-w-md group">
             <Search
@@ -229,12 +306,12 @@ export function Motoboys() {
                 <th className="px-4 py-2">Status</th>
                 <th
                   className="px-4 py-2 text-right"
-                  title="Corridas concluídas neste mês"
+                  title="Corridas concluídas no período exibido"
                 >
-                  Corridas no mês
+                  Corridas concluídas
                 </th>
-                <th className="px-4 py-2 text-right" title="Ganhos creditados na carteira neste mês">
-                  Ganhos creditados no mês
+                <th className="px-4 py-2 text-right" title="Ganhos creditados na carteira no período exibido">
+                  Ganhos creditados
                 </th>
                 <th className="px-4 py-2"></th>
               </tr>
@@ -250,7 +327,14 @@ export function Motoboys() {
                   </td>
                 </tr>
               )}
-              {filteredMotoboys.length === 0 && !error && !loading && (
+              {!dbRaw && !error && (loading || dbKey) && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-zinc-500">
+                    Consultando o período…
+                  </td>
+                </tr>
+              )}
+              {dbRaw && filteredMotoboys.length === 0 && !error && (
                 <tr>
                   <td
                     colSpan={7}

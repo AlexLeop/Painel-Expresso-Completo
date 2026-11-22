@@ -1,4 +1,5 @@
 import logging
+from datetime import date, datetime, time, timedelta
 from ninja import Router
 from typing import List, Dict, Any, Optional
 from django.shortcuts import get_object_or_404
@@ -817,17 +818,14 @@ def update_company_driver(request, payload: CompanyDriverPayload):
     except Driver.DoesNotExist:
         raise HttpError(404, "Motoboy não encontrado")
 
-def _monthly_driver_stats(drivers, client_user=None):
-    from datetime import datetime, time, timedelta
+def _driver_stats(drivers, start_date, end_date, client_user=None):
     from django.db.models import Count, F, Q, Sum
     from django.utils import timezone
     from finance.models import WalletTransaction
     from logistics.models import Order
 
-    month = timezone.localdate().replace(day=1)
-    next_month = (month + timedelta(days=32)).replace(day=1)
-    start = timezone.make_aware(datetime.combine(month, time.min))
-    end = timezone.make_aware(datetime.combine(next_month, time.min))
+    start = timezone.make_aware(datetime.combine(start_date, time.min))
+    end = timezone.make_aware(datetime.combine(end_date + timedelta(days=1), time.min))
 
     orders = Order.objects.filter(
         driver__in=drivers,
@@ -869,7 +867,10 @@ def get_company_drivers(
     company_id: Optional[str] = None,
     active_only: int = 0,
     include_monthly_stats: bool = False,
+    stats_start: Optional[date] = None,
+    stats_end: Optional[date] = None,
 ):
+    from django.utils import timezone
     from accounts.auth import require_role
     from ninja.errors import HttpError
 
@@ -916,8 +917,19 @@ def get_company_drivers(
         if active_only:
             drivers = drivers.filter(active=True)
 
-        if include_monthly_stats:
-            completed, credits = _monthly_driver_stats(drivers, client_user)
+        custom_period = stats_start is not None or stats_end is not None
+        if custom_period:
+            if stats_start is None or stats_end is None:
+                raise HttpError(422, "Informe a data inicial e a data final.")
+            if stats_start > stats_end or stats_end == date.max:
+                raise HttpError(422, "Informe um período de datas válido.")
+            completed, credits = _driver_stats(drivers, stats_start, stats_end, client_user)
+        elif include_monthly_stats:
+            month_start = timezone.localdate().replace(day=1)
+            next_month = (month_start + timedelta(days=32)).replace(day=1)
+            completed, credits = _driver_stats(
+                drivers, month_start, next_month - timedelta(days=1), client_user,
+            )
 
         res = []
         for d in drivers.order_by("-createdAt"):
@@ -936,7 +948,12 @@ def get_company_drivers(
                 "pixKeyType": None if is_client else d.pixKeyType,
                 "pixKey": None if is_client else d.pixKey,
             })
-            if include_monthly_stats:
+            if custom_period:
+                res[-1].update(
+                    periodCompletedRides=completed.get(d.id, 0),
+                    periodEarningsCents=credits.get(d.id, 0) if credits is not None else None,
+                )
+            elif include_monthly_stats:
                 res[-1].update(
                     monthlyCompletedRides=completed.get(d.id, 0),
                     monthlyEarningsCents=credits.get(d.id, 0) if credits is not None else None,
